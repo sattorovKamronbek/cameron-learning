@@ -1,0 +1,504 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role { 
+  USER
+  JUDGE
+  ADMIN
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  passwordHash   String
+  name           String?
+  role           Role      @default(USER)
+  emailVerified  Boolean   @default(false)
+  isSuspended    Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  profile        Json?     // progress, settings, preferences
+  achievements   Achievement[]
+  notifications  Notification[]
+  savedCourses   SavedCourse[]
+  savedProblems  SavedProblem[]
+  certificates   Certificate[]
+  activities     Activity[]
+  sessions       Session[]
+  auditLogs      AuditLog[] @relation("Actor")
+  createdContests Contest[] @relation("ContestCreator")
+  createdProblems Problem[] @relation("ProblemCreator")
+  submissions     Submission[]
+  clarifications  Clarification[]
+  scoreboardEntries ScoreboardEntry[]
+  instructedCourses Course[] @relation("CourseInstructor")
+  assignmentSubmissions AssignmentSubmission[]
+  enrollments     Enrollment[]
+  ratings         RatingReview[]
+  bookmarks       Bookmark[]
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  user         User     @relation(fields: [userId], references: [id])
+  userId       String
+  refreshToken String   @unique
+  userAgent    String?
+  ip           String?
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actor      User?    @relation("Actor", fields: [actorId], references: [id])
+  actorId    String?
+  action     String
+  details    Json?
+  createdAt  DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  title     String
+  body      String?
+  read      Boolean  @default(false)
+  meta      Json?
+  createdAt DateTime @default(now())
+}
+
+model Achievement {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  name      String
+  meta      Json?
+  createdAt DateTime @default(now())
+}
+
+model SavedCourse {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  courseId  String
+  meta      Json?
+  createdAt DateTime @default(now())
+}
+
+model SavedProblem {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  problemId String
+  meta      Json?
+  createdAt DateTime @default(now())
+}
+
+model Certificate {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  name      String
+  data      Json
+  createdAt DateTime @default(now())
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  type      String
+  meta      Json?
+  createdAt DateTime @default(now())
+}
+
+model AdminAllowlist {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+}
+
+// Contest and judge models
+
+enum ContestVisibility {
+  PUBLIC
+  PRIVATE
+  PASSWORD
+}
+
+enum ProblemDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum SubmissionVerdict {
+  PENDING
+  JUDGING
+  ACCEPTED
+  WRONG_ANSWER
+  RUNTIME_ERROR
+  TIME_LIMIT_EXCEEDED
+  MEMORY_LIMIT_EXCEEDED
+  COMPILATION_ERROR
+  SECURITY_VIOLATION
+  INTERNAL_ERROR
+}
+
+model Contest {
+  id            String    @id @default(cuid())
+  title         String
+  slug          String    @unique
+  description   String?
+  startAt       DateTime?
+  endAt         DateTime?
+  visibility    ContestVisibility @default(PUBLIC)
+  passwordHash  String?   // hashed password for PASSWORD contests
+  isPublished   Boolean   @default(false)
+  allowPractice Boolean   @default(true)
+  allowVirtual  Boolean   @default(true)
+  problems      ContestProblem[]
+  announcements Announcement[]
+  clarifications Clarification[]
+  createdBy     User?     @relation("ContestCreator", fields: [createdById], references: [id])
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  submissions   Submission[]
+  scoreboardEntries ScoreboardEntry[]
+}
+
+model Problem {
+  id           String   @id @default(cuid())
+  title        String
+  slug         String   @unique
+  statement    String   @db.Text
+  inputDesc    String?  @db.Text
+  outputDesc   String?  @db.Text
+  constraints  String?  @db.Text
+  timeLimitMs  Int      @default(1000)
+  memoryLimitKb Int     @default(65536)
+  difficulty   ProblemDifficulty @default(MEDIUM)
+  tags         String[]
+  editorial    String?  @db.Text
+  createdBy    User?    @relation("ProblemCreator", fields: [createdById], references: [id])
+  createdById  String?
+  testCases    TestCase[]
+  contestLinks ContestProblem[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  submissions  Submission[]
+}
+
+model ContestProblem {
+  id         String  @id @default(cuid())
+  contest    Contest @relation(fields: [contestId], references: [id])
+  contestId  String
+  problem    Problem @relation(fields: [problemId], references: [id])
+  problemId  String
+  order      Int     @default(0)
+  points     Int     @default(100)
+
+  @@unique([contestId, problemId])
+  @@index([contestId, order])
+}
+
+model TestCase {
+  id        String   @id @default(cuid())
+  problem   Problem  @relation(fields: [problemId], references: [id])
+  problemId String
+  input     String   @db.Text
+  output    String   @db.Text
+  isHidden  Boolean  @default(true)
+  weight    Int      @default(1)
+
+  @@index([problemId])
+}
+
+model Submission {
+  id           String   @id @default(cuid())
+  user         User     @relation(fields: [userId], references: [id])
+  userId       String
+  contest      Contest? @relation(fields: [contestId], references: [id])
+  contestId    String?
+  problem      Problem  @relation(fields: [problemId], references: [id])
+  problemId    String
+  language     String
+  source       String   @db.Text
+  size         Int
+  verdict      SubmissionVerdict @default(PENDING)
+  score        Int      @default(0)
+  timeMs       Int?
+  memoryKb     Int?
+  compileError String?  @db.Text
+  runs         Run[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([problemId, createdAt])
+  @@index([contestId, createdAt])
+}
+
+model Run {
+  id           String   @id @default(cuid())
+  submission   Submission @relation(fields: [submissionId], references: [id])
+  submissionId String
+  testCaseId   String?
+  verdict      SubmissionVerdict
+  timeMs       Int?
+  memoryKb     Int?
+  stdout       String?  @db.Text
+  stderr       String?  @db.Text
+  createdAt    DateTime @default(now())
+}
+
+model Clarification {
+  id         String   @id @default(cuid())
+  contest    Contest  @relation(fields: [contestId], references: [id])
+  contestId  String
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String
+  question   String   @db.Text
+  answer     String?  @db.Text
+  isPublic   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  answeredAt DateTime?
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  contest   Contest  @relation(fields: [contestId], references: [id])
+  contestId String
+  title     String
+  body      String?  @db.Text
+  createdAt DateTime @default(now())
+}
+
+model ScoreboardEntry {
+  id         String   @id @default(cuid())
+  contest    Contest  @relation(fields: [contestId], references: [id])
+  contestId  String
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String
+  rank       Int
+  score      Int
+  penalty    Int
+  details    Json?
+
+  @@unique([contestId, userId])
+  @@index([contestId, rank])
+}
+
+// Learning Management System models
+
+enum LessonType {
+  VIDEO
+  READING
+  CODING
+  QUIZ
+  ASSIGNMENT
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  description String?
+  courses   Course[]
+}
+
+model LearningPath {
+  id        String   @id @default(cuid())
+  title     String
+  slug      String   @unique
+  description String?
+  courses   Course[] @relation("PathCourses")
+  createdAt DateTime @default(now())
+}
+
+model Course {
+  id           String   @id @default(cuid())
+  title        String
+  slug         String   @unique
+  description  String?  @db.Text
+  summary      String?
+  coverImage   String?
+  durationMin  Int?     // estimated duration
+  level        String?
+  isPublished  Boolean  @default(false)
+  isArchived   Boolean  @default(false)
+  language     String?  @default("en")
+  category     Category? @relation(fields: [categoryId], references: [id])
+  categoryId   String?
+  instructor   User?    @relation("CourseInstructor", fields: [instructorId], references: [id])
+  instructorId String?
+  chapters     Chapter[]
+  quizzes      Quiz[]
+  assignments  Assignment[]
+  ratings      RatingReview[]
+  bookmarks    Bookmark[]
+  enrollments  Enrollment[]
+  prerequisites Prerequisite[] @relation("CoursePrereq")
+  requiredBy    Prerequisite[] @relation("CourseRequires")
+  learningPaths LearningPath[] @relation("PathCourses")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Chapter {
+  id        String   @id @default(cuid())
+  course    Course   @relation(fields: [courseId], references: [id])
+  courseId  String
+  title     String
+  order     Int      @default(0)
+  lessons   Lesson[]
+}
+
+model Lesson {
+  id         String   @id @default(cuid())
+  chapter    Chapter  @relation(fields: [chapterId], references: [id])
+  chapterId  String
+  title      String
+  slug       String   @unique
+  type       LessonType
+  content    String?  @db.Text // for reading/content, or editorials
+  videoUrl   String?
+  codingSkeleton String? @db.Text
+  order      Int      @default(0)
+  timeEstimateMin Int?
+  quizzes    Quiz[]   @relation("LessonQuizzes")
+  assignments Assignment[] @relation("LessonAssignments")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  courseProgress CourseProgress[]
+  bookmarks Bookmark[]
+}
+
+model Quiz {
+  id         String   @id @default(cuid())
+  course     Course?  @relation(fields: [courseId], references: [id])
+  courseId   String?
+  lesson     Lesson?  @relation("LessonQuizzes", fields: [lessonId], references: [id])
+  lessonId   String?
+  title      String
+  instruction String?
+  timeLimitSec Int?   // timed quizzes
+  questions  QuizQuestion[]
+  createdAt  DateTime @default(now())
+}
+
+model QuizQuestion {
+  id         String   @id @default(cuid())
+  quiz       Quiz     @relation(fields: [quizId], references: [id])
+  quizId     String
+  text       String   @db.Text
+  type       String   // e.g., MCQ, Code, ShortAnswer
+  options    Json?    // for MCQ: [{label:, value:, isCorrect:}]
+  points     Int      @default(1)
+}
+
+model Assignment {
+  id         String   @id @default(cuid())
+  course     Course?  @relation(fields: [courseId], references: [id])
+  courseId   String?
+  lesson     Lesson?  @relation("LessonAssignments", fields: [lessonId], references: [id])
+  lessonId   String?
+  title      String
+  description String? @db.Text
+  dueAt      DateTime?
+  maxScore   Int?    @default(100)
+  submissions AssignmentSubmission[]
+  createdAt  DateTime @default(now())
+}
+
+model AssignmentSubmission {
+  id         String   @id @default(cuid())
+  assignment Assignment @relation(fields: [assignmentId], references: [id])
+  assignmentId String
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String
+  files      Json?    // array of file metadata or links
+  content    String?  @db.Text
+  score      Int?
+  feedback   String?  @db.Text
+  createdAt  DateTime @default(now())
+}
+
+model Prerequisite {
+  id         String   @id @default(cuid())
+  course      Course  @relation("CoursePrereq", fields: [courseId], references: [id])
+  courseId    String
+  requires    Course  @relation("CourseRequires", fields: [requiresId], references: [id])
+  requiresId  String
+}
+
+model Enrollment {
+  id         String   @id @default(cuid())
+  course     Course   @relation(fields: [courseId], references: [id])
+  courseId   String
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String
+  role       String   @default("student") // student, instructor
+  progress   CourseProgress[]
+  enrolledAt DateTime @default(now())
+
+  @@unique([courseId, userId])
+  @@index([userId, enrolledAt])
+}
+
+model CourseProgress {
+  id         String   @id @default(cuid())
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id])
+  enrollmentId String
+  lesson     Lesson   @relation(fields: [lessonId], references: [id])
+  lessonId   String
+  completed  Boolean  @default(false)
+  completedAt DateTime?
+  updatedAt  DateTime @updatedAt
+
+  @@unique([enrollmentId, lessonId])
+  @@index([lessonId])
+}
+
+model RatingReview {
+  id         String   @id @default(cuid())
+  course     Course   @relation(fields: [courseId], references: [id])
+  courseId   String
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String
+  rating     Int
+  title      String?
+  body       String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  @@unique([courseId, userId])
+}
+
+model Bookmark {
+  id         String   @id @default(cuid())
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String
+  course     Course?  @relation(fields: [courseId], references: [id])
+  courseId   String?
+  lesson     Lesson?  @relation(fields: [lessonId], references: [id])
+  lessonId   String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model SiteSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
