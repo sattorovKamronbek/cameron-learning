@@ -6,6 +6,8 @@ import { checkAdminAccess } from '@/lib/security';
 import { Navbar } from '@/components/Navbar';
 import { Footer } from '@/components/Footer';
 import { LoadingState } from '@/components/LoadingState';
+import { I18nProvider } from '@/lib/i18n';
+import { ThemeProvider } from '@/lib/theme';
 
 function page<M, K extends keyof M>(load: () => Promise<M>, name: K) {
   type PageComponent = M[K] extends ComponentType<infer Props> ? ComponentType<Props> : never;
@@ -140,9 +142,13 @@ function App() {
   return (
     <Suspense fallback={<LoadingState variant="page" message="Sahifa tayyorlanmoqda" />}>
       <AuthProvider>
-        <RouterProvider>
-          <Routes />
-        </RouterProvider>
+        <ThemeProvider>
+          <I18nProvider>
+            <RouterProvider>
+              <Routes />
+            </RouterProvider>
+          </I18nProvider>
+        </ThemeProvider>
       </AuthProvider>
     </Suspense>
   );

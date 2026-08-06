@@ -5,6 +5,7 @@ import {
   Award, Shield, Bell, Home, Activity, Code2, Sigma, Atom,
   FlaskConical, Languages, Brain, ClipboardList, TrendingUp,
   Clock, CheckCircle2, Star, Scale, Globe, MapPin, LineChart,
+  Palette,
 } from 'lucide-react';
 import { Link, useRouter } from '@/router';
 import { useAuth } from '@/lib/auth';
@@ -12,6 +13,8 @@ import { checkAdminAccess } from '@/lib/security';
 import { Logo } from '@/components/Logo';
 import { NotificationBell } from '@/components/NotificationBell';
 import type { Plan } from '@/lib/supabase';
+import { languages, useTranslation } from '@/lib/i18n';
+import { themes, useTheme } from '@/lib/theme';
 
 /* ============ Navigation Structure ============ */
 
@@ -173,6 +176,7 @@ export function Navbar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const { path } = useRouter();
+  const { t } = useTranslation();
   const { user, profile, signOut } = useAuth();
   const [canAccessAdmin, setCanAccessAdmin] = useState(false);
   const navRef = useRef<HTMLElement>(null);
@@ -276,6 +280,8 @@ export function Navbar() {
 
           {/* Right side: notifications + user */}
           <div className="hidden items-center gap-2 lg:flex">
+            <ThemeSelector />
+            <LanguageSelector />
             <NotificationBell />
             {user ? (
               <div className="relative" data-user-menu>
@@ -297,28 +303,28 @@ export function Navbar() {
                   <div className="absolute right-0 top-full mt-2 w-60 overflow-hidden rounded-2xl bg-white shadow-lift ring-1 ring-slate-200/60 animate-dropdown">
                     <div className="border-b border-slate-100 p-4">
                       <p className="text-sm font-bold text-slate-900">
-                        {profile?.full_name || 'My account'}
+                        {profile?.full_name || t('nav.myAccount')}
                       </p>
                       <p className="mt-0.5 truncate text-xs text-slate-500">{user.email}</p>
                     </div>
                     <div className="p-1.5">
-                      <UserMenuLink to="/profile" icon={User} label="My dashboard" />
-                      <UserMenuLink to="/analytics" icon={BarChart3} label="My analytics" />
-                      <UserMenuLink to="/achievements" icon={Award} label="My badges" />
-                      <UserMenuLink to="/leaderboards" icon={Trophy} label="Leaderboards" />
-                      <UserMenuLink to="/notifications" icon={Bell} label="Notifications" />
+                      <UserMenuLink to="/profile" icon={User} label={t('nav.myDashboard')} />
+                      <UserMenuLink to="/analytics" icon={BarChart3} label={t('nav.myAnalytics')} />
+                      <UserMenuLink to="/achievements" icon={Award} label={t('nav.myBadges')} />
+                      <UserMenuLink to="/leaderboards" icon={Trophy} label={t('nav.leaderboards')} />
+                      <UserMenuLink to="/notifications" icon={Bell} label={t('nav.notifications')} />
                     </div>
                     <div className="my-0.5 h-px bg-slate-100" />
                     <div className="p-1.5">
                       {canAccessAdmin && (
                         <Link to="/admin" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-50">
                           <Shield className="h-4 w-4 text-indigo-500" />
-                          Admin console
+                          {t('nav.adminConsole')}
                         </Link>
                       )}
                       <Link to="/pricing" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50">
                         <Crown className="h-4 w-4 text-slate-400" />
-                        Manage plan
+                        {t('nav.managePlan')}
                       </Link>
                     </div>
                     <div className="my-0.5 h-px bg-slate-100" />
@@ -327,15 +333,15 @@ export function Navbar() {
                       className="flex w-full items-center gap-3 px-4 py-3 text-sm font-semibold text-error-600 transition-colors hover:bg-error-500/5"
                     >
                       <LogOut className="h-4 w-4" />
-                      Sign out
+                      {t('nav.signOut')}
                     </button>
                   </div>
                 )}
               </div>
             ) : (
               <>
-                <Link to="/login" className="btn-ghost">Sign in</Link>
-                <Link to="/signup" className="btn-gradient">Get started</Link>
+                <Link to="/login" className="btn-ghost">{t('nav.signIn')}</Link>
+                <Link to="/signup" className="btn-gradient">{t('nav.getStarted')}</Link>
               </>
             )}
           </div>
@@ -343,7 +349,7 @@ export function Navbar() {
           {/* Mobile toggle */}
           <button
             type="button"
-            aria-label="Toggle menu"
+            aria-label={t('nav.toggleMenu')}
             onClick={() => setMobileOpen((v) => !v)}
             className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-700 ring-1 ring-slate-200 lg:hidden"
           >
@@ -367,6 +373,155 @@ export function Navbar() {
   );
 }
 
+function ThemeSelector({ className = '' }: { className?: string }) {
+  const { theme, setTheme } = useTheme();
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const selectorRef = useRef<HTMLDivElement>(null);
+  const activeTheme = themes.find(({ id }) => id === theme) ?? themes[0];
+
+  useEffect(() => {
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!selectorRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+  }, []);
+
+  return (
+    <div ref={selectorRef} className={`relative ${className}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-label={t('theme.label')}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white shadow-soft ring-1 ring-slate-200/80 transition-all hover:-translate-y-0.5 hover:shadow-lift hover:ring-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+      >
+        <span
+          className="flex h-6 w-6 items-center justify-center rounded-lg text-white shadow-sm"
+          style={{ backgroundImage: `linear-gradient(135deg, ${activeTheme.primary}, ${activeTheme.secondary})` }}
+        >
+          <Palette className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          aria-label={t('theme.label')}
+          className="absolute right-0 top-full z-[70] mt-2 w-64 rounded-2xl bg-white p-2 shadow-lift ring-1 ring-slate-200/70 animate-dropdown"
+        >
+          <p className="px-2 pb-2 pt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+            {t('theme.label')}
+          </p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {themes.map(({ id, primary, secondary }) => {
+              const selected = id === theme;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => {
+                    setTheme(id);
+                    setOpen(false);
+                  }}
+                  className={`rounded-xl p-2 text-left transition-all ${
+                    selected ? 'bg-slate-100 ring-2 ring-slate-300' : 'hover:bg-slate-50 ring-1 ring-transparent'
+                  }`}
+                >
+                  <span
+                    className="mb-2 block h-8 rounded-lg shadow-sm"
+                    style={{ backgroundImage: `linear-gradient(135deg, ${primary}, ${secondary})` }}
+                  />
+                  <span className="flex items-center justify-between gap-2 text-xs font-bold text-slate-700">
+                    {t(`theme.${id}`)}
+                    {selected && <CheckCircle2 className="h-3.5 w-3.5" style={{ color: primary }} />}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LanguageSelector({ className = '' }: { className?: string }) {
+  const { language, setLanguage, t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const selectorRef = useRef<HTMLDivElement>(null);
+  const activeLanguage = languages.find(({ code }) => code === language) ?? languages[0];
+
+  useEffect(() => {
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!selectorRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+  }, []);
+
+  return (
+    <div ref={selectorRef} className={`relative ${className}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-label={t('language.label')}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className="flex h-10 w-full items-center gap-2 rounded-2xl bg-white px-2.5 text-slate-700 shadow-soft ring-1 ring-slate-200/80 transition-all hover:-translate-y-0.5 hover:shadow-lift hover:ring-indigo-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+      >
+        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-electric-500 text-white shadow-sm">
+          <Globe className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
+        <span className="flex-1 text-left text-xs font-extrabold tracking-wide">{activeLanguage.shortLabel}</span>
+        <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          aria-label={t('language.label')}
+          className="absolute right-0 top-full z-[70] mt-2 w-48 overflow-hidden rounded-2xl bg-white p-1.5 shadow-lift ring-1 ring-slate-200/70 animate-dropdown"
+        >
+          <p className="px-2.5 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+            {t('language.label')}
+          </p>
+          {languages.map(({ code, shortLabel, label }) => {
+            const selected = code === language;
+            return (
+              <button
+                key={code}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => {
+                  setLanguage(code);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors ${
+                  selected ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-[10px] font-extrabold ${
+                  selected ? 'bg-gradient-to-br from-indigo-500 to-electric-500 text-white shadow-sm' : 'bg-slate-100 text-slate-500'
+                }`}>
+                  {shortLabel}
+                </span>
+                <span className="flex-1 text-xs font-bold">{label}</span>
+                {selected && <CheckCircle2 className="h-4 w-4 text-indigo-600" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ============ Desktop Dropdown Trigger ============ */
 
 function DropdownTrigger({
@@ -377,6 +532,7 @@ function DropdownTrigger({
   openDropdown: string | null;
   onToggle: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const isOpen = openDropdown === group.id;
   const active = isGroupActive(path, group);
   const GroupIcon = group.icon;
@@ -394,7 +550,7 @@ function DropdownTrigger({
         aria-expanded={isOpen}
         aria-haspopup="true"
       >
-        {group.label}
+        {t(`nav.${group.id}`)}
         <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
         {active && (
           <span className="absolute inset-x-3.5 -bottom-px h-0.5 rounded-full bg-gradient-to-r from-indigo-500 to-electric-500" />
@@ -523,6 +679,7 @@ type MobileDrawerProps = {
 
 function MobileDrawer({ open, onClose, path, user, initials, planBadge: badge, canAccessAdmin, onSignOut }: MobileDrawerProps) {
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const { t } = useTranslation();
 
   const toggleSection = (id: string) => {
     setExpandedSection((prev) => (prev === id ? null : id));
@@ -562,6 +719,14 @@ function MobileDrawer({ open, onClose, path, user, initials, planBadge: badge, c
             </div>
           )}
 
+          <div className="mb-3 border-b border-slate-100 pb-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-bold text-slate-500">{t('theme.label')}</p>
+              <ThemeSelector />
+            </div>
+            <LanguageSelector className="w-full" />
+          </div>
+
           {/* Grouped navigation */}
           {navGroups.map((group) => {
             const GroupIcon = group.icon;
@@ -583,7 +748,7 @@ function MobileDrawer({ open, onClose, path, user, initials, planBadge: badge, c
                   }`}
                 >
                   <GroupIcon className={`h-5 w-5 ${groupActive ? 'text-indigo-600' : 'text-slate-400'}`} />
-                  <span className="flex-1 text-left">{group.label}</span>
+                  <span className="flex-1 text-left">{t(`nav.${group.id}`)}</span>
                   <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
                 </button>
 
@@ -624,12 +789,12 @@ function MobileDrawer({ open, onClose, path, user, initials, planBadge: badge, c
           <div className="space-y-1">
             <Link to="/notifications" onClick={onClose} className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
               <Bell className="h-5 w-5 text-slate-400" />
-              Notifications
+              {t('nav.notifications')}
             </Link>
             {canAccessAdmin && (
               <Link to="/admin" onClick={onClose} className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">
                 <Shield className="h-5 w-5 text-indigo-500" />
-                Admin console
+                {t('nav.adminConsole')}
               </Link>
             )}
           </div>
@@ -640,17 +805,17 @@ function MobileDrawer({ open, onClose, path, user, initials, planBadge: badge, c
               <>
                 <Link to="/profile" onClick={onClose} className="flex items-center gap-3 rounded-2xl bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-700">
                   <User className="h-5 w-5" />
-                  My dashboard
+                  {t('nav.myDashboard')}
                 </Link>
                 <button onClick={onSignOut} className="mt-1 flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-error-600 hover:bg-error-500/5">
                   <LogOut className="h-5 w-5" />
-                  Sign out
+                  {t('nav.signOut')}
                 </button>
               </>
             ) : (
               <div className="space-y-2">
-                <Link to="/login" onClick={onClose} className="btn-ghost w-full">Sign in</Link>
-                <Link to="/signup" onClick={onClose} className="btn-gradient w-full">Create free account</Link>
+                <Link to="/login" onClick={onClose} className="btn-ghost w-full">{t('nav.signIn')}</Link>
+                <Link to="/signup" onClick={onClose} className="btn-gradient w-full">{t('footer.createAccount')}</Link>
               </div>
             )}
           </div>

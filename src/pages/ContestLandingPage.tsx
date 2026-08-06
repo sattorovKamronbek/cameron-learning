@@ -247,12 +247,12 @@ function ContestTypesSection() {
         </div>
 
         {/* Bento grid for types */}
-        <div className="mt-12 grid auto-rows-[120px] gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-12 grid gap-4 sm:auto-rows-[120px] sm:grid-cols-2 lg:grid-cols-4">
           {contestTypes.map(({ type, description, icon }, i) => (
             <BentoCard
               key={type}
               delay={i * 60}
-              className={type === 'Championship' ? 'sm:col-span-2 lg:col-span-2 lg:row-span-2' : ''}
+              className={type === 'Championship' ? 'min-h-[190px] sm:col-span-2 sm:row-span-2 sm:min-h-0 lg:col-span-2' : ''}
             >
               <div className="flex h-full flex-col justify-between p-5">
                 <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${

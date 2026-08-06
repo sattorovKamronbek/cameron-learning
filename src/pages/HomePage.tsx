@@ -10,6 +10,7 @@ import { subjects, programmingSubjects, academicSubjects } from '@/data/subjects
 import { featuredCourses, trendingCourses } from '@/data/courses';
 import { roadmaps } from '@/data/roadmaps';
 import { testimonials, stats } from '@/data/testimonials';
+import { useTranslation } from '@/lib/i18n';
 
 const heroImage =
   'https://images.pexels.com/photos/2004161/pexels-photo-2004161.jpeg?auto=compress&cs=tinysrgb&h=650&w=940';
@@ -36,6 +37,9 @@ export function HomePage() {
 
 /* ---------- Hero ---------- */
 function Hero() {
+  const { t } = useTranslation();
+  const benefits = [t('home.noCard'), t('home.freePreview'), t('home.learnPace')];
+
   return (
     <section className="relative overflow-hidden pt-28 text-white">
       <div className="absolute inset-0 bg-slate-950" />
@@ -53,28 +57,27 @@ function Hero() {
             <Reveal>
               <span className="chip bg-white/10 text-indigo-300 ring-1 ring-white/15 backdrop-blur-md">
                 <Sparkles className="h-3.5 w-3.5" />
-                850,000+ learners and counting
+                {t('home.eyebrow')}
               </span>
             </Reveal>
             <Reveal delay={100}>
               <h1 className="mt-6 font-display text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl text-balance">
-                Learn programming &
+                {t('home.titleStart')}
                 <span className="block gradient-text-light">
-                  academic subjects
+                  {t('home.titleHighlight')}
                 </span>
-                the clear way.
+                {t('home.titleEnd')}
               </h1>
             </Reveal>
             <Reveal delay={200}>
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-slate-300 text-pretty">
-                Structured courses, guided roadmaps, and curated resources — from your first line
-                of code to university-level math and science. Free to start, no account required.
+                {t('home.description')}
               </p>
             </Reveal>
             <Reveal delay={300}>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Link to="/courses" className="btn-gradient px-6 py-3.5 text-base">
-                  Explore courses
+                  {t('home.exploreCourses')}
                   <ArrowRight className="h-5 w-5" />
                 </Link>
                 <Link
@@ -82,16 +85,16 @@ function Hero() {
                   className="btn bg-white/10 text-white ring-1 ring-white/20 backdrop-blur-md hover:bg-white/15 px-6 py-3.5 text-base"
                 >
                   <Play className="h-4 w-4" />
-                  See learning paths
+                  {t('home.learningPaths')}
                 </Link>
               </div>
             </Reveal>
             <Reveal delay={400}>
               <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-slate-400">
-                {['No credit card required', 'Free preview lessons', 'Learn at your own pace'].map((t) => (
-                  <span key={t} className="inline-flex items-center gap-2">
+                {benefits.map((benefit) => (
+                  <span key={benefit} className="inline-flex items-center gap-2">
                     <Check className="h-4 w-4 text-indigo-400" />
-                    {t}
+                    {benefit}
                   </span>
                 ))}
               </div>
@@ -221,9 +224,9 @@ function BentoFeaturesSection() {
         />
 
         {/* Bento grid */}
-        <div className="mt-12 grid auto-rows-[180px] gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-12 grid gap-5 sm:auto-rows-[180px] sm:grid-cols-2 lg:grid-cols-4">
           {/* Large card — Practice-first */}
-          <BentoCard className="sm:col-span-2 lg:col-span-2 lg:row-span-2" delay={0}>
+          <BentoCard className="min-h-[360px] sm:col-span-2 sm:row-span-2 sm:min-h-0 lg:col-span-2" delay={0}>
             <div className="flex h-full flex-col justify-between p-7">
               <div>
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 shadow-glow">
