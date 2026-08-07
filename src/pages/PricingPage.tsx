@@ -271,7 +271,7 @@ export function PricingPage() {
       {/* CTA */}
       <section className="bg-white pb-20">
         <div className="container-page">
-          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-indigo-800 px-6 py-14 text-center shadow-lift sm:px-16">
+          <div className="theme-cta relative overflow-hidden rounded-3xl px-6 py-14 text-center shadow-lift sm:px-16">
             <div className="absolute inset-0 bg-grid opacity-10" />
             <div className="relative mx-auto max-w-xl">
               <h2 className="text-3xl font-extrabold tracking-tight text-white text-balance">

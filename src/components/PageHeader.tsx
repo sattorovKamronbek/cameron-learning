@@ -16,13 +16,13 @@ export function PageHeader({
 }) {
   return (
     <section
-      className={`relative overflow-hidden border-b border-slate-100 bg-gradient-to-b from-indigo-50/40 via-white to-white ${
+      className={`theme-page-header relative overflow-hidden border-b border-slate-100 ${
         variant === 'compact' ? 'pt-28 pb-12' : 'pt-32 pb-16'
       }`}
     >
       <div className="absolute inset-0 bg-dots opacity-40" />
-      <div className="absolute -right-32 -top-32 h-72 w-72 rounded-full bg-indigo-200/25 blur-3xl" />
-      <div className="absolute -left-32 top-10 h-64 w-64 rounded-full bg-electric-200/20 blur-3xl" />
+      <div className="theme-orb-primary absolute -right-32 -top-32 h-72 w-72 rounded-full blur-3xl" />
+      <div className="theme-orb-secondary absolute -left-32 top-10 h-64 w-64 rounded-full blur-3xl" />
       <div className="container-page relative">
         <Reveal>
           {eyebrow && (

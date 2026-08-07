@@ -3,6 +3,7 @@ import { RouterProvider, useRouter } from '@/router';
 import { AuthProvider } from '@/lib/auth';
 import { useAuth } from '@/lib/auth';
 import { checkAdminAccess } from '@/lib/security';
+import { canManageContests } from '@/lib/contests';
 import { Navbar } from '@/components/Navbar';
 import { Footer } from '@/components/Footer';
 import { LoadingState } from '@/components/LoadingState';
@@ -32,6 +33,7 @@ const ContestLandingPage = page(() => import('@/pages/ContestLandingPage'), 'Con
 const ContestDetailPage = page(() => import('@/pages/ContestDetailPage'), 'ContestDetailPage');
 const ContestWorkspacePage = page(() => import('@/pages/ContestWorkspacePage'), 'ContestWorkspacePage');
 const QuizWorkspacePage = page(() => import('@/pages/QuizWorkspacePage'), 'QuizWorkspacePage');
+const ContestManagementPage = page(() => import('@/pages/ContestManagementPage'), 'ContestManagementPage');
 const LeaderboardPage = page(() => import('@/pages/LeaderboardPage'), 'LeaderboardPage');
 const AnalyticsDashboard = page(() => import('@/pages/AnalyticsDashboard'), 'AnalyticsDashboard');
 const AchievementsPage = page(() => import('@/pages/AchievementsPage'), 'AchievementsPage');
@@ -85,6 +87,8 @@ function Routes() {
     page = <ProfilePage />;
   } else if (path === '/about') {
     page = <AboutPage />;
+  } else if (path === '/contest-management') {
+    page = <ContestManagementGate />;
   } else if (path === '/contests') {
     page = <ContestLandingPage />;
   } else if (path.startsWith('/contests/')) {
@@ -110,6 +114,22 @@ function Routes() {
       <Footer />
     </div>
   );
+}
+
+function ContestManagementGate() {
+  const { user, profile, loading } = useAuth();
+
+  if (loading) {
+    return <LoadingState variant="page" message="Kirish ruxsati tekshirilmoqda" />;
+  }
+
+  // This keeps the management UI out of regular accounts. The contest RPCs
+  // remain the source of truth and enforce the same authorization server-side.
+  if (!user || !profile || profile.status !== 'active' || !canManageContests(profile.role)) {
+    return <NotFoundPage />;
+  }
+
+  return <ContestManagementPage />;
 }
 
 function AdminGate() {

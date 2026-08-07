@@ -20,10 +20,10 @@ export function Footer() {
   ];
 
   return (
-    <footer className="relative mt-auto overflow-hidden bg-slate-950 text-slate-400">
+    <footer className="theme-footer relative mt-auto overflow-hidden text-slate-400">
       <div className="absolute inset-0 bg-grid-dark opacity-[0.07]" />
-      <div className="absolute -left-40 -top-40 h-80 w-80 rounded-full bg-indigo-600/10 blur-3xl" />
-      <div className="absolute -right-40 -bottom-40 h-80 w-80 rounded-full bg-electric-600/10 blur-3xl" />
+      <div className="theme-orb-primary absolute -left-40 -top-40 h-80 w-80 rounded-full blur-3xl" />
+      <div className="theme-orb-secondary absolute -right-40 -bottom-40 h-80 w-80 rounded-full blur-3xl" />
 
       <div className="container-page relative">
         {/* CTA banner */}

@@ -58,6 +58,13 @@ export type Permission =
 const PERMISSIONS: Record<Role, Permission[]> = {
   user: [],
   judge: [
+    // Ownership is enforced by the database functions. These permissions only
+    // control which management affordances the client may display.
+    'contest.create',
+    'contest.edit',
+    'contest.delete',
+    'problem.create',
+    'problem.edit',
     'submission.review',
     'submission.flag',
     'analytics.view',

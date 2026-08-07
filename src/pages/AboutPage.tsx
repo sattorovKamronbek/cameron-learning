@@ -3,8 +3,7 @@ import {
 } from 'lucide-react';
 import { Link } from '@/router';
 import { PageHeader } from '@/components/PageHeader';
-import { Reveal, SectionHeading, Eyebrow } from '@/components/Primitives';
-import { stats } from '@/data/testimonials';
+import { Reveal, SectionHeading } from '@/components/Primitives';
 
 const values = [
   {
@@ -28,7 +27,7 @@ const values = [
   {
     icon: Users,
     title: 'Community-driven',
-    description: 'Hundreds of thousands of learners help each other grow every day.',
+    description: 'Learners can support each other through shared practice and encouragement.',
     color: 'bg-electric-500',
   },
 ];
@@ -82,26 +81,18 @@ export function AboutPage() {
 
             <Reveal delay={200}>
               <div className="grid grid-cols-2 gap-4">
-                <div className="card p-6 text-center">
-                  <Users className="mx-auto h-8 w-8 text-indigo-600" />
-                  <p className="mt-3 text-3xl font-extrabold text-slate-900">{stats.learners}</p>
-                  <p className="text-sm text-slate-500">Learners</p>
-                </div>
-                <div className="card p-6 text-center">
-                  <Award className="mx-auto h-8 w-8 text-electric-600" />
-                  <p className="mt-3 text-3xl font-extrabold text-slate-900">{stats.courses}</p>
-                  <p className="text-sm text-slate-500">Courses</p>
-                </div>
-                <div className="card p-6 text-center">
-                  <Globe className="mx-auto h-8 w-8 text-sun-600" />
-                  <p className="mt-3 text-3xl font-extrabold text-slate-900">{stats.countries}</p>
-                  <p className="text-sm text-slate-500">Countries</p>
-                </div>
-                <div className="card p-6 text-center">
-                  <Target className="mx-auto h-8 w-8 text-error-600" />
-                  <p className="mt-3 text-3xl font-extrabold text-slate-900">{stats.subjects}</p>
-                  <p className="text-sm text-slate-500">Subjects</p>
-                </div>
+                {[
+                  { icon: Users, title: 'Learn together', description: 'Find encouragement when you need it.', color: 'text-indigo-600' },
+                  { icon: Award, title: 'Practice with purpose', description: 'Turn explanations into useful skills.', color: 'text-electric-600' },
+                  { icon: Globe, title: 'Learn from anywhere', description: 'Keep your learning close wherever you are.', color: 'text-sun-600' },
+                  { icon: Target, title: 'Follow a clear path', description: 'Know what to focus on next.', color: 'text-error-600' },
+                ].map(({ icon: Icon, title, description, color }) => (
+                  <div key={title} className="card p-6 text-center">
+                    <Icon className={'mx-auto h-8 w-8 ' + color} />
+                    <p className="mt-3 text-base font-bold text-slate-900">{title}</p>
+                    <p className="mt-1 text-sm leading-relaxed text-slate-500">{description}</p>
+                  </div>
+                ))}
               </div>
             </Reveal>
           </div>

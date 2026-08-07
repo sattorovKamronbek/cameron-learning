@@ -1,15 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
 import {
   ArrowRight, Sparkles, Play, Star, Users, BookOpen, Award, Zap, Target,
-  TrendingUp, Check, Quote, Code2, Brain, Trophy, Flame, ChevronLeft, ChevronRight,
+  TrendingUp, Check, Code2, Brain, Trophy, Flame,
 } from 'lucide-react';
 import { Link } from '@/router';
-import { Reveal, SectionHeading, Eyebrow, BentoCard, ProgressBar } from '@/components/Primitives';
+import { Reveal, SectionHeading, Eyebrow, BentoCard } from '@/components/Primitives';
 import { CourseCard, CourseFeatureCard } from '@/components/CourseCard';
 import { subjects, programmingSubjects, academicSubjects } from '@/data/subjects';
 import { featuredCourses, trendingCourses } from '@/data/courses';
 import { roadmaps } from '@/data/roadmaps';
-import { testimonials, stats } from '@/data/testimonials';
 import { useTranslation } from '@/lib/i18n';
 
 const heroImage =
@@ -22,14 +20,14 @@ export function HomePage() {
     <>
       <Hero />
       <TrustBar />
-      <StatsBand />
+      <ValueBand />
       <BentoFeaturesSection />
       <SubjectsSection />
       <FeaturedCoursesSection />
       <HowItWorksSection />
       <RoadmapsSection />
       <TrendingSection />
-      <TestimonialsSection />
+      <TransparencySection />
       <CtaSection />
     </>
   );
@@ -42,14 +40,14 @@ function Hero() {
 
   return (
     <section className="relative overflow-hidden pt-28 text-white">
-      <div className="absolute inset-0 bg-slate-950" />
+      <div className="theme-hero-base absolute inset-0" />
       <div className="absolute inset-0">
         <img src={heroImage} alt="Code on a computer screen" className="h-full w-full object-cover opacity-20" />
         <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-slate-950/85 to-slate-950" />
       </div>
       <div className="absolute inset-0 bg-grid-dark opacity-[0.08]" />
-      <div className="absolute -left-40 top-20 h-96 w-96 rounded-full bg-indigo-600/25 blur-3xl animate-pulse-glow" />
-      <div className="absolute -right-40 top-40 h-96 w-96 rounded-full bg-electric-600/20 blur-3xl animate-pulse-glow" style={{ animationDelay: '2s' }} />
+      <div className="theme-orb-primary absolute -left-40 top-20 h-96 w-96 rounded-full blur-3xl animate-pulse-glow" />
+      <div className="theme-orb-secondary absolute -right-40 top-40 h-96 w-96 rounded-full blur-3xl animate-pulse-glow" style={{ animationDelay: '2s' }} />
 
       <div className="container-page relative pb-24 pt-12 lg:pb-32 lg:pt-20">
         <div className="grid items-center gap-12 lg:grid-cols-2">
@@ -114,9 +112,9 @@ function Hero() {
                 </div>
                 <div className="grid grid-cols-3 gap-2 p-3">
                   {[
-                    { icon: BookOpen, label: '172 Courses', color: 'text-indigo-400' },
-                    { icon: Users, label: '850K Learners', color: 'text-electric-400' },
-                    { icon: Award, label: '12 Subjects', color: 'text-sun-400' },
+                    { icon: BookOpen, label: 'Clear lessons', color: 'text-indigo-400' },
+                    { icon: Users, label: 'Learn together', color: 'text-electric-400' },
+                    { icon: Award, label: 'Build skills', color: 'text-sun-400' },
                   ].map(({ icon: Icon, label, color }) => (
                     <div key={label} className="flex flex-col items-center gap-1.5 rounded-2xl bg-white/5 p-3 text-center ring-1 ring-white/5">
                       <Icon className={`h-5 w-5 ${color}`} />
@@ -131,8 +129,8 @@ function Hero() {
                     <TrendingUp className="h-5 w-5 text-indigo-600" />
                   </div>
                   <div>
-                    <p className="text-xs text-slate-400">This week</p>
-                    <p className="text-sm font-bold text-slate-900">+2,340 new learners</p>
+                    <p className="text-xs text-slate-400">Learning focus</p>
+                    <p className="text-sm font-bold text-slate-900">Build a steady practice</p>
                   </div>
                 </div>
               </div>
@@ -178,20 +176,20 @@ function TrustBar() {
   );
 }
 
-/* ---------- Stats band ---------- */
-function StatsBand() {
+/* ---------- Value band ---------- */
+function ValueBand() {
   const items = [
-    { value: stats.learners, label: 'Active learners', icon: Users, accent: 'indigo' as const },
-    { value: stats.courses, label: 'Free courses', icon: BookOpen, accent: 'electric' as const },
-    { value: stats.subjects, label: 'Subjects covered', icon: Award, accent: 'slate' as const },
-    { value: stats.countries, label: 'Countries', icon: Target, accent: 'sun' as const },
+    { title: 'Start where you are', description: 'Choose a path that fits your current goals.', icon: Users, accent: 'indigo' as const },
+    { title: 'Learn by doing', description: 'Put new ideas into practice as you go.', icon: BookOpen, accent: 'electric' as const },
+    { title: 'Build useful skills', description: 'Focus on concepts you can apply with confidence.', icon: Award, accent: 'slate' as const },
+    { title: 'Keep moving forward', description: 'Use guided roadmaps to find your next step.', icon: Target, accent: 'sun' as const },
   ];
   return (
     <section className="bg-white py-16">
       <div className="container-page">
         <div className="grid grid-cols-2 gap-5 lg:grid-cols-4">
-          {items.map(({ value, label, icon: Icon, accent }, i) => (
-            <Reveal key={label} delay={i * 80}>
+          {items.map(({ title, description, icon: Icon, accent }, i) => (
+            <Reveal key={title} delay={i * 80}>
               <div className="card-hover flex flex-col items-center p-6 text-center">
                 <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
                   accent === 'indigo' ? 'bg-indigo-50 text-indigo-600' :
@@ -201,8 +199,8 @@ function StatsBand() {
                 }`}>
                   <Icon className="h-6 w-6" />
                 </div>
-                <p className="mt-4 font-display text-3xl font-extrabold tracking-tight text-slate-900">{value}</p>
-                <p className="mt-1 text-sm text-slate-500">{label}</p>
+                <p className="mt-4 text-base font-bold text-slate-900">{title}</p>
+                <p className="mt-1 text-sm leading-relaxed text-slate-500">{description}</p>
               </div>
             </Reveal>
           ))}
@@ -240,7 +238,7 @@ function BentoFeaturesSection() {
                   immediately, and get instant feedback. No more tutorial hell.
                 </p>
               </div>
-              {/* Mini code editor mockup */}
+              {/* Mini code editor preview */}
               <div className="mt-4 rounded-2xl bg-slate-900 p-4 font-mono text-xs text-slate-300 ring-1 ring-slate-800">
                 <div className="flex items-center gap-1.5">
                   <span className="h-2.5 w-2.5 rounded-full bg-error-500/80" />
@@ -332,7 +330,7 @@ function BentoFeaturesSection() {
                 <BookOpen className="h-5 w-5 text-electric-600" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900">12+ subjects</h3>
+                <h3 className="font-bold text-slate-900">Explore subjects</h3>
                 <p className="mt-1 text-xs text-slate-500">Programming, math, physics, and more.</p>
               </div>
             </div>
@@ -351,7 +349,7 @@ function SubjectsSection() {
         <div className="flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-end">
           <SectionHeading
             eyebrow="Explore by subject"
-            title="Twelve subjects. One platform."
+            title="Many subjects. One platform."
             description="Whether you are writing your first function or diving into quantum mechanics, find a structured path that meets you where you are."
           />
           <Link to="/subjects" className="btn-ghost flex-shrink-0">
@@ -451,10 +449,10 @@ function HowItWorksSection() {
   ];
 
   return (
-    <section className="relative overflow-hidden bg-slate-950 py-20 text-white">
+    <section className="theme-dark-section relative overflow-hidden py-20 text-white">
       <div className="absolute inset-0 bg-grid-dark opacity-[0.08]" />
-      <div className="absolute -right-32 -top-32 h-72 w-72 rounded-full bg-indigo-600/15 blur-3xl" />
-      <div className="absolute -left-32 -bottom-32 h-72 w-72 rounded-full bg-electric-600/15 blur-3xl" />
+      <div className="theme-orb-primary absolute -right-32 -top-32 h-72 w-72 rounded-full blur-3xl" />
+      <div className="theme-orb-secondary absolute -left-32 -bottom-32 h-72 w-72 rounded-full blur-3xl" />
 
       <div className="container-page relative">
         <div className="mx-auto max-w-2xl text-center">
@@ -543,7 +541,7 @@ function TrendingSection() {
         <SectionHeading
           eyebrow="Popular right now"
           title="Trending courses"
-          description="What thousands of learners are diving into this week."
+          description="Discover course collections that learners are exploring right now."
         />
         <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {trendingCourses.slice(0, 4).map((course, i) => (
@@ -557,92 +555,30 @@ function TrendingSection() {
   );
 }
 
-/* ---------- Testimonials carousel ---------- */
-function TestimonialsSection() {
-  const [index, setIndex] = useState(0);
-  const [perView, setPerView] = useState(3);
-
-  useEffect(() => {
-    const update = () => {
-      const w = window.innerWidth;
-      setPerView(w >= 1024 ? 3 : w >= 640 ? 2 : 1);
-    };
-    update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, []);
-
-  const maxIndex = Math.max(0, testimonials.length - perView);
-
-  useEffect(() => {
-    if (index > maxIndex) setIndex(maxIndex);
-  }, [maxIndex, index]);
-
-  const next = useCallback(() => setIndex((i) => Math.min(i + 1, maxIndex)), [maxIndex]);
-  const prev = useCallback(() => setIndex((i) => Math.max(i - 1, 0)), []);
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      setIndex((i) => (i >= maxIndex ? 0 : i + 1));
-    }, 6000);
-    return () => clearInterval(id);
-  }, [maxIndex]);
+/* ---------- Transparency ---------- */
+function TransparencySection() {
+  const principles = [
+    { icon: Trophy, title: 'Real contests', description: 'Only judge or admin users can create, publish, and finalize a contest.' },
+    { icon: Check, title: 'Verified results', description: 'Answers, scores, standings, and ratings are calculated on the server.' },
+    { icon: Users, title: 'No fictional users', description: 'Rankings only list people with finalized rated-contest results.' },
+  ];
 
   return (
     <section className="relative overflow-hidden bg-white py-20">
       <div className="absolute inset-0 bg-dots opacity-30" />
       <div className="container-page relative">
-        <div className="flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-end">
-          <SectionHeading
-            eyebrow="Learner stories"
-            title="Real people. Real progress."
-            description="Join a global community of learners who turned curiosity into capability."
-          />
-          <div className="flex gap-2">
-            <button onClick={prev} disabled={index === 0} className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-600 ring-1 ring-slate-200 transition-all hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-            <button onClick={next} disabled={index >= maxIndex} className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-600 ring-1 ring-slate-200 transition-all hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-12 overflow-hidden">
-          <div
-            className="flex transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
-            style={{ transform: `translateX(-${index * (100 / perView)}%)` }}
-          >
-            {testimonials.map((t) => (
-              <div key={t.name} className="flex-shrink-0 px-3" style={{ width: `${100 / perView}%` }}>
-                <figure className="card-hover flex h-full flex-col p-6">
-                  <Quote className="h-7 w-7 text-indigo-200" />
-                  <blockquote className="mt-4 flex-1 text-sm leading-relaxed text-slate-700 text-pretty">
-                    "{t.quote}"
-                  </blockquote>
-                  <figcaption className="mt-6 flex items-center gap-3 border-t border-slate-100 pt-4">
-                    <span className={`flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br ${t.color} text-sm font-bold text-white`}>
-                      {t.initials}
-                    </span>
-                    <div>
-                      <p className="text-sm font-bold text-slate-900">{t.name}</p>
-                      <p className="text-xs text-slate-500">{t.role}</p>
-                    </div>
-                  </figcaption>
-                </figure>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-8 flex justify-center gap-2">
-          {Array.from({ length: maxIndex + 1 }).map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setIndex(i)}
-              className={`h-2 rounded-full transition-all ${i === index ? 'w-8 bg-indigo-600' : 'w-2 bg-slate-200 hover:bg-slate-300'}`}
-              aria-label={`Go to slide ${i + 1}`}
-            />
+        <SectionHeading
+          eyebrow="Built with clarity"
+          title="No fabricated contest data"
+          description="Contest information is shown only when it is created, run, and finalized through the platform."
+        />
+        <div className="mt-12 grid gap-5 md:grid-cols-3">
+          {principles.map(({ icon: Icon, title, description }) => (
+            <div key={title} className="card-hover p-6">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-700"><Icon className="h-5 w-5" /></span>
+              <h3 className="mt-5 text-base font-bold text-slate-900">{title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-500">{description}</p>
+            </div>
           ))}
         </div>
       </div>
@@ -655,14 +591,14 @@ function CtaSection() {
   return (
     <section className="bg-white py-20">
       <div className="container-page">
-        <div className="relative overflow-hidden rounded-5xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-electric-700 px-6 py-16 text-center shadow-lift sm:px-16">
+        <div className="theme-cta relative overflow-hidden rounded-5xl px-6 py-16 text-center shadow-lift sm:px-16">
           <div className="absolute inset-0 bg-grid-dark opacity-10" />
           <div className="absolute -right-20 -top-20 h-60 w-60 rounded-full bg-white/10 blur-3xl" />
           <div className="absolute -left-20 -bottom-20 h-60 w-60 rounded-full bg-electric-400/20 blur-3xl" />
           <div className="relative mx-auto max-w-2xl">
             <div className="mx-auto flex w-fit items-center gap-1 rounded-full bg-white/15 px-4 py-1.5 text-xs font-bold text-white ring-1 ring-white/20 backdrop-blur-md">
               <Star className="h-3.5 w-3.5 fill-white text-white" />
-              Rated 4.8/5 by 850,000+ learners
+              Built for steady learning
             </div>
             <h2 className="mt-6 font-display text-3xl font-extrabold tracking-tight text-white sm:text-4xl text-balance">
               Your learning journey starts with a single step

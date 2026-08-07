@@ -46,12 +46,12 @@ export function CourseDetailPage({ slug }: { slug: string }) {
   return (
     <>
       {/* Hero */}
-      <section className="relative overflow-hidden bg-slate-950 pt-28 text-white">
+      <section className="theme-dark-section relative overflow-hidden pt-28 text-white">
         <div className="absolute inset-0 bg-grid opacity-10" />
         <div
           className={`absolute inset-0 bg-gradient-to-br ${subject?.color ?? 'from-slate-700 to-slate-900'} opacity-20`}
         />
-        <div className="absolute -left-40 top-10 h-80 w-80 rounded-full bg-indigo-600/15 blur-3xl" />
+        <div className="theme-orb-primary absolute -left-40 top-10 h-80 w-80 rounded-full blur-3xl" />
 
         <div className="container-page relative pb-12 pt-8">
           {/* Breadcrumb */}

@@ -10,6 +10,7 @@ import {
 import { Link, useRouter } from '@/router';
 import { useAuth } from '@/lib/auth';
 import { checkAdminAccess } from '@/lib/security';
+import { canManageContests } from '@/lib/contests';
 import { Logo } from '@/components/Logo';
 import { NotificationBell } from '@/components/NotificationBell';
 import type { Plan } from '@/lib/supabase';
@@ -250,6 +251,7 @@ export function Navbar() {
 
   const currentPlan = profile?.plan ?? 'free';
   const badge = planBadge[currentPlan];
+  const canManageContestAccess = profile?.status === 'active' && canManageContests(profile?.role);
 
   return (
     <>
@@ -316,6 +318,12 @@ export function Navbar() {
                     </div>
                     <div className="my-0.5 h-px bg-slate-100" />
                     <div className="p-1.5">
+                      {canManageContestAccess && (
+                        <Link to="/contest-management" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-electric-700 transition-colors hover:bg-electric-50">
+                          <Trophy className="h-4 w-4 text-electric-500" />
+                          Contest boshqaruvi
+                        </Link>
+                      )}
                       {canAccessAdmin && (
                         <Link to="/admin" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-50">
                           <Shield className="h-4 w-4 text-indigo-500" />
@@ -367,6 +375,7 @@ export function Navbar() {
         initials={initials}
         planBadge={badge}
         canAccessAdmin={canAccessAdmin}
+        canManageContests={canManageContestAccess}
         onSignOut={handleSignOut}
       />
     </>
@@ -674,10 +683,11 @@ type MobileDrawerProps = {
   initials: string;
   planBadge: { icon: typeof Zap; label: string; color: string };
   canAccessAdmin: boolean;
+  canManageContests: boolean;
   onSignOut: () => void;
 };
 
-function MobileDrawer({ open, onClose, path, user, initials, planBadge: badge, canAccessAdmin, onSignOut }: MobileDrawerProps) {
+function MobileDrawer({ open, onClose, path, user, initials, planBadge: badge, canAccessAdmin, canManageContests, onSignOut }: MobileDrawerProps) {
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const { t } = useTranslation();
 
@@ -791,6 +801,12 @@ function MobileDrawer({ open, onClose, path, user, initials, planBadge: badge, c
               <Bell className="h-5 w-5 text-slate-400" />
               {t('nav.notifications')}
             </Link>
+            {canManageContests && (
+              <Link to="/contest-management" onClick={onClose} className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-electric-700 hover:bg-electric-50">
+                <Trophy className="h-5 w-5 text-electric-500" />
+                Contest boshqaruvi
+              </Link>
+            )}
             {canAccessAdmin && (
               <Link to="/admin" onClick={onClose} className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">
                 <Shield className="h-5 w-5 text-indigo-500" />

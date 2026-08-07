@@ -75,7 +75,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
 
   if (pendingVerification) {
     return (
-      <section className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-950 px-4 py-20">
+      <section className="theme-dark-section relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-20">
         <div className="absolute inset-0 bg-grid opacity-10" />
         <div className="relative w-full max-w-md">
           <Link to="/" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white">
@@ -83,7 +83,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
             Back to home
           </Link>
           <div className="mt-6 card overflow-hidden">
-            <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 p-8 text-center text-white">
+            <div className="theme-cta p-8 text-center text-white">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm ring-1 ring-white/20">
                 <ShieldCheck className="h-7 w-7" />
               </div>
@@ -135,7 +135,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   }
 
   return (
-    <section className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-950 px-4 py-20">
+    <section className="theme-dark-section relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-20">
       <div className="absolute inset-0 bg-grid opacity-10" />
       <div className="absolute -left-40 top-10 h-96 w-96 rounded-full bg-indigo-600/15 blur-3xl" />
       <div className="absolute -right-40 bottom-10 h-96 w-96 rounded-full bg-electric-600/15 blur-3xl" />
@@ -147,7 +147,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
         </Link>
 
         <div className="mt-6 card overflow-hidden">
-          <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 p-8 text-center text-white">
+          <div className="theme-cta p-8 text-center text-white">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm ring-1 ring-white/20">
               {isSignup ? <User className="h-7 w-7 text-white" /> : <Mail className="h-7 w-7 text-white" />}
             </div>
