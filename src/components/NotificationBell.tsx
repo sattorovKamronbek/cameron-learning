@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Bell, Check, CheckCheck, TrendingUp, TrendingDown, ChevronRight } from 'lucide-react';
 import { Link, useRouter } from '@/router';
-import { formatTimeAgo } from '@/data/notifications';
-import { useNotifications, type UiNotification } from '@/lib/notifications';
+import { formatTimeAgo, useNotifications, type UiNotification } from '@/lib/notifications';
 import { LoadingState } from '@/components/LoadingState';
 
 export function NotificationBell() {

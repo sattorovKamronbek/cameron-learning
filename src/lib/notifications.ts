@@ -19,6 +19,24 @@ const presentation: Record<string, Pick<UiNotification, 'icon' | 'color'>> = {
   'weekly-summary': { icon: Flame, color: 'from-error-500 to-orange-600' },
 };
 
+/** Formats timestamps returned by the notification table for the UI. */
+export function formatTimeAgo(timestamp: string): string {
+  const date = new Date(timestamp);
+  const elapsed = Date.now() - date.getTime();
+
+  if (!Number.isFinite(elapsed) || elapsed < 0) return 'Just now';
+
+  const minutes = Math.floor(elapsed / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 function present(notification: AppNotification): UiNotification {
   return { ...notification, ...(presentation[notification.type] ?? { icon: Bell, color: 'from-slate-500 to-slate-700' }), meta: notification.metadata ?? {} };
 }

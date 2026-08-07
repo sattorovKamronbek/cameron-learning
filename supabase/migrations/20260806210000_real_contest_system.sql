@@ -763,10 +763,28 @@ BEGIN
     v_delta := NULL;
 
     IF v_contest.contest_type = 'rated' THEN
-      SELECT current_rating INTO v_before
+      -- Keep the cache row as a per-user/subject lock, but always derive the
+      -- baseline from a finalized contest result.  Cached or legacy values
+      -- cannot influence a real participant's rating.
+      INSERT INTO public.user_subject_ratings (user_id, subject)
+      VALUES (v_result.user_id, v_contest.subject)
+      ON CONFLICT (user_id, subject) DO NOTHING;
+
+      PERFORM 1
       FROM public.user_subject_ratings
       WHERE user_id = v_result.user_id AND subject = v_contest.subject
       FOR UPDATE;
+
+      SELECT previous_result.rating_after INTO v_before
+      FROM public.contest_results previous_result
+      JOIN public.contests previous_contest ON previous_contest.id = previous_result.contest_id
+      WHERE previous_result.user_id = v_result.user_id
+        AND previous_contest.subject = v_contest.subject
+        AND previous_contest.is_finalized
+        AND previous_result.rating_after IS NOT NULL
+      ORDER BY previous_result.finalized_at DESC, previous_result.contest_id DESC
+      LIMIT 1;
+
       v_before := coalesce(v_before, 1000);
       -- Ratings are deterministic and based on real, persisted score only.
       v_delta := greatest(-25, least(25, round((v_result.score::numeric / v_total_points) * 50 - 25)::integer));
@@ -894,24 +912,43 @@ LANGUAGE sql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  WITH aggregates AS (
-    SELECT usr.user_id,
-      CASE WHEN p_subject IS NULL OR p_subject = '' THEN NULL ELSE max(usr.subject) END AS subject,
-      round(avg(usr.current_rating))::integer AS rating,
-      sum(usr.rated_contests)::integer AS contest_count
-    FROM public.user_subject_ratings usr
-    WHERE p_subject IS NULL OR p_subject = '' OR usr.subject = p_subject
-    GROUP BY usr.user_id
-  ), ranked AS (
-    SELECT a.*, row_number() OVER (ORDER BY a.rating DESC, a.contest_count DESC, a.user_id)::integer AS rank
+  -- The leaderboard is derived from immutable finalized results, rather than
+  -- the rating cache.  A stray cache row therefore can never create a bot or
+  -- a fictional competitor in the public standings.
+  WITH rated_results AS (
+    SELECT r.user_id, c.subject, r.rating_after, r.finalized_at, r.contest_id
+    FROM public.contest_results r
+    JOIN public.contests c ON c.id = r.contest_id
+    WHERE c.is_finalized AND r.rating_after IS NOT NULL
+      AND (p_subject IS NULL OR p_subject = '' OR c.subject = p_subject)
+  ), latest_subject_results AS (
+    SELECT *,
+      row_number() OVER (
+        PARTITION BY user_id, subject
+        ORDER BY finalized_at DESC, contest_id DESC
+      ) AS subject_recency,
+      count(*) OVER (PARTITION BY user_id, subject)::integer AS subject_contest_count
+    FROM rated_results
+  ), aggregates AS (
+    SELECT user_id,
+      CASE WHEN p_subject IS NULL OR p_subject = '' THEN NULL ELSE max(subject) END AS subject,
+      round(avg(rating_after))::integer AS rating,
+      sum(subject_contest_count)::integer AS contest_count
+    FROM latest_subject_results
+    WHERE subject_recency = 1
+    GROUP BY user_id
+  ), eligible AS (
+    SELECT a.*, p.full_name
     FROM aggregates a
+    JOIN public.profiles p ON p.id = a.user_id AND p.status = 'active'
   )
-  SELECT r.rank, r.user_id,
-    coalesce(nullif(trim(p.full_name), ''), 'Competitor'),
-    r.subject, NULL::text, NULL::text, r.rating, r.contest_count
-  FROM ranked r
-  JOIN public.profiles p ON p.id = r.user_id AND p.status = 'active'
-  ORDER BY r.rank;
+  SELECT
+    row_number() OVER (ORDER BY rating DESC, contest_count DESC, user_id)::integer AS rank,
+    user_id,
+    coalesce(nullif(trim(full_name), ''), 'Competitor'),
+    subject, NULL::text, NULL::text, rating, contest_count
+  FROM eligible
+  ORDER BY rating DESC, contest_count DESC, user_id;
 $$;
 
 CREATE OR REPLACE FUNCTION public.get_my_contest_stats()
@@ -933,30 +970,56 @@ BEGIN
     RAISE EXCEPTION 'An active account is required';
   END IF;
   RETURN QUERY
-  WITH ratings AS (
-    SELECT round(avg(current_rating))::integer AS current_rating, max(peak_rating)::integer AS peak_rating
-    FROM public.user_subject_ratings WHERE user_id = v_user_id
-  ), global AS (
-    SELECT user_id, row_number() OVER (ORDER BY rating DESC, contest_count DESC, user_id)::integer AS rank
+  WITH finalized_results AS (
+    SELECT r.contest_id, r.user_id, r.rating_after, r.finalized_at, c.subject
+    FROM public.contest_results r
+    JOIN public.contests c ON c.id = r.contest_id
+    WHERE c.is_finalized
+  ), user_rated_results AS (
+    SELECT *, row_number() OVER (
+      PARTITION BY subject
+      ORDER BY finalized_at DESC, contest_id DESC
+    ) AS subject_recency
+    FROM finalized_results
+    WHERE user_id = v_user_id AND rating_after IS NOT NULL
+  ), ratings AS (
+    SELECT
+      round(avg(rating_after) FILTER (WHERE subject_recency = 1))::integer AS current_rating,
+      max(rating_after)::integer AS peak_rating
+    FROM user_rated_results
+  ), current_subject_ratings AS (
+    SELECT user_id, rating_after
     FROM (
-      SELECT usr.user_id, round(avg(usr.current_rating))::integer AS rating, sum(usr.rated_contests)::integer AS contest_count
-      FROM public.user_subject_ratings usr
-      JOIN public.profiles p ON p.id = usr.user_id AND p.status = 'active'
-      GROUP BY usr.user_id
-    ) totals
+      SELECT user_id, rating_after,
+        row_number() OVER (
+          PARTITION BY user_id, subject
+          ORDER BY finalized_at DESC, contest_id DESC
+        ) AS subject_recency
+      FROM finalized_results
+      WHERE rating_after IS NOT NULL
+    ) latest
+    WHERE subject_recency = 1
+  ), global AS (
+    SELECT current_subject_ratings.user_id,
+      row_number() OVER (
+        ORDER BY round(avg(current_subject_ratings.rating_after)) DESC, current_subject_ratings.user_id
+      )::integer AS rank
+    FROM current_subject_ratings
+    JOIN public.profiles p ON p.id = current_subject_ratings.user_id AND p.status = 'active'
+    GROUP BY current_subject_ratings.user_id
   )
   SELECT
-    (SELECT count(*)::integer FROM public.contest_results r WHERE r.user_id = v_user_id),
+    (SELECT count(*)::integer FROM finalized_results r WHERE r.user_id = v_user_id),
     (
       SELECT count(*)::integer
       FROM public.contest_answers a
-      JOIN public.contest_results r ON r.contest_id = a.contest_id AND r.user_id = a.user_id
+      JOIN finalized_results r ON r.contest_id = a.contest_id AND r.user_id = a.user_id
       WHERE a.user_id = v_user_id AND a.is_correct
     ),
     (
       SELECT count(*)::integer
       FROM public.contest_answers a
-      JOIN public.contest_results r ON r.contest_id = a.contest_id AND r.user_id = a.user_id
+      JOIN finalized_results r ON r.contest_id = a.contest_id AND r.user_id = a.user_id
       WHERE a.user_id = v_user_id AND a.score > 0
     ),
     ratings.current_rating,
@@ -992,7 +1055,9 @@ BEGIN
     r.rank, r.rating_before, r.rating_after, r.rating_delta
   FROM public.contest_results r
   JOIN public.contests c ON c.id = r.contest_id
-  WHERE r.user_id = auth.uid() AND r.rating_after IS NOT NULL
+  WHERE r.user_id = auth.uid()
+    AND c.is_finalized
+    AND r.rating_after IS NOT NULL
   ORDER BY r.finalized_at DESC;
 END;
 $$;
