@@ -22,10 +22,15 @@ import {
   completeEnglishExam,
   fetchContestWorkspace,
   formatContestDuration,
+  saveCefrGapFillResponse,
+  saveCefrMatchingResponse,
   saveExamWritingResponse,
   submitContestAnswer,
   type ExamPart,
   type ContestWorkspace,
+  type GapFillResponse,
+  type MatchingResponse,
+  type MatchingWorkspaceConfig,
   type WritingResponse,
 } from '@/lib/contests';
 
@@ -35,6 +40,19 @@ function formatRemaining(milliseconds: number): string {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function gapFillResponseKey(partId: string, blankNumber: number): string {
+  return `${partId}:${blankNumber}`;
+}
+
+function gapFillBlankNumbers(content: string): number[] {
+  return [...new Set(Array.from(content.matchAll(/\{\{([1-9]\d*)\}\}/g), (match) => Number(match[1])))]
+    .sort((left, right) => left - right);
+}
+
+function matchingResponseKey(partId: string, speakerNumber: number): string {
+  return `${partId}:${speakerNumber}`;
 }
 
 export function QuizWorkspacePage({ slug }: { slug: string }) {
@@ -245,6 +263,8 @@ export function QuizWorkspacePage({ slug }: { slug: string }) {
 
 function EnglishExamWorkspace({ workspace, now, onRefresh }: { workspace: ContestWorkspace; now: number; onRefresh: () => Promise<void> }) {
   const [answers, setAnswers] = useState<Record<string, number>>(workspace.answers);
+  const [gapFillResponses, setGapFillResponses] = useState<Record<string, GapFillResponse>>(workspace.gapFillResponses);
+  const [matchingResponses, setMatchingResponses] = useState<Record<string, MatchingResponse>>(workspace.matchingResponses);
   const [writingResponses, setWritingResponses] = useState<Record<string, WritingResponse>>(workspace.writingResponses);
   const [drafts, setDrafts] = useState<Record<string, string>>(() => Object.fromEntries(workspace.parts.filter((part) => part.section === 'writing').map((part) => [part.id, workspace.writingResponses[part.id]?.content ?? ''])));
   const [currentPartIndex, setCurrentPartIndex] = useState(0);
@@ -264,9 +284,9 @@ function EnglishExamWorkspace({ workspace, now, onRefresh }: { workspace: Contes
   const sectionEnded = sectionRemaining <= 0;
   const locked = sectionEnded || contestEnded || completed;
   const partQuestions = useMemo(() => part ? workspace.questions.filter((question) => question.partId === part.id) : [], [part, workspace.questions]);
-  const answeredCount = useMemo(() => workspace.questions.filter((question) => answers[question.id] !== undefined).length, [answers, workspace.questions]);
+  const answeredCount = useMemo(() => workspace.questions.filter((question) => answers[question.id] !== undefined).length + Object.keys(gapFillResponses).length + Object.keys(matchingResponses).length, [answers, gapFillResponses, matchingResponses, workspace.questions]);
   const submittedWritingCount = useMemo(() => workspace.parts.filter((item) => item.section === 'writing' && writingResponses[item.id]?.submittedAt).length, [workspace.parts, writingResponses]);
-  const completedPartCount = useMemo(() => workspace.parts.filter((item) => isPartComplete(item, workspace.questions, answers, writingResponses)).length, [answers, workspace.parts, workspace.questions, writingResponses]);
+  const completedPartCount = useMemo(() => workspace.parts.filter((item) => isPartComplete(item, workspace.questions, answers, gapFillResponses, workspace.matchingConfigs[item.id], matchingResponses, writingResponses)).length, [answers, gapFillResponses, matchingResponses, workspace.matchingConfigs, workspace.parts, workspace.questions, writingResponses]);
   const allComplete = completedPartCount === workspace.parts.length;
   const progress = workspace.parts.length ? Math.round((completedPartCount / workspace.parts.length) * 100) : 0;
   const urgent = sectionRemaining > 0 && sectionRemaining < 5 * 60 * 1000;
@@ -315,6 +335,56 @@ function EnglishExamWorkspace({ workspace, now, onRefresh }: { workspace: Contes
     }
   };
 
+  const saveGapFill = async (examPart: ExamPart, blankNumber: number, answer: string) => {
+    if (locked || savingKey) return;
+    const key = gapFillResponseKey(examPart.id, blankNumber);
+    const previous = gapFillResponses[key];
+    const trimmed = answer.trim();
+    setGapFillResponses((current) => {
+      const next = { ...current };
+      if (trimmed) next[key] = { partId: examPart.id, blankNumber, answer: trimmed };
+      else delete next[key];
+      return next;
+    });
+    setSavingKey(`gap-fill:${key}`);
+    setError(null);
+    try {
+      await saveCefrGapFillResponse(examPart.id, blankNumber, trimmed);
+    } catch (reason) {
+      setGapFillResponses((current) => {
+        const next = { ...current };
+        if (previous) next[key] = previous;
+        else delete next[key];
+        return next;
+      });
+      setError(reason instanceof Error ? reason.message : 'Javob saqlanmadi.');
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const saveMatching = async (examPart: ExamPart, speakerNumber: number, optionPosition: number) => {
+    if (locked || savingKey) return;
+    const key = matchingResponseKey(examPart.id, speakerNumber);
+    const previous = matchingResponses[key];
+    setMatchingResponses((current) => ({ ...current, [key]: { partId: examPart.id, speakerNumber, optionPosition } }));
+    setSavingKey(`matching:${key}`);
+    setError(null);
+    try {
+      await saveCefrMatchingResponse(examPart.id, speakerNumber, optionPosition);
+    } catch (reason) {
+      setMatchingResponses((current) => {
+        const next = { ...current };
+        if (previous) next[key] = previous;
+        else delete next[key];
+        return next;
+      });
+      setError(reason instanceof Error ? reason.message : 'Speaker javobi saqlanmadi.');
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
   const completeExam = async () => {
     if (locked || completing) return;
     if (!isWritingSection || !allComplete) {
@@ -354,19 +424,22 @@ function EnglishExamWorkspace({ workspace, now, onRefresh }: { workspace: Contes
         {error && <ExamNotice kind="error" title="Amal bajarilmadi">{error}</ExamNotice>}
 
         <section className="card overflow-hidden"><div className="border-b border-slate-100 p-6 sm:p-8"><div className="flex items-start gap-4"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-700">{part.section === 'listening' ? <Mic2 className="h-5 w-5" /> : part.section === 'reading' ? <BookOpen className="h-5 w-5" /> : <PenLine className="h-5 w-5" />}</span><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{examSectionLabel(part.section)}</p><h1 className="mt-1 text-xl font-bold text-slate-900">{part.title}</h1>{part.instructions && <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{part.instructions}</p>}</div></div></div>
-          <div className="p-6 sm:p-8">{part.section === 'listening' ? <ListeningPart part={part} questions={partQuestions} answers={answers} locked={locked} savingKey={savingKey} onAnswer={saveAnswer} /> : part.section === 'reading' ? <ReadingPart part={part} questions={partQuestions} answers={answers} locked={locked} savingKey={savingKey} onAnswer={saveAnswer} /> : <WritingPart part={part} draft={drafts[part.id] ?? ''} response={writingResponses[part.id]} locked={locked} saving={savingKey === `writing:${part.id}`} onChange={(value) => setDrafts((current) => ({ ...current, [part.id]: value }))} onSave={() => void saveWriting(part, false)} onSubmit={() => void saveWriting(part, true)} />}</div>
+          <div className="p-6 sm:p-8">{part.section === 'listening' ? <ListeningPart part={part} questions={partQuestions} answers={answers} gapFillResponses={gapFillResponses} matchingConfig={workspace.matchingConfigs[part.id]} matchingResponses={matchingResponses} locked={locked} savingKey={savingKey} audioOnly={workspace.contest.subjectSlug === 'cefr' && part.position === 1} gapFill={workspace.contest.subjectSlug === 'cefr' && part.position === 2} matching={workspace.contest.subjectSlug === 'cefr' && (part.position === 3 || part.position === 4)} mapMatching={workspace.contest.subjectSlug === 'cefr' && part.position === 4} extractQuestions={workspace.contest.subjectSlug === 'cefr' && part.position === 5} onAnswer={saveAnswer} onGapFillSave={saveGapFill} onMatchingSave={saveMatching} /> : part.section === 'reading' ? <ReadingPart part={part} questions={partQuestions} answers={answers} locked={locked} savingKey={savingKey} onAnswer={saveAnswer} /> : <WritingPart part={part} draft={drafts[part.id] ?? ''} response={writingResponses[part.id]} locked={locked} saving={savingKey === `writing:${part.id}`} onChange={(value) => setDrafts((current) => ({ ...current, [part.id]: value }))} onSave={() => void saveWriting(part, false)} onSubmit={() => void saveWriting(part, true)} />}</div>
         </section>
 
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3"><button type="button" disabled={currentPartIndex === 0 || sectionEnded} onClick={() => setCurrentPartIndex((index) => Math.max(0, index - 1))} className="btn-ghost px-4 py-2.5 text-sm disabled:opacity-40"><ChevronLeft className="h-4 w-4" />Oldingi part</button>{currentPartIndex < workspace.parts.length - 1 ? <button type="button" disabled={sectionEnded} onClick={() => setCurrentPartIndex((index) => Math.min(workspace.parts.length - 1, index + 1))} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">Keyingi part<ChevronRight className="h-4 w-4" /></button> : isWritingSection ? <button type="button" disabled={locked || !allComplete || completing} onClick={() => void completeExam()} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">{completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{completed ? 'Yuborilgan' : 'Imtihonni yakunlash'}</button> : <div className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-500">Keyingi bo‘lim vaqt tugaganda ochiladi</div>}</div>
       </div></main>
-        {showNavigator && <aside className="hidden w-72 shrink-0 border-l border-slate-200 bg-white lg:block"><div className="flex h-full flex-col p-5"><div className="border-b border-slate-100 pb-5"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">{sectionTiming ? `${examSectionLabel(sectionTiming.activeSection)} navigatsiyasi` : 'Exam navigatsiyasi'}</p><p className="mt-2 text-sm font-semibold text-slate-700">{completedPartCount} / {workspace.parts.length} part tayyor</p></div><div className="mt-5 space-y-2">{workspace.parts.map((item, index) => { const selected = index === currentPartIndex; const done = isPartComplete(item, workspace.questions, answers, writingResponses); return <button key={item.id} type="button" disabled={sectionEnded} onClick={() => setCurrentPartIndex(index)} className={`flex w-full items-center gap-3 rounded-xl p-3 text-left text-sm transition-colors disabled:cursor-not-allowed ${selected ? 'bg-indigo-600 text-white' : done ? 'bg-success-50 text-success-800 hover:bg-success-100' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${selected ? 'bg-white/20 text-white' : done ? 'bg-success-100 text-success-700' : 'bg-white text-slate-500 ring-1 ring-slate-200'}`}>{item.position}</span><span className="min-w-0"><span className="block truncate font-bold">Part {item.position}</span><span className={`block truncate text-[11px] ${selected ? 'text-white/70' : 'text-slate-400'}`}>{item.title}</span></span></button>; })}</div><div className="mt-auto rounded-2xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-500"><p className="font-bold text-slate-700">Natijalar haqida</p><p className="mt-1">Listening va Reading avtomatik hisoblanadi. Writing esa tekshiruvdan keyin qo‘shiladi; shundan keyingina final natija va rating yangilanadi.</p></div></div></aside>}
+        {showNavigator && <aside className="hidden w-72 shrink-0 border-l border-slate-200 bg-white lg:block"><div className="flex h-full flex-col p-5"><div className="border-b border-slate-100 pb-5"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">{sectionTiming ? `${examSectionLabel(sectionTiming.activeSection)} navigatsiyasi` : 'Exam navigatsiyasi'}</p><p className="mt-2 text-sm font-semibold text-slate-700">{completedPartCount} / {workspace.parts.length} part tayyor</p></div><div className="mt-5 space-y-2">{workspace.parts.map((item, index) => { const selected = index === currentPartIndex; const done = isPartComplete(item, workspace.questions, answers, gapFillResponses, workspace.matchingConfigs[item.id], matchingResponses, writingResponses); return <button key={item.id} type="button" disabled={sectionEnded} onClick={() => setCurrentPartIndex(index)} className={`flex w-full items-center gap-3 rounded-xl p-3 text-left text-sm transition-colors disabled:cursor-not-allowed ${selected ? 'bg-indigo-600 text-white' : done ? 'bg-success-50 text-success-800 hover:bg-success-100' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${selected ? 'bg-white/20 text-white' : done ? 'bg-success-100 text-success-700' : 'bg-white text-slate-500 ring-1 ring-slate-200'}`}>{item.position}</span><span className="min-w-0"><span className="block truncate font-bold">Part {item.position}</span><span className={`block truncate text-[11px] ${selected ? 'text-white/70' : 'text-slate-400'}`}>{item.title}</span></span></button>; })}</div><div className="mt-auto rounded-2xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-500"><p className="font-bold text-slate-700">Natijalar haqida</p><p className="mt-1">Listening va Reading avtomatik hisoblanadi. Writing esa tekshiruvdan keyin qo‘shiladi; shundan keyingina final natija va rating yangilanadi.</p></div></div></aside>}
       </div>
     </div>
   );
 }
 
-function isPartComplete(part: ExamPart, questions: ContestWorkspace['questions'], answers: Record<string, number>, writingResponses: Record<string, WritingResponse>): boolean {
+function isPartComplete(part: ExamPart, questions: ContestWorkspace['questions'], answers: Record<string, number>, gapFillResponses: Record<string, GapFillResponse>, matchingConfig: MatchingWorkspaceConfig | undefined, matchingResponses: Record<string, MatchingResponse>, writingResponses: Record<string, WritingResponse>): boolean {
   if (part.section === 'writing') return Boolean(writingResponses[part.id]?.submittedAt);
+  const gapFillBlanks = gapFillBlankNumbers(part.content);
+  if (gapFillBlanks.length > 0) return gapFillBlanks.every((blankNumber) => Boolean(gapFillResponses[gapFillResponseKey(part.id, blankNumber)]?.answer));
+  if (matchingConfig) return matchingConfig.speakers.length > 0 && matchingConfig.speakers.every((speaker) => matchingResponses[matchingResponseKey(part.id, speaker.speakerNumber)] !== undefined);
   const partQuestions = questions.filter((question) => question.partId === part.id);
   return partQuestions.length > 0 && partQuestions.every((question) => answers[question.id] !== undefined);
 }
@@ -386,12 +459,54 @@ function ExamNotice({ kind, title, children }: { kind: 'error' | 'success'; titl
   return <div role={kind === 'error' ? 'alert' : 'status'} className={`mb-5 flex items-start gap-3 rounded-2xl border p-4 text-sm ${kind === 'error' ? 'border-error-200 bg-error-50 text-error-800' : 'border-success-200 bg-success-50 text-success-800'}`}><Icon className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-bold">{title}</p><p className="mt-1">{children}</p></div></div>;
 }
 
-function ObjectiveQuestions({ questions, answers, locked, savingKey, onAnswer }: { questions: ContestWorkspace['questions']; answers: Record<string, number>; locked: boolean; savingKey: string | null; onAnswer: (questionId: string, option: number) => void }) {
-  return <div className="mt-7 space-y-8">{questions.map((question, index) => <div key={question.id} className="border-t border-slate-100 pt-7 first:border-t-0 first:pt-0"><div className="flex items-start justify-between gap-4"><h2 className="whitespace-pre-wrap text-base font-bold leading-relaxed text-slate-900">{index + 1}. {question.prompt}</h2><span className="shrink-0 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500">{question.points} ball</span></div><div className="mt-4 space-y-3" role="radiogroup" aria-label={`Savol ${index + 1}`}>{question.options.map((option, optionIndex) => { const selected = answers[question.id] === optionIndex; const saving = savingKey === `answer:${question.id}`; return <button key={`${question.id}-${optionIndex}`} type="button" role="radio" aria-checked={selected} disabled={locked || saving} onClick={() => onAnswer(question.id, optionIndex)} className={`flex w-full items-start gap-4 rounded-2xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${selected ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200' : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-slate-50'}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${selected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{String.fromCharCode(65 + optionIndex)}</span><span className="flex-1 whitespace-pre-wrap pt-0.5 text-sm leading-relaxed text-slate-700">{option}</span>{saving && selected && <Loader2 className="mt-1 h-4 w-4 animate-spin text-indigo-600" />}{!saving && selected && <CheckCircle2 className="mt-1 h-4 w-4 text-indigo-600" />}</button>; })}</div></div>)}</div>;
+function ObjectiveQuestionRows({ questions, answers, locked, savingKey, onAnswer, audioOnly, useStoredPosition = false }: { questions: ContestWorkspace['questions']; answers: Record<string, number>; locked: boolean; savingKey: string | null; onAnswer: (questionId: string, option: number) => void; audioOnly: boolean; useStoredPosition?: boolean }) {
+  return <>{questions.map((question, index) => {
+    const number = useStoredPosition ? question.position : index + 1;
+    return <div key={question.id} className="border-t border-slate-100 pt-7 first:border-t-0 first:pt-0">{audioOnly ? <p className="sr-only">Audio ichidagi savol {number}</p> : <div className="flex items-start justify-between gap-4"><h2 className="whitespace-pre-wrap text-base font-bold leading-relaxed text-slate-900">{number}. {question.prompt}</h2><span className="shrink-0 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500">{question.points} ball</span></div>}<div className={audioOnly ? 'space-y-3' : 'mt-4 space-y-3'} role="radiogroup" aria-label={audioOnly ? `Audio savoli ${number} uchun variantlar` : `Savol ${number}`}>{question.options.map((option, optionIndex) => { const selected = answers[question.id] === optionIndex; const saving = savingKey === `answer:${question.id}`; return <button key={`${question.id}-${optionIndex}`} type="button" role="radio" aria-checked={selected} disabled={locked || saving} onClick={() => onAnswer(question.id, optionIndex)} className={`flex w-full items-start gap-4 rounded-2xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${selected ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200' : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-slate-50'}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${selected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{String.fromCharCode(65 + optionIndex)}</span><span className="flex-1 whitespace-pre-wrap pt-0.5 text-sm leading-relaxed text-slate-700">{option}</span>{saving && selected && <Loader2 className="mt-1 h-4 w-4 animate-spin text-indigo-600" />}{!saving && selected && <CheckCircle2 className="mt-1 h-4 w-4 text-indigo-600" />}</button>; })}</div></div>;
+  })}</>;
 }
 
-function ListeningPart({ part, questions, answers, locked, savingKey, onAnswer }: { part: ExamPart; questions: ContestWorkspace['questions']; answers: Record<string, number>; locked: boolean; savingKey: string | null; onAnswer: (questionId: string, option: number) => void }) {
-  return <><div className="rounded-2xl bg-slate-950 p-5 text-white"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Audio</p>{part.audioUrl ? <audio controls controlsList="nodownload" className="mt-3 w-full" src={part.audioUrl}>Brauzeringiz audio tinglashni qo‘llamaydi.</audio> : <p className="mt-3 text-sm text-error-200">Audio mavjud emas.</p>}</div>{part.content && <p className="mt-5 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{part.content}</p>}<ObjectiveQuestions questions={questions} answers={answers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} /></>;
+function ObjectiveQuestions({ questions, answers, locked, savingKey, onAnswer, audioOnly = false, groupByExtract = false }: { questions: ContestWorkspace['questions']; answers: Record<string, number>; locked: boolean; savingKey: string | null; onAnswer: (questionId: string, option: number) => void; audioOnly?: boolean; groupByExtract?: boolean }) {
+  if (groupByExtract) return <div className="mt-7 grid gap-5">{[1, 2, 3].map((extractNumber) => {
+    const from = ((extractNumber - 1) * 2) + 1;
+    const items = questions.filter((question) => question.position === from || question.position === from + 1);
+    return <section key={extractNumber} className="overflow-hidden rounded-2xl border border-fuchsia-100 bg-white shadow-sm"><div className="flex items-center justify-between gap-3 border-b border-fuchsia-100 bg-fuchsia-50/70 px-5 py-3"><div><p className="text-xs font-bold uppercase tracking-wider text-fuchsia-700">Extract {extractNumber}</p><p className="mt-1 text-sm font-bold text-slate-800">Savol {from} va {from + 1}</p></div><span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-fuchsia-700 ring-1 ring-fuchsia-100">{items.length}/2</span></div><div className="p-5"><ObjectiveQuestionRows questions={items} answers={answers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} audioOnly={false} useStoredPosition /></div></section>;
+  })}</div>;
+  return <div className="mt-7 space-y-8"><ObjectiveQuestionRows questions={questions} answers={answers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} audioOnly={audioOnly} /></div>;
+}
+
+function ListeningPart({ part, questions, answers, gapFillResponses, matchingConfig, matchingResponses, locked, savingKey, audioOnly, gapFill, matching, mapMatching, extractQuestions, onAnswer, onGapFillSave, onMatchingSave }: { part: ExamPart; questions: ContestWorkspace['questions']; answers: Record<string, number>; gapFillResponses: Record<string, GapFillResponse>; matchingConfig: MatchingWorkspaceConfig | undefined; matchingResponses: Record<string, MatchingResponse>; locked: boolean; savingKey: string | null; audioOnly: boolean; gapFill: boolean; matching: boolean; mapMatching: boolean; extractQuestions: boolean; onAnswer: (questionId: string, option: number) => void; onGapFillSave: (part: ExamPart, blankNumber: number, answer: string) => void; onMatchingSave: (part: ExamPart, speakerNumber: number, optionPosition: number) => void }) {
+  return <><div className="rounded-2xl bg-slate-950 p-5 text-white"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Audio</p>{part.audioUrl ? <audio controls controlsList="nodownload" className="mt-3 w-full" src={part.audioUrl}>Brauzeringiz audio tinglashni qo‘llamaydi.</audio> : <p className="mt-3 text-sm text-error-200">Audio mavjud emas.</p>}</div>{gapFill ? <GapFillListeningText part={part} responses={gapFillResponses} locked={locked} savingKey={savingKey} onSave={onGapFillSave} /> : matching ? <SpeakerMatchingListening part={part} config={matchingConfig} responses={matchingResponses} locked={locked} savingKey={savingKey} mapMode={mapMatching} onSave={onMatchingSave} /> : <>{part.content && <p className="mt-5 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{part.content}</p>}{audioOnly && <p className="mt-5 rounded-xl bg-cyan-50 px-4 py-3 text-sm leading-relaxed text-cyan-900">Savol audio yozuvda beriladi. To‘g‘ri deb bilgan 3 variantdan birini tanlang.</p>}{extractQuestions && <div className="mt-5 rounded-2xl border border-fuchsia-100 bg-fuchsia-50/70 p-4 text-sm leading-relaxed text-fuchsia-900"><p className="font-bold">3 ta extract · 6 ta savol</p><p className="mt-1 text-xs">Har extractni tinglab, uning ostidagi 2 ta savolga javob bering.</p></div>}<ObjectiveQuestions questions={questions} answers={answers} locked={locked} savingKey={savingKey} audioOnly={audioOnly} groupByExtract={extractQuestions} onAnswer={onAnswer} /></>}</>;
+}
+
+function GapFillListeningText({ part, responses, locked, savingKey, onSave }: { part: ExamPart; responses: Record<string, GapFillResponse>; locked: boolean; savingKey: string | null; onSave: (part: ExamPart, blankNumber: number, answer: string) => void }) {
+  const [drafts, setDrafts] = useState<Record<number, string>>(() => Object.fromEntries(gapFillBlankNumbers(part.content).map((blankNumber) => [blankNumber, responses[gapFillResponseKey(part.id, blankNumber)]?.answer ?? ''])));
+  const blankNumbers = gapFillBlankNumbers(part.content);
+
+  useEffect(() => {
+    setDrafts(Object.fromEntries(blankNumbers.map((blankNumber) => [blankNumber, responses[gapFillResponseKey(part.id, blankNumber)]?.answer ?? ''])));
+  }, [part.id, part.content, responses]);
+
+  const chunks = part.content.split(/(\{\{[1-9]\d*\}\})/g);
+  return <div className="mt-6"><div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">Bo‘sh joylarni to‘ldiring</p><p className="mt-1 text-xs">Har javob bitta so‘z yoki son bo‘lishi kerak. Maydonni tark etganingizda javob avtomatik saqlanadi.</p></div><article className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 text-[15px] leading-8 text-slate-800 shadow-sm sm:p-7">{chunks.map((chunk, index) => {
+    const match = chunk.match(/^\{\{([1-9]\d*)\}\}$/);
+    if (!match) return <span key={`${index}-${chunk}`} className="whitespace-pre-wrap">{chunk}</span>;
+    const blankNumber = Number(match[1]);
+    const saving = savingKey === `gap-fill:${gapFillResponseKey(part.id, blankNumber)}`;
+    return <span key={chunk} className="mx-1 inline-flex align-middle"><label className="sr-only" htmlFor={`gap-fill-${part.id}-${blankNumber}`}>({blankNumber}) javob</label><span className="flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-1.5 py-0.5 shadow-sm"><span className="mr-1 text-xs font-extrabold text-indigo-600">{blankNumber}</span><input id={`gap-fill-${part.id}-${blankNumber}`} value={drafts[blankNumber] ?? ''} disabled={locked || saving} onChange={(event) => setDrafts((current) => ({ ...current, [blankNumber]: event.target.value }))} onBlur={() => onSave(part, blankNumber, drafts[blankNumber] ?? '')} className="w-28 border-0 bg-transparent px-1 py-0.5 text-sm font-semibold text-slate-900 outline-none placeholder:text-indigo-300 focus:ring-0 disabled:opacity-60 sm:w-36" placeholder="javob" />{saving && <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin text-indigo-600" />}</span></span>;
+  })}</article><div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{blankNumbers.map((blankNumber) => <div key={blankNumber} className={`rounded-xl px-3 py-2 text-xs font-semibold ${responses[gapFillResponseKey(part.id, blankNumber)]?.answer ? 'bg-success-50 text-success-700' : 'bg-slate-100 text-slate-500'}`}>({blankNumber}) {responses[gapFillResponseKey(part.id, blankNumber)]?.answer ? 'saqlandi' : 'kutilmoqda'}</div>)}</div></div>;
+}
+
+function SpeakerMatchingListening({ part, config, responses, locked, savingKey, mapMode, onSave }: { part: ExamPart; config: MatchingWorkspaceConfig | undefined; responses: Record<string, MatchingResponse>; locked: boolean; savingKey: string | null; mapMode: boolean; onSave: (part: ExamPart, speakerNumber: number, optionPosition: number) => void }) {
+  const [activeSpeaker, setActiveSpeaker] = useState<number | null>(config?.speakers.find((speaker) => !responses[matchingResponseKey(part.id, speaker.speakerNumber)])?.speakerNumber ?? config?.speakers[0]?.speakerNumber ?? null);
+  useEffect(() => {
+    setActiveSpeaker((current) => current && config?.speakers.some((speaker) => speaker.speakerNumber === current) ? current : (config?.speakers.find((speaker) => !responses[matchingResponseKey(part.id, speaker.speakerNumber)])?.speakerNumber ?? config?.speakers[0]?.speakerNumber ?? null));
+  }, [config, part.id, responses]);
+  if (!config || config.speakers.length === 0 || config.options.length < 2) return <div className="mt-5 rounded-2xl border border-sun-200 bg-sun-50 p-4 text-sm leading-relaxed text-sun-800">{mapMode ? 'Map letter matching' : 'Speaker matching'} hali sozlanmagan.</div>;
+  const selected = activeSpeaker ? responses[matchingResponseKey(part.id, activeSpeaker)]?.optionPosition : undefined;
+  const accent = mapMode ? 'sky' : 'emerald';
+  const entryLabel = mapMode ? 'joy' : 'speaker';
+  return <div className="mt-6"><div className={`rounded-2xl border p-4 text-sm leading-relaxed ${mapMode ? 'border-sky-100 bg-sky-50/70 text-sky-900' : 'border-emerald-100 bg-emerald-50/70 text-emerald-900'}`}><p className="font-bold">{mapMode ? 'Har bir joy uchun xaritadagi harfni tanlang' : 'Har bir speaker uchun mos javobni tanlang'}</p><p className="mt-1 text-xs">Avval {entryLabel} kartasini tanlang, keyin o‘ng tomondagi umumiy javob bankidan A/B/C… variantni bosing. Ayrim variantlar ishlatilmasligi mumkin.</p></div>{mapMode && <div className="mt-5 overflow-hidden rounded-2xl border border-sky-100 bg-sky-50/50 p-2 sm:p-3">{part.imageUrl ? <><img src={part.imageUrl} alt={`${part.title} xaritasi`} className="h-auto w-full object-contain" /><div className="mt-2 flex justify-end"><a href={part.imageUrl} target="_blank" rel="noreferrer" className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-sky-700 ring-1 ring-sky-200 hover:bg-sky-50">Xaritani original o‘lchamda ochish</a></div></> : <p className="p-5 text-sm text-sun-800">Xarita rasmi mavjud emas.</p>}</div>}{part.content && <p className="mt-5 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{part.content}</p>}<div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]"><div className="space-y-3"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">{mapMode ? 'Joylar' : 'Speakerlar'}</p>{config.speakers.map((speaker) => { const response = responses[matchingResponseKey(part.id, speaker.speakerNumber)]; const isActive = activeSpeaker === speaker.speakerNumber; return <button key={speaker.speakerNumber} type="button" disabled={locked} onClick={() => setActiveSpeaker(speaker.speakerNumber)} className={`flex w-full items-center justify-between gap-3 rounded-2xl border p-4 text-left transition-colors disabled:cursor-not-allowed ${isActive ? mapMode ? 'border-sky-500 bg-sky-50 ring-1 ring-sky-200' : 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-200' : response ? 'border-success-200 bg-success-50/70 hover:border-success-300' : mapMode ? 'border-slate-200 bg-white hover:border-sky-300 hover:bg-slate-50' : 'border-slate-200 bg-white hover:border-emerald-300 hover:bg-slate-50'}`}><span className="flex min-w-0 items-center gap-3"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-extrabold ${isActive ? mapMode ? 'bg-sky-600 text-white' : 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'}`}>{speaker.speakerNumber}</span><span className="truncate text-sm font-bold text-slate-800">{speaker.label}</span></span><span className={`rounded-lg px-2.5 py-1 text-xs font-extrabold ${response ? 'bg-success-100 text-success-700' : 'bg-slate-100 text-slate-400'}`}>{response ? String.fromCharCode(65 + response.optionPosition) : '—'}</span></button>; })}</div><div><div className="flex items-center justify-between gap-3"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">{mapMode ? 'Xarita harflari' : 'Javob banki'}</p>{activeSpeaker && <p className={`text-xs font-semibold ${mapMode ? 'text-sky-700' : 'text-emerald-700'}`}>{mapMode ? 'Joy' : 'Speaker'} {activeSpeaker} tanlangan</p>}</div><div className="mt-3 space-y-2">{config.options.map((option) => { const chosen = selected === option.position; const saving = activeSpeaker !== null && savingKey === `matching:${matchingResponseKey(part.id, activeSpeaker)}`; return <button key={option.position} type="button" disabled={locked || activeSpeaker === null || saving} onClick={() => activeSpeaker !== null && onSave(part, activeSpeaker, option.position)} className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${chosen ? mapMode ? 'border-sky-500 bg-sky-50 ring-1 ring-sky-200' : 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-200' : mapMode ? 'border-slate-200 bg-white hover:border-sky-300 hover:bg-sky-50/30' : 'border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/30'}`}><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-extrabold ${chosen ? mapMode ? 'bg-sky-600 text-white' : 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'}`}>{String.fromCharCode(65 + option.position)}</span><span className="flex-1 text-sm font-medium leading-relaxed text-slate-700">{mapMode ? `Xaritadagi ${String.fromCharCode(65 + option.position)} nuqta` : option.label}</span>{saving && chosen && <Loader2 className={`h-4 w-4 animate-spin ${accent === 'sky' ? 'text-sky-600' : 'text-emerald-600'}`} />}</button>; })}</div></div></div></div>;
 }
 
 function ReadingPart({ part, questions, answers, locked, savingKey, onAnswer }: { part: ExamPart; questions: ContestWorkspace['questions']; answers: Record<string, number>; locked: boolean; savingKey: string | null; onAnswer: (questionId: string, option: number) => void }) {

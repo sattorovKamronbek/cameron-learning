@@ -64,10 +64,11 @@ export type ExamPart = {
   instructions: string;
   content: string;
   audioUrl: string | null;
+  imageUrl: string | null;
   maxPoints: number;
 };
 
-export type ExamPartInput = Omit<ExamPart, 'id'> & { id?: string | null };
+export type ExamPartInput = Omit<ExamPart, 'id' | 'imageUrl'> & { id?: string | null };
 
 export type ExamSectionTimings = {
   listeningMinutes: number;
@@ -103,6 +104,48 @@ export type WritingSubmission = {
   gradedAt: string | null;
 };
 
+export type GapFillAnswerKey = {
+  partId: string;
+  blankNumber: number;
+  acceptedAnswers: string[];
+  points: number;
+};
+
+export type GapFillResponse = {
+  partId: string;
+  blankNumber: number;
+  answer: string;
+};
+
+export type MatchingOption = {
+  position: number;
+  label: string;
+};
+
+export type MatchingSpeaker = {
+  speakerNumber: number;
+  label: string;
+  correctOption: number | null;
+};
+
+export type MatchingEditorConfig = {
+  partId: string;
+  options: MatchingOption[];
+  speakers: MatchingSpeaker[];
+};
+
+export type MatchingWorkspaceConfig = {
+  partId: string;
+  options: MatchingOption[];
+  speakers: Array<Omit<MatchingSpeaker, 'correctOption'>>;
+};
+
+export type MatchingResponse = {
+  partId: string;
+  speakerNumber: number;
+  optionPosition: number;
+};
+
 export type ContestWorkspace = {
   contest: Pick<Contest, 'id' | 'slug' | 'title' | 'subjectSlug' | 'subject' | 'startTime' | 'endTime' | 'type'> & {
     completedAt: string | null;
@@ -111,6 +154,9 @@ export type ContestWorkspace = {
   examTiming: ActiveExamTiming | null;
   questions: ContestQuestion[];
   answers: Record<string, number>;
+  gapFillResponses: Record<string, GapFillResponse>;
+  matchingConfigs: Record<string, MatchingWorkspaceConfig>;
+  matchingResponses: Record<string, MatchingResponse>;
   writingResponses: Record<string, WritingResponse>;
 };
 
@@ -130,7 +176,7 @@ export type ManagedContest = Contest & {
 };
 
 export type EditorQuestion = ContestQuestion & {
-  correctOption: number;
+  correctOption: number | null;
   explanation: string | null;
 };
 
@@ -139,6 +185,8 @@ export type ContestEditor = {
   parts: ExamPart[];
   sectionTimings: ExamSectionTimings | null;
   questions: EditorQuestion[];
+  gapFillAnswerKeys: GapFillAnswerKey[];
+  matchingConfigs: MatchingEditorConfig[];
 };
 
 export type ContestInput = {
@@ -166,7 +214,7 @@ export type ContestQuestionInput = {
   position: number;
   prompt: string;
   options: string[];
-  correctOption: number;
+  correctOption: number | null;
   points: number;
   explanation?: string | null;
 };
@@ -224,6 +272,14 @@ function bool(value: unknown): boolean {
 function arrayOfStrings(value: unknown): string[] {
   if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean);
   return [];
+}
+
+function gapFillResponseKey(partId: string, blankNumber: number): string {
+  return `${partId}:${blankNumber}`;
+}
+
+function matchingResponseKey(partId: string, speakerNumber: number): string {
+  return `${partId}:${speakerNumber}`;
 }
 
 function valueAt(row: Row, ...keys: string[]): unknown {
@@ -346,8 +402,37 @@ function mapExamPart(row: Row): ExamPart {
     instructions: text(valueAt(row, 'instructions')),
     content: text(valueAt(row, 'content')),
     audioUrl: nullableText(valueAt(row, 'audio_url', 'audioUrl')),
+    imageUrl: nullableText(valueAt(row, 'image_url', 'imageUrl')),
     maxPoints: number(valueAt(row, 'max_points', 'maxPoints')),
   };
+}
+
+function mapMatchingEditorConfigs(value: unknown): MatchingEditorConfig[] {
+  return asRows(value).map((row) => ({
+    partId: text(valueAt(row, 'part_id', 'partId')),
+    options: asRows(valueAt(row, 'options')).map((option) => ({
+      position: number(valueAt(option, 'position')),
+      label: text(valueAt(option, 'label')),
+    })).sort((left, right) => left.position - right.position),
+    speakers: asRows(valueAt(row, 'speakers')).map((speaker) => ({
+      speakerNumber: number(valueAt(speaker, 'speaker_number', 'speakerNumber')),
+      label: text(valueAt(speaker, 'label')),
+      correctOption: valueAt(speaker, 'correct_option', 'correctOption') === null || valueAt(speaker, 'correct_option', 'correctOption') === undefined
+        ? null
+        : number(valueAt(speaker, 'correct_option', 'correctOption')),
+    })).sort((left, right) => left.speakerNumber - right.speakerNumber),
+  }));
+}
+
+function mapMatchingWorkspaceConfigs(value: unknown): Record<string, MatchingWorkspaceConfig> {
+  return Object.fromEntries(asRows(value).map((row): [string, MatchingWorkspaceConfig] => {
+    const partId = text(valueAt(row, 'part_id', 'partId'));
+    return [partId, {
+      partId,
+      options: asRows(valueAt(row, 'options')).map((option) => ({ position: number(valueAt(option, 'position')), label: text(valueAt(option, 'label')) })).sort((left, right) => left.position - right.position),
+      speakers: asRows(valueAt(row, 'speakers')).map((speaker) => ({ speakerNumber: number(valueAt(speaker, 'speaker_number', 'speakerNumber')), label: text(valueAt(speaker, 'label')) })).sort((left, right) => left.speakerNumber - right.speakerNumber),
+    }];
+  }));
 }
 
 function mapExamSectionTimings(value: unknown): ExamSectionTimings | null {
@@ -419,6 +504,25 @@ export async function fetchContestWorkspace(slug: string): Promise<ContestWorksp
     text(valueAt(row, 'question_id', 'questionId')),
     number(valueAt(row, 'selected_option', 'selectedOption')),
   ]));
+  const gapFillResponses: Record<string, GapFillResponse> = Object.fromEntries(asRows(payload.gap_fill_responses).map((row): [string, GapFillResponse] => {
+    const partId = text(valueAt(row, 'part_id', 'partId'));
+    const blankNumber = number(valueAt(row, 'blank_number', 'blankNumber'));
+    return [gapFillResponseKey(partId, blankNumber), {
+      partId,
+      blankNumber,
+      answer: text(valueAt(row, 'answer')),
+    }];
+  }));
+  const matchingConfigs = mapMatchingWorkspaceConfigs(payload.matching_configs);
+  const matchingResponses: Record<string, MatchingResponse> = Object.fromEntries(asRows(payload.matching_responses).map((row): [string, MatchingResponse] => {
+    const partId = text(valueAt(row, 'part_id', 'partId'));
+    const speakerNumber = number(valueAt(row, 'speaker_number', 'speakerNumber'));
+    return [matchingResponseKey(partId, speakerNumber), {
+      partId,
+      speakerNumber,
+      optionPosition: number(valueAt(row, 'option_position', 'optionPosition')),
+    }];
+  }));
   const writingResponses: Record<string, WritingResponse> = Object.fromEntries(asRows(payload.writing_responses).map((row): [string, WritingResponse] => {
     const partId = text(valueAt(row, 'part_id', 'partId'));
     return [partId, {
@@ -445,6 +549,9 @@ export async function fetchContestWorkspace(slug: string): Promise<ContestWorksp
     examTiming: mapActiveExamTiming(payload.exam_timing),
     questions,
     answers,
+    gapFillResponses,
+    matchingConfigs,
+    matchingResponses,
     writingResponses,
   };
 }
@@ -453,6 +560,24 @@ export async function submitContestAnswer(questionId: string, selectedOption: nu
   const { error } = await supabase.rpc('submit_contest_answer', {
     p_question_id: questionId,
     p_selected_option: selectedOption,
+  });
+  rpcError(error);
+}
+
+export async function saveCefrGapFillResponse(partId: string, blankNumber: number, answer: string): Promise<void> {
+  const { error } = await supabase.rpc('save_cefr_gap_fill_response', {
+    p_exam_part_id: partId,
+    p_blank_number: blankNumber,
+    p_answer: answer.trim(),
+  });
+  rpcError(error);
+}
+
+export async function saveCefrMatchingResponse(partId: string, speakerNumber: number, optionPosition: number): Promise<void> {
+  const { error } = await supabase.rpc('save_cefr_matching_response', {
+    p_exam_part_id: partId,
+    p_speaker_number: speakerNumber,
+    p_option_position: optionPosition,
   });
   rpcError(error);
 }
@@ -540,7 +665,9 @@ export async function fetchContestEditor(contestId: string): Promise<ContestEdit
     position: number(valueAt(row, 'position')),
     prompt: text(valueAt(row, 'prompt')),
     options: arrayOfStrings(valueAt(row, 'options')),
-    correctOption: number(valueAt(row, 'correct_option', 'correctOption')),
+    correctOption: valueAt(row, 'correct_option', 'correctOption') === null || valueAt(row, 'correct_option', 'correctOption') === undefined
+      ? null
+      : number(valueAt(row, 'correct_option', 'correctOption')),
     points: number(valueAt(row, 'points'), 1),
     explanation: nullableText(valueAt(row, 'explanation')),
   })).sort((a, b) => a.position - b.position);
@@ -549,7 +676,37 @@ export async function fetchContestEditor(contestId: string): Promise<ContestEdit
     parts: asRows(payload.parts).map(mapExamPart).sort((left, right) => left.position - right.position),
     sectionTimings: mapExamSectionTimings(payload.section_timings),
     questions,
+    gapFillAnswerKeys: asRows(payload.gap_fill_answer_keys).map((row) => ({
+      partId: text(valueAt(row, 'part_id', 'partId')),
+      blankNumber: number(valueAt(row, 'blank_number', 'blankNumber')),
+      acceptedAnswers: arrayOfStrings(valueAt(row, 'accepted_answers', 'acceptedAnswers')),
+      points: number(valueAt(row, 'points'), 1),
+    })).sort((left, right) => left.partId.localeCompare(right.partId) || left.blankNumber - right.blankNumber),
+    matchingConfigs: mapMatchingEditorConfigs(payload.matching_configs),
   };
+}
+
+export async function saveCefrGapFillAnswerKeys(contestId: string, partId: string, keys: GapFillAnswerKey[]): Promise<void> {
+  const { error } = await supabase.rpc('save_cefr_gap_fill_answer_keys', {
+    p_contest_id: contestId,
+    p_exam_part_id: partId,
+    p_answer_keys: keys.map((key) => ({
+      blank_number: key.blankNumber,
+      accepted_answers: key.acceptedAnswers.map((answer) => answer.trim()).filter(Boolean),
+      points: key.points,
+    })),
+  });
+  rpcError(error);
+}
+
+export async function saveCefrMatchingConfig(contestId: string, partId: string, config: Omit<MatchingEditorConfig, 'partId'>): Promise<void> {
+  const { error } = await supabase.rpc('save_cefr_matching_config', {
+    p_contest_id: contestId,
+    p_exam_part_id: partId,
+    p_options: config.options.map((option) => ({ position: option.position, label: option.label.trim() })),
+    p_speakers: config.speakers.map((speaker) => ({ speaker_number: speaker.speakerNumber, label: speaker.label.trim(), correct_option: speaker.correctOption })),
+  });
+  rpcError(error);
 }
 
 export async function saveContestQuestion(contestId: string, input: ContestQuestionInput): Promise<string> {
@@ -588,6 +745,15 @@ export async function saveExamPart(contestId: string, input: ExamPartInput): Pro
   return id;
 }
 
+export async function saveCefrMapImage(contestId: string, partId: string, imageUrl: string | null): Promise<void> {
+  const { error } = await supabase.rpc('save_cefr_map_image', {
+    p_contest_id: contestId,
+    p_exam_part_id: partId,
+    p_image_url: imageUrl?.trim() || null,
+  });
+  rpcError(error);
+}
+
 export async function saveExamSectionTimings(contestId: string, input: ExamSectionTimings): Promise<void> {
   const { error } = await supabase.rpc('save_contest_exam_section_timings', {
     p_contest_id: contestId,
@@ -620,6 +786,23 @@ export async function uploadContestAudio(contestId: string, file: File): Promise
   rpcError(error);
   const { data } = supabase.storage.from('contest-audio').getPublicUrl(path);
   if (!data.publicUrl) throw new Error('Audio URL yaratilmadi.');
+  return data.publicUrl;
+}
+
+export async function uploadContestImage(contestId: string, file: File): Promise<string> {
+  if (!file.type.startsWith('image/')) throw new Error('Faqat rasm faylini yuklash mumkin.');
+  if (file.size > 12 * 1024 * 1024) throw new Error('Xarita rasmi 12 MB dan kichik bo‘lishi kerak.');
+  const filename = file.name.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'map-image';
+  const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const path = `${contestId}/${id}-${filename}`;
+  const { error } = await supabase.storage.from('contest-images').upload(path, file, {
+    cacheControl: '31536000',
+    upsert: false,
+    contentType: file.type,
+  });
+  rpcError(error);
+  const { data } = supabase.storage.from('contest-images').getPublicUrl(path);
+  if (!data.publicUrl) throw new Error('Rasm URL yaratilmagan.');
   return data.publicUrl;
 }
 

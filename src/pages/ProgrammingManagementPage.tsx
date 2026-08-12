@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
-  AlertCircle,
   Archive,
   BookOpenCheck,
-  CheckCircle2,
   ChevronRight,
   Code2,
   Compass,
@@ -25,6 +23,7 @@ import { useAccessControl } from '@/lib/access';
 import { useAuth } from '@/lib/auth';
 import { LoadingState } from '@/components/LoadingState';
 import { AppSelect } from '@/components/AppSelect';
+import { ManagementToast } from '@/components/ManagementToast';
 import {
   archiveContest,
   createContest,
@@ -435,6 +434,7 @@ export function ProgrammingManagementPage() {
 
   return (
     <div className="management-canvas min-h-screen">
+      <ManagementToast message={error ?? notice} kind={error ? 'error' : 'success'} onDismiss={() => { setError(null); setNotice(null); }} />
       <section className="workspace-hero pt-28">
         <div className="workspace-hero-content py-10 sm:py-12">
           <div className="flex flex-wrap items-end justify-between gap-7">
@@ -457,9 +457,6 @@ export function ProgrammingManagementPage() {
       </section>
 
       <main className="container-page py-8">
-        {error && <Notice kind="error">{error}</Notice>}
-        {notice && <Notice kind="success">{notice}</Notice>}
-
         <div className="mb-7 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/80 p-2 shadow-soft backdrop-blur">
           <div className="flex flex-wrap gap-1">
             <TabButton active={tab === 'contests'} onClick={() => setTab('contests')} icon={Trophy}>Contestlar <span className="rounded-md bg-white/15 px-1.5 py-0.5 text-[10px]">{contests.length}</span></TabButton>
@@ -508,11 +505,6 @@ export function ProgrammingManagementPage() {
       </main>
     </div>
   );
-}
-
-function Notice({ kind, children }: { kind: 'error' | 'success'; children: string }) {
-  const Icon = kind === 'error' ? AlertCircle : CheckCircle2;
-  return <div role={kind === 'error' ? 'alert' : 'status'} className={`mb-6 flex items-start gap-3 rounded-2xl border p-4 text-sm ${kind === 'error' ? 'border-error-200 bg-error-50 text-error-800' : 'border-success-200 bg-success-50 text-success-800'}`}><Icon className="mt-0.5 h-5 w-5 shrink-0" /><p>{children}</p></div>;
 }
 
 function TabButton({ active, onClick, icon: Icon, children }: { active: boolean; onClick: () => void; icon: typeof Trophy; children: ReactNode }) {
