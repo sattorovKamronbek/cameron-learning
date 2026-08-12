@@ -82,10 +82,11 @@ export function NotificationBell() {
               localNotifications.slice(0, 8).map((n) => {
                 const Icon = n.icon;
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={n.id}
                     onClick={() => handleClick(n)}
-                    className={`group flex cursor-pointer items-start gap-3 border-b border-slate-50 p-4 transition-colors hover:bg-slate-50/60 ${
+                    className={`group flex w-full items-start gap-3 border-0 border-b border-slate-50 bg-transparent p-4 text-left transition-colors hover:bg-slate-50/60 ${
                       !n.read ? 'bg-indigo-50/30' : ''
                     }`}
                   >
@@ -126,7 +127,7 @@ export function NotificationBell() {
                         )}
                       </div>
                     </div>
-                  </div>
+                  </button>
                 );
               })
             )}

@@ -5,17 +5,20 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock3,
+  LogOut,
   Mail,
+  Megaphone,
   RefreshCw,
   ShieldCheck,
   Trash2,
   Users,
 } from 'lucide-react';
-import { Link } from '@/router';
+import { Link, useRouter } from '@/router';
 import { LoadingState } from '@/components/LoadingState';
 import { useAuth } from '@/lib/auth';
 import {
   adminAddAdminEmail,
+  adminCreateAnnouncement,
   adminListAdminEmails,
   adminListAuditLogs,
   adminListUsers,
@@ -25,7 +28,7 @@ import {
 } from '@/lib/security';
 import type { AdminEmail, AdminUserView, AuditLog, Role, UserStatus } from '@/lib/supabase';
 
-type Section = 'overview' | 'users' | 'audit' | 'allowlist';
+type Section = 'overview' | 'users' | 'audit' | 'allowlist' | 'announcements';
 
 const roles: Role[] = ['user', 'judge', 'admin'];
 const statuses: UserStatus[] = ['active', 'suspended', 'banned'];
@@ -49,7 +52,8 @@ function formatDetails(details: Record<string, unknown> | null | undefined) {
 }
 
 export function AdminDashboard() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
+  const { navigate } = useRouter();
   const [section, setSection] = useState<Section>('overview');
   const [users, setUsers] = useState<AdminUserView[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -170,6 +174,38 @@ export function AdminDashboard() {
     );
   };
 
+  const broadcastAnnouncement = useCallback(async (
+    title: string,
+    message: string,
+    actionLabel: string,
+    actionLink: string,
+  ): Promise<boolean> => {
+    const confirmed = window.confirm(
+      'Send this announcement to every active account? This action cannot be undone.',
+    );
+    if (!confirmed) return false;
+
+    setMutation('announcement');
+    setError(null);
+    setNotice(null);
+    try {
+      const recipientCount = await adminCreateAnnouncement(title, message, actionLabel || undefined, actionLink || undefined);
+      setNotice(`Announcement sent to ${recipientCount} active ${recipientCount === 1 ? 'account' : 'accounts'}.`);
+      await refresh();
+      return true;
+    } catch (announcementError) {
+      setError(announcementError instanceof Error ? announcementError.message : 'The announcement could not be sent.');
+      return false;
+    } finally {
+      setMutation(null);
+    }
+  }, [refresh]);
+
+  const leaveAdmin = async () => {
+    await signOut();
+    navigate('/login', { replace: true });
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
@@ -190,9 +226,13 @@ export function AdminDashboard() {
               Refresh
             </button>
             <Link to="/contest-management" className="btn-primary px-4 py-2 text-sm">
-              Contest management
+              Contest va imtihonlar
               <ArrowRight className="h-4 w-4" />
             </Link>
+            <button type="button" onClick={() => void leaveAdmin()} className="btn-ghost px-3 py-2 text-sm">
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </button>
           </div>
         </div>
       </header>
@@ -210,6 +250,9 @@ export function AdminDashboard() {
           </SectionButton>
           <SectionButton active={section === 'allowlist'} onClick={() => setSection('allowlist')} icon={ShieldCheck}>
             Admin allowlist
+          </SectionButton>
+          <SectionButton active={section === 'announcements'} onClick={() => setSection('announcements')} icon={Megaphone}>
+            Announcements
           </SectionButton>
         </nav>
 
@@ -276,6 +319,12 @@ export function AdminDashboard() {
                 onRemove={removeAdminEmail}
               />
             )}
+            {section === 'announcements' && (
+              <AnnouncementPanel
+                sending={mutation === 'announcement'}
+                onSend={broadcastAnnouncement}
+              />
+            )}
           </>
         )}
       </main>
@@ -339,7 +388,7 @@ function Overview({
         <div className="card p-6">
           <h2 className="text-lg font-bold text-slate-900">Contest operations</h2>
           <p className="mt-2 text-sm leading-relaxed text-slate-600">
-            Create, publish, and manage real contests in the dedicated contest-management area.
+            Create, publish, and manage Science, IELTS, CEFR, and other real contests in the dedicated area.
           </p>
           <Link to="/contest-management" className="btn-ghost mt-4 px-0 text-sm text-indigo-700">
             Open contest management
@@ -542,7 +591,7 @@ function AllowlistPanel({
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            placeholder="admin@gmail.com"
+            placeholder="admin@your-domain.com"
             className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
           />
           <button type="submit" disabled={adding} className="btn-primary px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60">
@@ -587,6 +636,122 @@ function AllowlistPanel({
         )}
       </section>
     </div>
+  );
+}
+
+function AnnouncementPanel({
+  sending,
+  onSend,
+}: {
+  sending: boolean;
+  onSend: (title: string, message: string, actionLabel: string, actionLink: string) => Promise<boolean>;
+}) {
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [actionLabel, setActionLabel] = useState('');
+  const [actionLink, setActionLink] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const cleanTitle = title.trim();
+    const cleanMessage = message.trim();
+    const cleanActionLabel = actionLabel.trim();
+    const cleanActionLink = actionLink.trim();
+
+    if (!cleanTitle || !cleanMessage) {
+      setFormError('A title and message are required.');
+      return;
+    }
+    if (Boolean(cleanActionLabel) !== Boolean(cleanActionLink)) {
+      setFormError('Provide both the action label and its destination, or leave both blank.');
+      return;
+    }
+    if (cleanActionLink && (
+      !/^(?:https?:\/\/[^\s]+|\/[^\s]*)$/i.test(cleanActionLink)
+      || cleanActionLink.startsWith('//')
+      || (cleanActionLink.startsWith('/') && cleanActionLink.includes('\\'))
+    )) {
+      setFormError('The action destination must be an https URL or a site-relative path.');
+      return;
+    }
+
+    setFormError(null);
+    const sent = await onSend(cleanTitle, cleanMessage, cleanActionLabel, cleanActionLink);
+    if (sent) {
+      setTitle('');
+      setMessage('');
+      setActionLabel('');
+      setActionLink('');
+    }
+  };
+
+  return (
+    <section className="card p-6">
+      <div className="flex items-start gap-3">
+        <Megaphone className="mt-0.5 h-5 w-5 text-indigo-600" />
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">Broadcast announcement</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-600">
+            Send a real in-app notification to every active account. Delivery and audit logging are performed by the protected server-side RPC.
+          </p>
+        </div>
+      </div>
+
+      <form onSubmit={(event) => void submit(event)} className="mt-6 space-y-5">
+        {formError && <p role="alert" className="rounded-xl bg-error-50 p-3 text-sm text-error-700">{formError}</p>}
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-semibold text-slate-700">Title</span>
+          <input
+            required
+            maxLength={160}
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            className="input"
+            placeholder="Important platform update"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-semibold text-slate-700">Message</span>
+          <textarea
+            required
+            maxLength={2000}
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            className="input min-h-32 resize-y"
+            placeholder="Write the announcement shown to active learners."
+          />
+        </label>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-semibold text-slate-700">Action label <span className="font-normal text-slate-400">(optional)</span></span>
+            <input
+              maxLength={80}
+              value={actionLabel}
+              onChange={(event) => setActionLabel(event.target.value)}
+              className="input"
+              placeholder="View details"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-semibold text-slate-700">Action destination <span className="font-normal text-slate-400">(optional)</span></span>
+            <input
+              maxLength={500}
+              value={actionLink}
+              onChange={(event) => setActionLink(event.target.value)}
+              className="input"
+              placeholder="/contests or https://…"
+            />
+          </label>
+        </div>
+        <div className="flex justify-end">
+          <button type="submit" disabled={sending} className="btn-primary px-5 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60">
+            <Megaphone className="h-4 w-4" />
+            {sending ? 'Sending…' : 'Send announcement'}
+          </button>
+        </div>
+      </form>
+    </section>
   );
 }
 

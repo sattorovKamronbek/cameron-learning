@@ -9,10 +9,9 @@ import { subjects } from '@/data/subjects';
 const levels: Course['level'][] = ['Beginner', 'Intermediate', 'Advanced'];
 const categories = ['all', 'programming', 'academic'] as const;
 const sortOptions = [
-  { value: 'popular', label: 'Most popular' },
-  { value: 'rating', label: 'Highest rated' },
-  { value: 'newest', label: 'Newest' },
-  { value: 'duration', label: 'Shortest first' },
+  { value: 'catalogue', label: 'Catalogue order' },
+  { value: 'duration', label: 'Shortest estimated time' },
+  { value: 'outlines', label: 'Most outline items' },
 ] as const;
 
 type SortValue = (typeof sortOptions)[number]['value'];
@@ -22,7 +21,7 @@ export function CoursesPage() {
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<(typeof categories)[number]>('all');
-  const [sort, setSort] = useState<SortValue>('popular');
+  const [sort, setSort] = useState<SortValue>('catalogue');
 
   const filtered = useMemo(() => {
     let result = [...courses];
@@ -33,8 +32,7 @@ export function CoursesPage() {
         (c) =>
           c.title.toLowerCase().includes(q) ||
           c.subtitle.toLowerCase().includes(q) ||
-          c.tags.some((t) => t.toLowerCase().includes(q)) ||
-          c.instructor.toLowerCase().includes(q)
+          c.tags.some((t) => t.toLowerCase().includes(q))
       );
     }
 
@@ -52,17 +50,14 @@ export function CoursesPage() {
     }
 
     switch (sort) {
-      case 'rating':
-        result.sort((a, b) => b.rating - a.rating);
-        break;
-      case 'newest':
-        result.sort((a, b) => Number(b.isNew) - Number(a.isNew));
-        break;
       case 'duration':
         result.sort((a, b) => a.durationHours - b.durationHours);
         break;
+      case 'outlines':
+        result.sort((a, b) => b.lessons.length - a.lessons.length);
+        break;
       default:
-        result.sort((a, b) => b.learners - a.learners);
+        break;
     }
 
     return result;
@@ -84,8 +79,8 @@ export function CoursesPage() {
     <>
       <PageHeader
         eyebrow="Course library"
-        title="Browse all courses"
-        description="172 free courses across programming and academic subjects. Filter by topic, level, and category to find exactly what you need."
+        title="Browse course outlines"
+        description="Browse the current curated catalogue of course outlines across programming and academic subjects. Filter by topic, level, and category."
       >
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
           <div className="relative flex-1 max-w-xl">
@@ -94,7 +89,7 @@ export function CoursesPage() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search courses, topics, or instructors..."
+              placeholder="Search course outlines or topics..."
               className="w-full rounded-xl border-0 bg-white py-3.5 pl-12 pr-4 text-sm text-slate-900 shadow-soft ring-1 ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
@@ -195,8 +190,8 @@ export function CoursesPage() {
             <div>
               <div className="mb-6 flex items-center justify-between">
                 <p className="text-sm text-slate-500">
-                  Showing <span className="font-bold text-slate-900">{filtered.length}</span> course
-                  {filtered.length !== 1 ? 's' : ''}
+                  Showing <span className="font-bold text-slate-900">{filtered.length}</span>{' '}
+                  {filtered.length === 1 ? 'catalogue entry' : 'catalogue entries'}
                 </p>
               </div>
 

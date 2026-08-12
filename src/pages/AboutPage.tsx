@@ -1,5 +1,5 @@
 import {
-  Target, Heart, Users, Award, Globe, Sparkles, ArrowRight, Mail, MapPin, Lightbulb,
+  Target, Heart, Users, Sparkles, ArrowRight, Mail, MapPin, Lightbulb,
 } from 'lucide-react';
 import { Link } from '@/router';
 import { PageHeader } from '@/components/PageHeader';
@@ -8,37 +8,34 @@ import { Reveal, SectionHeading } from '@/components/Primitives';
 const values = [
   {
     icon: Heart,
-    title: 'Education for all',
-    description: 'Knowledge should not be locked behind paywalls. Our core content is free, forever.',
+    title: 'Clear availability',
+    description: 'We distinguish what can be used today from features that are still being prepared.',
     color: 'bg-error-500',
   },
   {
     icon: Lightbulb,
-    title: 'Clarity over jargon',
-    description: 'We explain hard things in plain language. If you do not understand, that is on us.',
+    title: 'Clarity over hype',
+    description: 'The catalogue does not use fabricated learner counts, ratings, or feature claims.',
     color: 'bg-sun-500',
   },
   {
     icon: Target,
-    title: 'Structure, not chaos',
-    description: 'Random tutorials do not make you job-ready. Clear, ordered paths do.',
+    title: 'Structure, not promises',
+    description: 'Roadmaps are planning references, not guarantees of a credential or job outcome.',
     color: 'bg-indigo-500',
   },
   {
     icon: Users,
-    title: 'Community-driven',
-    description: 'Learners can support each other through shared practice and encouragement.',
+    title: 'Respectful of your data',
+    description: 'Account features are limited to what the app can actually store and show.',
     color: 'bg-electric-500',
   },
 ];
 
-const team = [
-  { name: 'Maya Chen', role: 'Lead Instructor, Web Dev', initials: 'MC', color: 'from-indigo-400 to-indigo-600' },
-  { name: 'David Okoro', role: 'Full-Stack Educator', initials: 'DO', color: 'from-electric-400 to-electric-600' },
-  { name: 'Dr. Amara Okafor', role: 'Data Science Lead', initials: 'AO', color: 'from-error-400 to-error-600' },
-  { name: 'Prof. Elena Rossi', role: 'CS & Mathematics', initials: 'ER', color: 'from-sun-400 to-sun-600' },
-  { name: 'Prof. James Whitfield', role: 'Mathematics', initials: 'JW', color: 'from-electric-500 to-indigo-500' },
-  { name: 'Dr. Yuki Tanaka', role: 'ML Research Engineer', initials: 'YT', color: 'from-indigo-500 to-electric-600' },
+const catalogueNotes = [
+  { icon: Target, title: 'Static outlines', description: 'Course pages currently provide curated topic and outline information, not a lesson player.' },
+  { icon: Lightbulb, title: 'Planning references', description: 'Roadmaps are flexible study guides with listed estimates, not automatic programmes.' },
+  { icon: Users, title: 'No simulated community', description: 'Forums, badges, AI feedback, and instructor profiles are not published until they are real.' },
 ];
 
 export function AboutPage() {
@@ -46,8 +43,8 @@ export function AboutPage() {
     <>
       <PageHeader
         eyebrow="About Cameron"
-        title="We make learning clear"
-        description="Cameron Learning is on a mission to make high-quality education in programming and academic subjects accessible to everyone — free, structured, and genuinely understandable."
+        title="A transparent learning catalogue"
+        description="Cameron currently presents curated course outlines, roadmaps, and resources for programming and academic subjects. Features are labelled by their real availability."
       />
 
       {/* Mission */}
@@ -56,20 +53,20 @@ export function AboutPage() {
           <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
             <div>
               <SectionHeading
-                eyebrow="Our mission"
-                title="Great teaching should not be a privilege"
-                description="We started Cameron because we were frustrated. The internet has more learning material than ever, but it is scattered, inconsistent, and often confusing. We set out to build the resource we wished we had: one place with clear paths, expert instructors, and content that respects your time."
+                eyebrow="What this version provides"
+                title="A practical catalogue for choosing what to study"
+                description="The current app helps you browse subject areas, compare course outlines, and use roadmaps as planning references. It does not present unfinished tools as live learning services."
               />
               <div className="mt-8 space-y-4">
                 {[
-                  'Free core content — no subscriptions to start learning.',
-                  'Structured roadmaps so you always know what comes next.',
-                  'Real instructors with real-world experience, not just video personalities.',
-                  'A community that supports you when you get stuck.',
+                  'Browse course outlines, roadmaps, and resources without an account.',
+                  'Save catalogue entries to your account when the database is connected.',
+                  'See real contest activity only after a contest is created and finalized.',
+                  'Interactive lessons, badges, forums, and AI feedback are clearly marked as unavailable.',
                 ].map((point) => (
                   <Reveal key={point}>
                     <div className="flex items-start gap-3">
-                      <span className="mt-1 flex h-5 w-5 flex-shrslate-0 items-center justify-center rounded-full bg-indigo-100">
+                      <span className="mt-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-indigo-100">
                         <Sparkles className="h-3 w-3 text-indigo-700" />
                       </span>
                       <p className="text-slate-700 text-pretty">{point}</p>
@@ -82,10 +79,10 @@ export function AboutPage() {
             <Reveal delay={200}>
               <div className="grid grid-cols-2 gap-4">
                 {[
-                  { icon: Users, title: 'Learn together', description: 'Find encouragement when you need it.', color: 'text-indigo-600' },
-                  { icon: Award, title: 'Practice with purpose', description: 'Turn explanations into useful skills.', color: 'text-electric-600' },
-                  { icon: Globe, title: 'Learn from anywhere', description: 'Keep your learning close wherever you are.', color: 'text-sun-600' },
-                  { icon: Target, title: 'Follow a clear path', description: 'Know what to focus on next.', color: 'text-error-600' },
+                  { icon: Users, title: 'Browse entries', description: 'Explore the current catalogue without a social feed.', color: 'text-indigo-600' },
+                  { icon: Lightbulb, title: 'Compare topics', description: 'Review listed subjects, tags, and outlines.', color: 'text-electric-600' },
+                  { icon: Sparkles, title: 'See clear status', description: 'Unavailable features are not simulated.', color: 'text-sun-600' },
+                  { icon: Target, title: 'Plan your study', description: 'Use roadmaps as flexible references.', color: 'text-error-600' },
                 ].map(({ icon: Icon, title, description, color }) => (
                   <div key={title} className="card p-6 text-center">
                     <Icon className={'mx-auto h-8 w-8 ' + color} />
@@ -124,27 +121,21 @@ export function AboutPage() {
         </div>
       </section>
 
-      {/* Instructors */}
+      {/* Catalogue notes */}
       <section id="instructors" className="bg-white py-20">
         <div className="container-page">
           <SectionHeading
-            eyebrow="Our team"
-            title="Learn from experts who teach"
-            description="Our instructors are practitioners and academics who care deeply about making complex topics click."
+            eyebrow="Catalogue notes"
+            title="Instructor profiles are not published"
+            description="The names and credentials behind a course are not presented as verified instructors until that information can be sourced and maintained."
           />
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {team.map((member, i) => (
-              <Reveal key={member.name} delay={(i % 3) * 80}>
-                <div className="card flex items-center gap-4 p-6 hover:shadow-card">
-                  <div
-                    className={`flex h-16 w-16 flex-shrslate-0 items-center justify-center rounded-2xl bg-gradient-to-br ${member.color} text-xl font-bold text-white`}
-                  >
-                    {member.initials}
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900">{member.name}</h3>
-                    <p className="text-sm text-slate-500">{member.role}</p>
-                  </div>
+          <div className="mt-12 grid gap-6 sm:grid-cols-3">
+            {catalogueNotes.map(({ icon: Icon, title, description }, i) => (
+              <Reveal key={title} delay={(i % 3) * 80}>
+                <div className="card h-full p-6">
+                  <Icon className="h-7 w-7 text-indigo-600" />
+                  <h3 className="mt-4 text-base font-bold text-slate-900">{title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-500">{description}</p>
                 </div>
               </Reveal>
             ))}
@@ -161,7 +152,7 @@ export function AboutPage() {
                 <Mail className="mx-auto h-10 w-10 text-white/80" />
                 <h2 className="mt-4 text-2xl font-bold">Get in touch</h2>
                 <p className="mt-2 text-indigo-100">
-                  Questions, feedback, or partnership ideas? We would love to hear from you.
+                  Questions, feedback, or a correction to a catalogue entry? You can reach us by email.
                 </p>
               </div>
               <div className="p-8">
@@ -177,12 +168,12 @@ export function AboutPage() {
                     <MapPin className="h-5 w-5 text-indigo-600" />
                     <div>
                       <p className="text-xs text-slate-400">Location</p>
-                      <p className="text-sm font-semibold text-slate-900">Remote · Worldwide</p>
+                      <p className="text-sm font-semibold text-slate-900">Contact by email</p>
                     </div>
                   </div>
                 </div>
-                <Link to="/signup" className="btn-primary mt-6 w-full">
-                  Join the community
+                <Link to="/courses" className="btn-primary mt-6 w-full">
+                  Browse the catalogue
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </div>

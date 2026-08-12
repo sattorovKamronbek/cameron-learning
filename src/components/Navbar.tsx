@@ -4,13 +4,12 @@ import {
   Info, User, LogOut, Crown, Zap, Sparkles, Trophy, BarChart3,
   Award, Shield, Bell, Home, Activity, Code2, Sigma, Atom,
   FlaskConical, Languages, Brain, ClipboardList, TrendingUp,
-  Clock, CheckCircle2, Star, Scale, Globe, MapPin, LineChart,
+  Clock, CheckCircle2, Globe,
   Palette,
 } from 'lucide-react';
 import { Link, useRouter } from '@/router';
 import { useAuth } from '@/lib/auth';
-import { checkAdminAccess } from '@/lib/security';
-import { canManageContests } from '@/lib/contests';
+import { useAccessControl } from '@/lib/access';
 import { Logo } from '@/components/Logo';
 import { NotificationBell } from '@/components/NotificationBell';
 import type { Plan } from '@/lib/supabase';
@@ -43,8 +42,8 @@ const navGroups: NavEntry[] = [
     icon: Home,
     items: [
       { to: '/', label: 'Home', icon: Home, description: 'Landing page & overview' },
-      { to: '/profile', label: 'My Dashboard', icon: User, description: 'Ratings, activity & stats' },
-      { to: '/notifications', label: 'Recent Activity', icon: Activity, description: 'Notifications & updates' },
+      { to: '/profile', label: 'My Dashboard', icon: User, description: 'Saved entries and account details' },
+      { to: '/notifications', label: 'Recent Activity', icon: Activity, description: 'Notifications and announcements' },
     ],
   },
   {
@@ -56,21 +55,21 @@ const navGroups: NavEntry[] = [
         {
           title: 'Learning Resources',
           items: [
-            { to: '/courses', label: 'Courses', icon: BookOpen, description: 'Structured video courses' },
-            { to: '/subjects', label: 'Subjects', icon: GraduationCap, description: 'Browse all 16+ subjects' },
-            { to: '/roadmaps', label: 'Roadmaps', icon: Map, description: 'Step-by-step learning paths' },
+            { to: '/courses', label: 'Courses', icon: BookOpen, description: 'Curated course outlines' },
+            { to: '/subjects', label: 'Subjects', icon: GraduationCap, description: 'Browse current subject areas' },
+            { to: '/roadmaps', label: 'Roadmaps', icon: Map, description: 'Reference study plans' },
             { to: '/resources', label: 'Resources', icon: FileText, description: 'Articles & guides' },
           ],
         },
         {
-          title: 'Popular Subjects',
+          title: 'Subject shortcuts',
           items: [
-            { to: '/subjects/programming', label: 'Programming', icon: Code2 },
+            { to: '/subjects/web-development', label: 'Web Development', icon: Code2 },
             { to: '/subjects/mathematics', label: 'Mathematics', icon: Sigma },
             { to: '/subjects/physics', label: 'Physics', icon: Atom },
             { to: '/subjects/chemistry', label: 'Chemistry', icon: FlaskConical },
-            { to: '/subjects/english', label: 'English', icon: Languages },
-            { to: '/subjects/ai-ml', label: 'AI & ML', icon: Brain },
+            { to: '/subjects/languages', label: 'Languages', icon: Languages },
+            { to: '/subjects/ai-machine-learning', label: 'AI & ML', icon: Brain },
           ],
         },
       ],
@@ -85,9 +84,10 @@ const navGroups: NavEntry[] = [
         {
           title: 'Programming',
           items: [
-            { to: '/contests', label: 'Live Contests', icon: Trophy, description: 'Active & upcoming contests' },
-            { to: '/contests?filter=practice', label: 'Practice Problems', icon: ClipboardList, description: 'Solo practice archive' },
-            { to: '/contests?filter=virtual', label: 'Virtual Contests', icon: Clock, description: 'Replay past contests' },
+            { to: '/problems', label: 'Practice Problems', icon: Code2, description: 'Solve programming problems from the practice bank' },
+            { to: '/contests?status=live', label: 'Live Contests', icon: Trophy, description: 'Contests accepting entries now' },
+            { to: '/contests?status=upcoming', label: 'Upcoming Contests', icon: Clock, description: 'Scheduled real contests' },
+            { to: '/contests?status=finished', label: 'Completed Contests', icon: ClipboardList, description: 'Published contest results' },
           ],
         },
         {
@@ -103,10 +103,10 @@ const navGroups: NavEntry[] = [
         {
           title: 'Quick Access',
           items: [
-            { to: '/contests?filter=upcoming', label: 'Upcoming Contest', icon: Clock },
-            { to: '/contests?filter=finished', label: 'Recent Results', icon: CheckCircle2 },
-            { to: '/profile', label: 'My Ratings', icon: TrendingUp },
-            { to: '/contests?filter=history', label: 'Contest History', icon: Activity },
+            { to: '/contests', label: 'Browse All Contests', icon: Trophy },
+            { to: '/contests?status=finished', label: 'Recent Results', icon: CheckCircle2 },
+            { to: '/profile', label: 'My rating status', icon: TrendingUp },
+            { to: '/profile', label: 'My contest history', icon: Activity },
           ],
         },
       ],
@@ -114,13 +114,11 @@ const navGroups: NavEntry[] = [
   },
   {
     id: 'community',
-    label: 'Community',
+    label: 'Platform status',
     icon: Trophy,
     items: [
-      { to: '/leaderboards', label: 'Rankings', icon: Trophy, description: 'Global & subject leaderboards' },
-      { to: '/leaderboards', label: 'Leaderboards', icon: BarChart3, description: 'Country & school rankings' },
-      { to: '/achievements', label: 'Badges', icon: Award, description: 'Badge collection & tiers' },
-      { to: '/achievements', label: 'Achievements', icon: Star, description: 'All achievements' },
+      { to: '/leaderboards', label: 'Contest leaderboard', icon: Trophy, description: 'Appears after real finalized contests' },
+      { to: '/achievements', label: 'Achievement status', icon: Award, description: 'Badges are not available yet' },
     ],
   },
   {
@@ -128,9 +126,9 @@ const navGroups: NavEntry[] = [
     label: 'Insights',
     icon: BarChart3,
     items: [
-      { to: '/analytics', label: 'Analytics', icon: BarChart3, description: 'Full analytics dashboard' },
-      { to: '/analytics', label: 'Progress', icon: TrendingUp, description: 'Track your growth' },
-      { to: '/analytics', label: 'Statistics', icon: Activity, description: 'Detailed performance stats' },
+      { to: '/analytics', label: 'Contest analytics', icon: BarChart3, description: 'Shows real contest data when available' },
+      { to: '/analytics', label: 'Rating history', icon: TrendingUp, description: 'Appears after finalized contest results' },
+      { to: '/analytics', label: 'Activity', icon: Activity, description: 'Your stored contest activity' },
     ],
   },
   {
@@ -138,9 +136,9 @@ const navGroups: NavEntry[] = [
     label: 'More',
     icon: Info,
     items: [
-      { to: '/pricing', label: 'Pricing', icon: Crown, description: 'Plans & features' },
-      { to: '/about', label: 'About', icon: Info, description: 'Our story & mission' },
-      { to: '/resources', label: 'FAQ', icon: FileText, description: 'Help center & guides' },
+      { to: '/pricing', label: 'Pricing', icon: Crown, description: 'Free account and future plans' },
+      { to: '/about', label: 'About', icon: Info, description: 'Catalogue status and notes' },
+      { to: '/resources', label: 'Resources', icon: FileText, description: 'Articles and guides' },
       { to: '/about', label: 'Contact', icon: Globe, description: 'Get in touch' },
     ],
   },
@@ -148,8 +146,8 @@ const navGroups: NavEntry[] = [
 
 const planBadge: Record<Plan, { icon: typeof Zap; label: string; color: string }> = {
   free: { icon: Sparkles, label: 'Free', color: 'bg-slate-100 text-slate-600' },
-  pro: { icon: Zap, label: 'Pro', color: 'bg-indigo-100 text-indigo-700' },
-  max: { icon: Crown, label: 'Max', color: 'bg-electric-100 text-electric-700' },
+  pro: { icon: Zap, label: 'Unavailable', color: 'bg-slate-100 text-slate-600' },
+  max: { icon: Crown, label: 'Unavailable', color: 'bg-slate-100 text-slate-600' },
 };
 
 /* ============ Helper ============ */
@@ -179,7 +177,7 @@ export function Navbar() {
   const { path } = useRouter();
   const { t } = useTranslation();
   const { user, profile, signOut } = useAuth();
-  const [canAccessAdmin, setCanAccessAdmin] = useState(false);
+  const { adminAccess: canAccessAdmin, canManageContests: canManageContestAccess } = useAccessControl();
   const navRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -230,13 +228,6 @@ export function Navbar() {
     return () => document.removeEventListener('click', onClick);
   }, [userMenuOpen]);
 
-  useEffect(() => {
-    let active = true;
-    if (!user) { setCanAccessAdmin(false); return () => { active = false; }; }
-    checkAdminAccess().then((allowed) => { if (active) setCanAccessAdmin(allowed); });
-    return () => { active = false; };
-  }, [user]);
-
   const handleSignOut = async () => {
     await signOut();
     setUserMenuOpen(false);
@@ -251,8 +242,6 @@ export function Navbar() {
 
   const currentPlan = profile?.plan ?? 'free';
   const badge = planBadge[currentPlan];
-  const canManageContestAccess = profile?.status === 'active' && canManageContests(profile?.role);
-
   return (
     <>
       <header
@@ -544,8 +533,6 @@ function DropdownTrigger({
   const { t } = useTranslation();
   const isOpen = openDropdown === group.id;
   const active = isGroupActive(path, group);
-  const GroupIcon = group.icon;
-
   return (
     <div
       className="relative"

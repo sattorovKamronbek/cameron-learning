@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, Award, Bell, Calendar, CheckCircle2, Clock, Flame, Megaphone, Trophy, TrendingUp, type LucideIcon } from 'lucide-react';
+import { Bell, Calendar, CheckCircle2, Clock, Flame, Megaphone, Trophy, TrendingUp, type LucideIcon } from 'lucide-react';
 import { supabase, type AppNotification } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 

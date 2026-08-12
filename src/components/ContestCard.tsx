@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowRight, Calendar, Clock, Trophy, Users } from 'lucide-react';
 import { Link } from '@/router';
+import { subjectGradient } from '@/lib/contest-appearance';
 import {
   formatContestDate,
   formatContestDuration,
@@ -16,21 +17,6 @@ const difficultyClasses: Record<ContestDifficulty, string> = {
   Hard: 'bg-indigo-50 text-indigo-700 ring-indigo-200',
   Expert: 'bg-error-500/10 text-error-700 ring-error-500/20',
 };
-
-const subjectGradients: Record<string, string> = {
-  programming: 'from-indigo-600 to-electric-600',
-  mathematics: 'from-electric-500 to-cyan-600',
-  physics: 'from-violet-600 to-indigo-700',
-  chemistry: 'from-emerald-500 to-teal-700',
-  biology: 'from-success-500 to-emerald-700',
-  english: 'from-sky-500 to-electric-700',
-  'ai-ml': 'from-fuchsia-600 to-indigo-700',
-  'data-science': 'from-cyan-600 to-blue-700',
-};
-
-export function subjectGradient(subjectSlug: string): string {
-  return subjectGradients[subjectSlug] ?? 'from-slate-600 to-slate-800';
-}
 
 export function DifficultyBadge({ difficulty }: { difficulty: ContestDifficulty }) {
   return <span className={`chip ring-1 ${difficultyClasses[difficulty]}`}>{difficulty}</span>;

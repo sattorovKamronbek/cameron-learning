@@ -4,16 +4,43 @@ import { Link, useRouter } from '@/router';
 import { ContestCard } from '@/components/ContestCard';
 import { ContestFilterBar, defaultFilters, type FilterState } from '@/components/ContestFilters';
 import { LoadingState } from '@/components/LoadingState';
-import { useAuth } from '@/lib/auth';
-import { canManageContests, fetchPublicContests, type Contest } from '@/lib/contests';
+import { useAccessControl } from '@/lib/access';
+import { fetchPublicContests, type Contest } from '@/lib/contests';
+
+const statusFromQuery: Record<string, FilterState['status']> = {
+  live: 'Live',
+  upcoming: 'Upcoming',
+  finished: 'Finished',
+};
+
+function filtersForQuery(query: URLSearchParams): FilterState {
+  const status = statusFromQuery[query.get('status')?.toLowerCase() ?? '']
+    ?? statusFromQuery[query.get('filter')?.toLowerCase() ?? '']
+    ?? 'all';
+
+  return {
+    ...defaultFilters,
+    subject: query.get('subject') || 'all',
+    status,
+  };
+}
+
+function unavailableModeForQuery(query: URLSearchParams): string | null {
+  const legacyFilter = query.get('filter')?.toLowerCase();
+  if (legacyFilter === 'practice') return 'Practice problems are not available yet.';
+  if (legacyFilter === 'virtual') return 'Virtual contests are not available yet.';
+  if (legacyFilter === 'history') return 'Your personal contest history is available from your profile.';
+  return null;
+}
 
 export function ContestLandingPage() {
   const { query } = useRouter();
-  const { profile } = useAuth();
+  const { canManageContests } = useAccessControl();
   const [contests, setContests] = useState<Contest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<FilterState>(() => ({ ...defaultFilters, subject: query.get('subject') || 'all' }));
+  const [filters, setFilters] = useState<FilterState>(() => filtersForQuery(query));
+  const [unavailableMode, setUnavailableMode] = useState<string | null>(() => unavailableModeForQuery(query));
 
   const load = async () => {
     setLoading(true);
@@ -30,8 +57,8 @@ export function ContestLandingPage() {
 
   useEffect(() => { void load(); }, []);
   useEffect(() => {
-    const subject = query.get('subject');
-    if (subject) setFilters((current) => ({ ...current, subject }));
+    setFilters(filtersForQuery(query));
+    setUnavailableMode(unavailableModeForQuery(query));
   }, [query]);
 
   const filtered = useMemo(() => {
@@ -67,7 +94,7 @@ export function ContestLandingPage() {
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-slate-300">Ro‘yxatdan o‘tish, savollar, javoblar, natijalar va reytinglar serverda saqlanadi. Demo botlar yoki soxta natijalar ko‘rsatilmaydi.</p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <a href="#all-contests" className="btn-gradient px-5 py-3 text-sm">Contestsni ko‘rish <ArrowRight className="h-4 w-4" /></a>
-            {canManageContests(profile?.role) && <Link to="/contest-management" className="btn bg-white/10 px-5 py-3 text-sm text-white ring-1 ring-white/20 hover:bg-white/15"><ShieldCheck className="h-4 w-4" />Contest boshqaruvi</Link>}
+            {canManageContests && <Link to="/contest-management" className="btn bg-white/10 px-5 py-3 text-sm text-white ring-1 ring-white/20 hover:bg-white/15"><ShieldCheck className="h-4 w-4" />Contest boshqaruvi</Link>}
           </div>
         </div>
       </section>
@@ -81,6 +108,13 @@ export function ContestLandingPage() {
       </section>
 
       <section id="all-contests" className="scroll-mt-20">
+        {unavailableMode && (
+          <div className="border-b border-amber-100 bg-amber-50">
+            <div className="container-page py-3" role="status">
+              <p className="text-sm text-amber-800">{unavailableMode} Showing currently available real contests instead.</p>
+            </div>
+          </div>
+        )}
         <ContestFilterBar filters={filters} onChange={setFilters} resultCount={filtered.length} />
         <div className="bg-slate-50/50 py-10">
           <div className="container-page">
@@ -100,7 +134,7 @@ export function ContestLandingPage() {
                 <Users className="mx-auto h-10 w-10 text-slate-300" />
                 <h2 className="mt-4 text-lg font-bold text-slate-900">Hozircha contest yo‘q</h2>
                 <p className="mx-auto mt-2 max-w-lg text-sm text-slate-500">Faqat judge yoki admin savollari tayyor va e’lon qilingan contestni bu yerda chiqara oladi.</p>
-                {canManageContests(profile?.role) && <Link to="/contest-management" className="btn-primary mt-5">Birinchi contestni tayyorlash <ArrowRight className="h-4 w-4" /></Link>}
+                {canManageContests && <Link to="/contest-management" className="btn-primary mt-5">Birinchi contestni tayyorlash <ArrowRight className="h-4 w-4" /></Link>}
               </div>
             )}
           </div>

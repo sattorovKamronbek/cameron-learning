@@ -1,4 +1,4 @@
-import { ArrowRight, Clock, Calendar, User, Search, BookOpen, Lightbulb, FileText } from 'lucide-react';
+import { ArrowRight, Search, BookOpen, Lightbulb, FileText } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from '@/router';
 import { PageHeader } from '@/components/PageHeader';
@@ -26,8 +26,8 @@ export function ResourcesPage() {
     <>
       <PageHeader
         eyebrow="Articles & resources"
-        title="Learn beyond the lessons"
-        description="Guides, tutorials, and deep dives to complement your courses. Written by our instructors and experts."
+        title="Catalogue notes and previews"
+        description="Browse static topic summaries and resource ideas. Full published guides and author credentials are not available on this site yet."
       />
 
       {/* Featured article */}
@@ -43,7 +43,7 @@ export function ResourcesPage() {
                 <div className="relative flex h-full flex-col justify-between p-8">
                   <span className="chip w-fit bg-white/20 text-white backdrop-blur-sm">
                     <Lightbulb className="h-3.5 w-3.5" />
-                    Featured article
+                    Catalogue preview
                   </span>
                   <FileText className="h-20 w-20 text-white/30" />
                 </div>
@@ -51,10 +51,6 @@ export function ResourcesPage() {
               <div className="flex flex-col justify-center p-8">
                 <div className="flex items-center gap-3 text-xs text-slate-400">
                   <span className="chip bg-indigo-50 text-indigo-700">{featured.category}</span>
-                  <span className="inline-flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    {featured.readTime}
-                  </span>
                 </div>
                 <h2 className="mt-4 text-2xl font-bold text-slate-900 group-hover:text-indigo-700 text-balance">
                   {featured.title}
@@ -62,8 +58,8 @@ export function ResourcesPage() {
                 <p className="mt-3 leading-relaxed text-slate-600 text-pretty">{featured.excerpt}</p>
                 <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
                   <span className="inline-flex items-center gap-2 text-sm text-slate-500">
-                    <User className="h-4 w-4" />
-                    {featured.author}
+                    <FileText className="h-4 w-4" />
+                    Static preview
                   </span>
                   <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-700">
                     Read article
@@ -80,7 +76,7 @@ export function ResourcesPage() {
       <section className="bg-slate-50/50 py-16">
         <div className="container-page">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <h2 className="text-2xl font-bold text-slate-900">All articles</h2>
+            <h2 className="text-2xl font-bold text-slate-900">All catalogue previews</h2>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -138,12 +134,8 @@ export function ResourcesPage() {
 
                   <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 text-xs text-slate-400">
                     <span className="inline-flex items-center gap-1.5">
-                      <User className="h-3.5 w-3.5" />
-                      {article.author}
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5" />
-                      {article.readTime}
+                      <FileText className="h-3.5 w-3.5" />
+                      Static preview
                     </span>
                   </div>
                 </Link>

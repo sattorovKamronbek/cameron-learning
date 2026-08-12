@@ -23,10 +23,10 @@ export type Roadmap = {
 export const roadmaps: Roadmap[] = [
   {
     slug: 'become-a-web-developer',
-    title: 'Become a Web Developer',
-    goal: 'Job-ready frontend & full-stack developer',
+    title: 'Web development study plan',
+    goal: 'Web development foundations',
     description:
-      'A structured path from your first line of HTML to building and deploying full applications. Follow these steps in order and build a portfolio along the way.',
+      'A reference sequence from HTML through application-development topics. Use it to plan your own study and portfolio work.',
     icon: Code2,
     color: 'from-indigo-500 to-indigo-700',
     steps: [
@@ -70,10 +70,10 @@ export const roadmaps: Roadmap[] = [
   },
   {
     slug: 'become-a-data-scientist',
-    title: 'Become a Data Scientist',
-    goal: 'Analyze data and build ML models',
+    title: 'Data science study plan',
+    goal: 'Data analysis and machine-learning foundations',
     description:
-      'Go from spreadsheets to sophisticated machine learning. This path balances math foundations with practical, hands-on Python projects.',
+      'A reference sequence that combines mathematics, Python, data analysis, and machine-learning topics for self-directed study.',
     icon: BarChart3,
     color: 'from-electric-500 to-electric-700',
     steps: [
@@ -117,10 +117,10 @@ export const roadmaps: Roadmap[] = [
   },
   {
     slug: 'become-an-ml-engineer',
-    title: 'Become an ML Engineer',
-    goal: 'Ship machine learning to production',
+    title: 'ML engineering study plan',
+    goal: 'Machine-learning engineering topics',
     description:
-      'For those who want to take models beyond notebooks and into real systems. Focuses on deep learning, MLOps, and deployment.',
+      'A reference sequence covering deep learning, MLOps, and deployment topics for learners planning independent study.',
     icon: Brain,
     color: 'from-slate-600 to-slate-800',
     steps: [
@@ -158,8 +158,8 @@ export const roadmaps: Roadmap[] = [
   },
   {
     slug: 'master-academic-fundamentals',
-    title: 'Master Academic Fundamentals',
-    goal: 'Build a strong base across core subjects',
+    title: 'Academic foundations study plan',
+    goal: 'Core science and engineering topics',
     description:
       'A well-rounded path for students who want to strengthen their foundation in the subjects that underpin science and engineering.',
     icon: GraduationCap,

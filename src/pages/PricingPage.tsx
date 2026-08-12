@@ -9,8 +9,8 @@ import { useState } from 'react';
 type PlanInfo = {
   id: Plan;
   name: string;
-  price: number;
-  period: string;
+  price: number | null;
+  period?: string;
   tagline: string;
   icon: typeof Zap;
   color: string;
@@ -27,83 +27,71 @@ const plans: PlanInfo[] = [
     name: 'Free',
     price: 0,
     period: 'forever',
-    tagline: 'Everything you need to start learning.',
+    tagline: 'The account features currently available.',
     icon: Sparkles,
     color: 'text-slate-700',
     bgColor: 'bg-slate-50',
     borderColor: 'ring-slate-200',
     features: [
-      'Access to all 172 courses',
-      'Free preview lessons',
-      'Community discussion access',
-      'Basic progress tracking',
-      'Browse all roadmaps',
+      'Create a free account',
+      'Save catalogue entries',
+      'Browse course outlines',
+      'Browse study roadmaps',
     ],
     highlight: false,
   },
   {
     id: 'pro',
     name: 'Pro',
-    price: 20,
-    period: 'per month',
-    tagline: 'For serious learners who want more.',
+    price: null,
+    tagline: 'Reserved for future paid plan details.',
     icon: Zap,
     color: 'text-indigo-700',
     bgColor: 'bg-indigo-50',
     borderColor: 'ring-indigo-300',
     features: [
-      'Everything in Free',
-      'Unlimited full course access',
-      'Downloadable course resources',
-      'Certificates of completion',
-      'Advanced progress analytics',
-      'Priority community support',
-      'Ad-free experience',
+      'Paid checkout is not available yet',
+      'Benefits will be published with secure checkout',
+      'No account is upgraded from this page',
     ],
-    highlight: true,
-    badge: 'Most popular',
+    highlight: false,
+    badge: 'Coming soon',
   },
   {
     id: 'max',
     name: 'Max',
-    price: 70,
-    period: 'per month',
-    tagline: 'The complete learning experience.',
+    price: null,
+    tagline: 'Reserved for future paid plan details.',
     icon: Crown,
     color: 'text-electric-700',
     bgColor: 'bg-electric-50',
     borderColor: 'ring-electric-300',
     features: [
-      'Everything in Pro',
-      '1-on-1 instructor sessions',
-      'Personalized learning paths',
-      'Project reviews & feedback',
-      'Early access to new courses',
-      'Mentor matching program',
-      'Lifetime course access',
-      'Career guidance & interview prep',
+      'Paid checkout is not available yet',
+      'Benefits will be published with secure checkout',
+      'No account is upgraded from this page',
     ],
     highlight: false,
-    badge: 'Best value',
+    badge: 'Coming soon',
   },
 ];
 
 const faqs = [
   {
-    q: 'Can I switch plans at any time?',
-    a: 'Yes. You can upgrade or downgrade your plan whenever you want. Changes take effect immediately and are prorated.',
+    q: 'Can I switch plans today?',
+    a: 'The Free plan is available now. Paid checkout is not enabled yet, so the site will never charge you or change your plan from this page.',
   },
   {
-    q: 'Is there a free trial for paid plans?',
-    a: 'Your Free plan is available forever with no credit card required. You can upgrade to Pro or Max anytime to unlock premium features.',
+    q: 'Is there a free plan?',
+    a: 'Yes. The Free plan is available forever with no credit card required.',
   },
   {
-    q: 'Can I cancel my subscription?',
-    a: 'Absolutely. Cancel anytime from your profile page. You will keep access until the end of your billing period.',
+    q: 'Will I be billed from this page?',
+    a: 'No. There is no payment provider connected to this page yet.',
   },
   {
-    q: 'Do you offer student discounts?',
-    a: 'Yes. Students with a valid .edu email can get 50% off any paid plan. Contact us for details.',
+    q: 'When will paid plans be available?',
+    a: 'They will be announced only after secure checkout and billing management are connected.',
   },
 ];
 
@@ -128,7 +116,7 @@ export function PricingPage() {
       <PageHeader
         eyebrow="Pricing"
         title="Simple, transparent pricing"
-        description="Start free forever. Upgrade when you are ready for more. No hidden fees, cancel anytime."
+        description="The Free account is currently available. Paid plans are placeholders until secure checkout and their benefits are published."
       />
 
       {/* Plans */}
@@ -137,7 +125,7 @@ export function PricingPage() {
           <div className="grid gap-6 lg:grid-cols-3">
             {plans.map((plan, i) => {
               const Icon = plan.icon;
-              const isCurrent = profile?.plan === plan.id;
+              const isCurrent = plan.price === 0 && profile?.plan === plan.id;
               return (
                 <Reveal key={plan.id} delay={i * 100}>
                   <div
@@ -162,14 +150,14 @@ export function PricingPage() {
                     <h3 className="mt-5 text-xl font-bold text-slate-900">{plan.name}</h3>
                     <p className="mt-1 text-sm text-slate-500">{plan.tagline}</p>
 
-                    <div className="mt-6 flex items-baseline gap-1.5">
-                      <span className="text-4xl font-extrabold tracking-tight text-slate-900">
-                        ${plan.price}
-                      </span>
-                      <span className="text-sm text-slate-400">
-                        {plan.price === 0 ? plan.period : `/${plan.period.replace('per ', '')}`}
-                      </span>
-                    </div>
+                    {plan.price == null ? (
+                      <div className="mt-6 text-2xl font-extrabold tracking-tight text-slate-500">Not available yet</div>
+                    ) : (
+                      <div className="mt-6 flex items-baseline gap-1.5">
+                        <span className="text-4xl font-extrabold tracking-tight text-slate-900">${plan.price}</span>
+                        <span className="text-sm text-slate-400">{plan.period}</span>
+                      </div>
+                    )}
 
                     <button
                       onClick={() => handleSelect(plan.id)}
@@ -183,14 +171,14 @@ export function PricingPage() {
                       ) : plan.price === 0 ? (
                         user ? 'Free plan' : 'Get started free'
                       ) : (
-                        `Continue to payment`
+                        'Not available yet'
                       )}
                     </button>
 
                     <div className="mt-8 space-y-3">
                       {plan.features.map((feature) => (
                         <div key={feature} className="flex items-start gap-2.5">
-                          <span className={`mt-0.5 flex h-5 w-5 flex-shrslate-0 items-center justify-center rounded-full ${plan.bgColor}`}>
+                          <span className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full ${plan.bgColor}`}>
                             <Check className={`h-3 w-3 ${plan.color}`} />
                           </span>
                           <span className="text-sm text-slate-700">{feature}</span>
@@ -210,7 +198,7 @@ export function PricingPage() {
           )}
 
           <p className="mt-8 text-center text-sm text-slate-400">
-            All plans include access to our community. Prices in USD. No credit card required for Free.
+            No paid price is active until secure checkout is configured. No credit card is required for the available Free account.
           </p>
         </div>
       </section>
@@ -222,9 +210,9 @@ export function PricingPage() {
             <div className="card overflow-hidden">
               <div className="grid lg:grid-cols-3">
                 {[
-                  { icon: Star, title: '850K+ learners', desc: 'A growing community of curious minds.', color: 'text-indigo-600', bg: 'bg-indigo-50' },
-                  { icon: Check, title: 'No risk', desc: 'Cancel anytime, no questions asked.', color: 'text-electric-600', bg: 'bg-electric-50' },
-                  { icon: Zap, title: 'Instant access', desc: 'Start learning the moment you sign up.', color: 'text-sun-600', bg: 'bg-sun-500/10' },
+                  { icon: Star, title: 'Catalogue browsing', desc: 'Course outlines and roadmaps can be explored without an account.', color: 'text-indigo-600', bg: 'bg-indigo-50' },
+                  { icon: Check, title: 'Free account tools', desc: 'Create an account to save catalogue entries. No card is required.', color: 'text-electric-600', bg: 'bg-electric-50' },
+                  { icon: Zap, title: 'No surprise billing', desc: 'Paid checkout is disabled until it is securely connected.', color: 'text-sun-600', bg: 'bg-sun-500/10' },
                 ].map(({ icon: Icon, title, desc, color, bg }, i) => (
                   <div
                     key={title}
@@ -232,7 +220,7 @@ export function PricingPage() {
                       i === 0 ? 'border-b lg:border-b-0' : i === 1 ? 'border-b lg:border-b-0' : ''
                     }`}
                   >
-                    <div className={`flex h-11 w-11 flex-shrslate-0 items-center justify-center rounded-xl ${bg}`}>
+                    <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${bg}`}>
                       <Icon className={`h-5 w-5 ${color}`} />
                     </div>
                     <div>
@@ -278,7 +266,7 @@ export function PricingPage() {
                 Still have questions?
               </h2>
               <p className="mt-3 text-indigo-100">
-                Start with our free plan — no credit card, no commitment. Upgrade only when you are ready.
+                Start with the available Free account to save useful catalogue entries. No credit card or commitment is required.
               </p>
               <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
                 <Link to="/signup" className="btn bg-white text-indigo-700 shadow-lift hover:bg-indigo-50 px-6 py-3.5">

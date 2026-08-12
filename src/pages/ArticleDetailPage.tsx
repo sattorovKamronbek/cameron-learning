@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Clock, User, Calendar, ChevronRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight, FileText, ChevronRight } from 'lucide-react';
 import { Link, useRouter } from '@/router';
 import { Reveal } from '@/components/Primitives';
 import { getArticle, articles } from '@/data/articles';
@@ -54,16 +54,8 @@ export function ArticleDetailPage({ slug }: { slug: string }) {
           <Reveal delay={320}>
             <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-400">
               <span className="inline-flex items-center gap-1.5">
-                <User className="h-4 w-4" />
-                {article.author}
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Calendar className="h-4 w-4" />
-                {new Date(article.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Clock className="h-4 w-4" />
-                {article.readTime}
+                <FileText className="h-4 w-4" />
+                Static catalogue preview
               </span>
             </div>
           </Reveal>
@@ -75,37 +67,34 @@ export function ArticleDetailPage({ slug }: { slug: string }) {
           <div className="mx-auto max-w-3xl">
             <div className="prose-content space-y-6">
               <p className="text-lg leading-relaxed text-slate-700 text-pretty">
-                {article.excerpt} In this article, we break down the key ideas step by step, with
-                examples and practical takeaways you can apply immediately.
+                {article.excerpt} This page is a short catalogue preview, not a complete published article.
+                Use the ideas below as prompts for your own research and study.
               </p>
 
               <h2 className="text-2xl font-bold text-slate-900">Why this matters</h2>
               <p className="leading-relaxed text-slate-600">
-                Learning is most effective when you understand not just the "how" but the "why."
-                Too many resources skip the intuition and jump straight to formulas or code snippets.
-                We take a different approach: build understanding first, then layer on the technical
-                details.
+                A catalogue can help you decide which topics to investigate next. For authoritative
+                explanations, examples, and references, consult the original sources you choose for study.
               </p>
 
               <div className="rounded-2xl bg-indigo-50 p-6 ring-1 ring-indigo-100">
-                <p className="font-semibold text-indigo-800">Key takeaway</p>
+                <p className="font-semibold text-indigo-800">Study prompt</p>
                 <p className="mt-2 text-indigo-900">
-                  The best learners do not just consume content — they actively engage with it. Try
-                  the exercises, ask questions, and connect new ideas to what you already know.
+                  Write down what you want to understand, find a reliable source, and connect the
+                  topic to what you already know.
                 </p>
               </div>
 
               <h2 className="text-2xl font-bold text-slate-900">Breaking it down</h2>
               <p className="leading-relaxed text-slate-600">
-                Every complex topic becomes simpler when you break it into smaller pieces. Start
-                with the core concept, practice it until it feels natural, then add the next layer.
-                This is exactly how our courses are structured — each lesson builds on the last.
+                Break a complex topic into smaller pieces, then choose resources and exercises that
+                fit your own study plan. This catalogue does not provide the lessons or exercises itself.
               </p>
 
               <ul className="space-y-3">
                 {['Start with the fundamentals', 'Practice with real examples', 'Connect new concepts to old ones', 'Teach it back to solidify understanding'].map((point) => (
                   <li key={point} className="flex items-start gap-3">
-                    <span className="mt-1 flex h-5 w-5 flex-shrslate-0 items-center justify-center rounded-full bg-indigo-100">
+                    <span className="mt-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-indigo-100">
                       <ArrowRight className="h-3 w-3 text-indigo-700" />
                     </span>
                     <span className="text-slate-700">{point}</span>
@@ -115,18 +104,17 @@ export function ArticleDetailPage({ slug }: { slug: string }) {
 
               <h2 className="text-2xl font-bold text-slate-900">Next steps</h2>
               <p className="leading-relaxed text-slate-600">
-                Ready to go deeper? Explore our structured courses and roadmaps to turn this
-                knowledge into real skill. Each path is designed to take you from where you are
-                to where you want to be, one step at a time.
+                Explore related course outlines and roadmaps to find topics you may want to study next.
+                They are planning references, not hosted courses or a guarantee of a particular outcome.
               </p>
 
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Link to="/courses" className="btn-primary">
-                  Explore courses
+                  Explore course outlines
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link to="/roadmaps" className="btn-ghost">
-                  See learning paths
+                  See study plans
                 </Link>
               </div>
             </div>
@@ -151,8 +139,8 @@ export function ArticleDetailPage({ slug }: { slug: string }) {
                     </h3>
                     <p className="mt-2 flex-1 text-sm text-slate-500 line-clamp-2">{a.excerpt}</p>
                     <div className="mt-4 flex items-center gap-1.5 text-xs text-slate-400">
-                      <Clock className="h-3 w-3" />
-                      {a.readTime}
+                      <FileText className="h-3 w-3" />
+                      Catalogue preview
                     </div>
                   </Link>
                 </Reveal>

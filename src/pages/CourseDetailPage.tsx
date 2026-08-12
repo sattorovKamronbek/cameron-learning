@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Star, Clock, BarChart3, Users, PlayCircle, Check, ChevronRight,
-  Lock, ArrowLeft, Award, Globe, ThumbsUp,
+  Clock, BarChart3, PlayCircle, Check, ChevronRight,
+  ArrowLeft, BookOpen, Bookmark, BookmarkCheck, Loader2,
 } from 'lucide-react';
 import { Link, useRouter } from '@/router';
 import { getCourse, getCoursesBySubject } from '@/data/courses';
 import { getSubject } from '@/data/subjects';
 import { CourseCard } from '@/components/CourseCard';
 import { Reveal } from '@/components/Primitives';
+import { useAuth } from '@/lib/auth';
+import { fetchSavedItems, saveItem, unsaveItem } from '@/lib/security';
 
 const levelStyles: Record<string, string> = {
   Beginner: 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200',
@@ -18,7 +20,75 @@ const levelStyles: Record<string, string> = {
 export function CourseDetailPage({ slug }: { slug: string }) {
   const course = getCourse(slug);
   const { navigate } = useRouter();
-  const [activeTab, setActiveTab] = useState<'overview' | 'curriculum' | 'instructor'>('overview');
+  const { user, loading: authLoading } = useAuth();
+  const [activeTab, setActiveTab] = useState<'overview' | 'curriculum' | 'details'>('overview');
+  const [isSaved, setIsSaved] = useState(false);
+  const [savedLoading, setSavedLoading] = useState(false);
+  const [savePending, setSavePending] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!course || !user) {
+      setIsSaved(false);
+      setSavedLoading(false);
+      return () => { active = false; };
+    }
+
+    const loadSavedState = async () => {
+      setSavedLoading(true);
+      setSaveMessage(null);
+      try {
+        const items = await fetchSavedItems();
+        if (active) {
+          setIsSaved(items.some((item) => item.item_type === 'course' && item.item_slug === course.slug));
+        }
+      } catch {
+        if (active) {
+          setSaveMessage('Saved courses could not be loaded. You can try again.');
+        }
+      } finally {
+        if (active) setSavedLoading(false);
+      }
+    };
+
+    void loadSavedState();
+    return () => { active = false; };
+  }, [course, user]);
+
+  const showCurriculum = () => {
+    setActiveTab('curriculum');
+    window.setTimeout(() => {
+      document.getElementById('course-content')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  };
+
+  const toggleSaved = async () => {
+    if (!course) return;
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+
+    setSavePending(true);
+    setSaveMessage(null);
+    try {
+      if (isSaved) {
+        await unsaveItem('course', course.slug);
+        setIsSaved(false);
+        setSaveMessage('Course removed from your saved list.');
+      } else {
+        await saveItem('course', course.slug, course.title);
+        setIsSaved(true);
+        setSaveMessage('Course saved to your list.');
+      }
+    } catch {
+      setSaveMessage('The course could not be updated. Please try again.');
+    } finally {
+      setSavePending(false);
+    }
+  };
 
   if (!course) {
     return (
@@ -41,8 +111,6 @@ export function CourseDetailPage({ slug }: { slug: string }) {
   const relatedCourses = getCoursesBySubject(course.subjectSlug)
     .filter((c) => c.slug !== course.slug)
     .slice(0, 3);
-  const freeLessons = course.lessons.filter((l) => l.free).length;
-
   return (
     <>
       {/* Hero */}
@@ -72,12 +140,7 @@ export function CourseDetailPage({ slug }: { slug: string }) {
                 <span className={`chip bg-white/90 ${levelStyles[course.level]}`}>
                   {course.level}
                 </span>
-                {course.isNew && (
-                  <span className="chip bg-indigo-500 text-white">New</span>
-                )}
-                {course.trending && (
-                  <span className="chip bg-error-500 text-white">Trending</span>
-                )}
+                <span className="chip bg-white/15 text-white ring-1 ring-white/20">Catalogue entry</span>
               </div>
               <h1 className="mt-4 text-3xl font-extrabold tracking-tight sm:text-4xl text-balance">
                 {course.title}
@@ -85,33 +148,28 @@ export function CourseDetailPage({ slug }: { slug: string }) {
               <p className="mt-3 max-w-2xl text-lg text-slate-300 text-pretty">{course.subtitle}</p>
 
               <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
-                <span className="inline-flex items-center gap-1.5">
-                  <Star className="h-4 w-4 fill-sun-400 text-sun-400" />
-                  <span className="font-bold text-white">{course.rating}</span>
-                  <span className="text-slate-400">({course.reviewCount.toLocaleString()} reviews)</span>
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-slate-300">
-                  <Users className="h-4 w-4" />
-                  {course.learners.toLocaleString()} learners
-                </span>
                 <span className="inline-flex items-center gap-1.5 text-slate-300">
                   <Clock className="h-4 w-4" />
-                  {course.durationHours} hours
+                  Estimated {course.durationHours} hours
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-slate-300">
+                  <BookOpen className="h-4 w-4" />
+                  {course.lessons.length} listed outline items
                 </span>
                 <span className="inline-flex items-center gap-1.5 text-slate-300">
                   <BarChart3 className="h-4 w-4" />
-                  {course.lessonCount} lessons
+                  {subject?.name ?? 'Subject'}
                 </span>
               </div>
 
               <div className="mt-6 flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-indigo-400 to-electric-500 text-sm font-bold text-white">
-                  {course.instructor.split(' ').map((n) => n[0]).join('')}
+                  <BookOpen className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400">Instructor</p>
-                  <p className="text-sm font-bold text-white">{course.instructor}</p>
-                  <p className="text-xs text-slate-400">{course.instructorTitle}</p>
+                  <p className="text-xs text-slate-400">Catalogue status</p>
+                  <p className="text-sm font-bold text-white">Outline available to browse</p>
+                  <p className="text-xs text-slate-400">Hosted lessons and instructor profiles are not published here.</p>
                 </div>
               </div>
             </div>
@@ -126,26 +184,46 @@ export function CourseDetailPage({ slug }: { slug: string }) {
                   {Icon && <Icon className="h-14 w-14 text-white/90" />}
                 </div>
                 <div className="p-5">
-                  <p className="text-3xl font-extrabold text-slate-900">Free</p>
+                  <p className="text-2xl font-extrabold text-slate-900">Catalogue entry</p>
                   <p className="text-sm text-slate-500">
-                    {freeLessons} free preview lessons available
+                    This page lists an outline only. Full lesson delivery, certificates, ratings, and learner totals are not published here.
                   </p>
 
                   <div className="mt-5 space-y-3">
-                    <Link to="/signup" className="btn-primary w-full">
+                    <button type="button" onClick={showCurriculum} className="btn-primary w-full">
                       <PlayCircle className="h-4 w-4" />
-                      Start learning free
-                    </Link>
-                    <button className="btn-ghost w-full">Save for later</button>
+                      View course outline
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void toggleSaved()}
+                      disabled={authLoading || savedLoading || savePending}
+                      aria-pressed={isSaved}
+                      aria-describedby="course-save-status"
+                      className="btn-ghost w-full disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {savePending ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" /> Updating saved courses...</>
+                      ) : savedLoading ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" /> Checking saved courses...</>
+                      ) : !user ? (
+                        <><Bookmark className="h-4 w-4" /> Sign in to save</>
+                      ) : isSaved ? (
+                        <><BookmarkCheck className="h-4 w-4" /> Saved to your list</>
+                      ) : (
+                        <><Bookmark className="h-4 w-4" /> Save for later</>
+                      )}
+                    </button>
+                    <p id="course-save-status" aria-live="polite" className="min-h-5 text-center text-xs text-slate-500">
+                      {saveMessage}
+                    </p>
                   </div>
 
                   <div className="mt-5 space-y-2.5 border-t border-slate-100 pt-5 text-sm">
                     <SidebarRow icon={BarChart3} label="Level" value={course.level} />
-                    <SidebarRow icon={Clock} label="Duration" value={`${course.durationHours} hours`} />
-                    <SidebarRow icon={PlayCircle} label="Lessons" value={`${course.lessonCount}`} />
-                    <SidebarRow icon={Users} label="Learners" value={course.learners.toLocaleString()} />
-                    <SidebarRow icon={Globe} label="Language" value="English" />
-                    <SidebarRow icon={Award} label="Certificate" value="Available" />
+                    <SidebarRow icon={Clock} label="Estimated time" value={`${course.durationHours} hours`} />
+                    <SidebarRow icon={BookOpen} label="Outline items" value={`${course.lessons.length}`} />
+                    <SidebarRow icon={PlayCircle} label="Access" value="Outline only" />
                   </div>
                 </div>
               </div>
@@ -158,16 +236,20 @@ export function CourseDetailPage({ slug }: { slug: string }) {
       <section className="border-b border-slate-100 bg-white">
         <div className="container-page">
           <div className="flex gap-1">
-            {(['overview', 'curriculum', 'instructor'] as const).map((tab) => (
+            {([
+              { value: 'overview', label: 'Overview' },
+              { value: 'curriculum', label: 'Outline' },
+              { value: 'details', label: 'Catalogue details' },
+            ] as const).map(({ value, label }) => (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
+                key={value}
+                onClick={() => setActiveTab(value)}
                 className={`relative px-4 py-4 text-sm font-semibold capitalize transition-colors ${
-                  activeTab === tab ? 'text-indigo-700' : 'text-slate-500 hover:text-slate-900'
+                  activeTab === value ? 'text-indigo-700' : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
-                {tab}
-                {activeTab === tab && (
+                {label}
+                {activeTab === value && (
                   <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-indigo-600" />
                 )}
               </button>
@@ -177,7 +259,7 @@ export function CourseDetailPage({ slug }: { slug: string }) {
       </section>
 
       {/* Tab content */}
-      <section className="bg-white py-12">
+      <section id="course-content" className="scroll-mt-20 bg-white py-12">
         <div className="container-page">
           <div className="grid gap-10 lg:grid-cols-[1fr_320px]">
             <div>
@@ -187,8 +269,8 @@ export function CourseDetailPage({ slug }: { slug: string }) {
               {activeTab === 'curriculum' && (
                 <CurriculumTab course={course} />
               )}
-              {activeTab === 'instructor' && (
-                <InstructorTab course={course} />
+              {activeTab === 'details' && (
+                <CatalogueDetailsTab course={course} />
               )}
             </div>
 
@@ -196,12 +278,12 @@ export function CourseDetailPage({ slug }: { slug: string }) {
             <aside className="space-y-6">
               <div className="card p-5">
                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
-                  What you'll learn
+                  Topics listed in this outline
                 </h3>
                 <ul className="mt-4 space-y-2.5">
                   {course.whatYouLearn.map((item) => (
                     <li key={item} className="flex items-start gap-2.5 text-sm text-slate-700">
-                      <Check className="mt-0.5 h-4 w-4 flex-shrslate-0 text-indigo-600" />
+                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-indigo-600" />
                       <span>{item}</span>
                     </li>
                   ))}
@@ -215,7 +297,7 @@ export function CourseDetailPage({ slug }: { slug: string }) {
                 <ul className="mt-4 space-y-2.5">
                   {course.prerequisites.map((item) => (
                     <li key={item} className="flex items-start gap-2.5 text-sm text-slate-600">
-                      <ChevronRight className="mt-0.5 h-4 w-4 flex-shrslate-0 text-slate-400" />
+                      <ChevronRight className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-400" />
                       <span>{item}</span>
                     </li>
                   ))}
@@ -245,8 +327,8 @@ export function CourseDetailPage({ slug }: { slug: string }) {
       {relatedCourses.length > 0 && (
         <section className="bg-slate-50/50 py-16">
           <div className="container-page">
-            <h2 className="text-2xl font-bold text-slate-900">More in {subject?.name}</h2>
-            <p className="mt-1 text-slate-500">Continue exploring this subject.</p>
+            <h2 className="text-2xl font-bold text-slate-900">More catalogue entries in {subject?.name}</h2>
+            <p className="mt-1 text-slate-500">Continue browsing related outlines in this subject.</p>
             <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {relatedCourses.map((c, i) => (
                 <Reveal key={c.slug} delay={i * 80}>
@@ -286,15 +368,18 @@ function OverviewTab({ course }: { course: ReturnType<typeof getCourse> }) {
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-xl font-bold text-slate-900">About this course</h2>
+        <h2 className="text-xl font-bold text-slate-900">About this catalogue entry</h2>
+        <p className="mt-3 leading-relaxed text-slate-500 text-pretty">
+          This summary describes topics the planned course is intended to cover. It is not a hosted course or a promise of lesson access.
+        </p>
         <p className="mt-3 leading-relaxed text-slate-600 text-pretty">{course.description}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
         {[
-          { icon: PlayCircle, label: 'Video lessons', value: `${course.lessonCount}` },
-          { icon: Clock, label: 'Total duration', value: `${course.durationHours}h` },
-          { icon: ThumbsUp, label: 'Free preview', value: `${course.lessons.filter((l) => l.free).length} lessons` },
+          { icon: BookOpen, label: 'Outline items', value: `${course.lessons.length}` },
+          { icon: Clock, label: 'Estimated time', value: `${course.durationHours}h` },
+          { icon: PlayCircle, label: 'Availability', value: 'Outline only' },
         ].map(({ icon: Icon, label, value }) => (
           <div key={label} className="card p-4">
             <Icon className="h-5 w-5 text-indigo-600" />
@@ -312,9 +397,9 @@ function CurriculumTab({ course }: { course: ReturnType<typeof getCourse> }) {
   return (
     <div>
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-slate-900">Course curriculum</h2>
+        <h2 className="text-xl font-bold text-slate-900">Listed outline</h2>
         <span className="text-sm text-slate-500">
-          {course.lessonCount} lessons · {course.durationHours}h
+          {course.lessons.length} items · estimated {course.durationHours}h
         </span>
       </div>
       <div className="mt-6 overflow-hidden rounded-2xl ring-1 ring-slate-100">
@@ -325,21 +410,14 @@ function CurriculumTab({ course }: { course: ReturnType<typeof getCourse> }) {
               i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
             } hover:bg-indigo-50/40 ${i !== 0 ? 'border-t border-slate-100' : ''}`}
           >
-            <span className="flex h-8 w-8 flex-shrslate-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-600">
+            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-600">
               {i + 1}
             </span>
             <div className="flex-1">
               <p className="text-sm font-semibold text-slate-900">{lesson.title}</p>
             </div>
             <span className="text-xs text-slate-400">{lesson.duration}</span>
-            {lesson.free ? (
-              <span className="chip bg-indigo-50 text-indigo-700">
-                <PlayCircle className="h-3 w-3" />
-                Free
-              </span>
-            ) : (
-              <Lock className="h-4 w-4 text-slate-300" />
-            )}
+            <span className="chip bg-slate-100 text-slate-600">Outline item</span>
           </div>
         ))}
       </div>
@@ -347,36 +425,19 @@ function CurriculumTab({ course }: { course: ReturnType<typeof getCourse> }) {
   );
 }
 
-function InstructorTab({ course }: { course: ReturnType<typeof getCourse> }) {
+function CatalogueDetailsTab({ course }: { course: ReturnType<typeof getCourse> }) {
   if (!course) return null;
-  const initials = course.instructor.split(' ').map((n) => n[0]).join('');
   return (
     <div>
-      <h2 className="text-xl font-bold text-slate-900">Your instructor</h2>
-      <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-start">
-        <div className="flex h-20 w-20 flex-shrslate-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-400 to-electric-500 text-2xl font-bold text-white">
-          {initials}
-        </div>
-        <div className="flex-1">
-          <h3 className="text-lg font-bold text-slate-900">{course.instructor}</h3>
-          <p className="text-sm text-indigo-700">{course.instructorTitle}</p>
-          <p className="mt-4 leading-relaxed text-slate-600 text-pretty">
-            {course.instructor} brings years of real-world experience and a passion for teaching.
-            Their approach focuses on building deep intuition alongside practical skills, so you
-            do not just memorize — you truly understand. Lessons are concise, hands-on, and
-            designed to keep you engaged from start to finish.
-          </p>
-          <div className="mt-5 flex flex-wrap gap-4 text-sm text-slate-500">
-            <span className="inline-flex items-center gap-1.5">
-              <Star className="h-4 w-4 fill-sun-500 text-sun-500" />
-              {course.rating} avg rating
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Users className="h-4 w-4" />
-              {course.learners.toLocaleString()} learners taught
-            </span>
-          </div>
-        </div>
+      <h2 className="text-xl font-bold text-slate-900">Catalogue details</h2>
+      <div className="mt-6 rounded-2xl bg-slate-50 p-6 text-sm leading-relaxed text-slate-600 ring-1 ring-slate-100">
+        <p>
+          This is a curated static entry. Instructor profiles, learner counts, ratings, review totals,
+          certificates, full lesson delivery, and automated feedback are not published for it.
+        </p>
+        <p className="mt-3">
+          Use the outline and tags to decide whether to save the entry or continue exploring related topics.
+        </p>
       </div>
     </div>
   );

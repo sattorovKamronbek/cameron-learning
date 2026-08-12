@@ -127,29 +127,6 @@ export async function checkAdminAccess(): Promise<boolean> {
   return data === true;
 }
 
-/* ============ Audit Logging ============ */
-
-/**
- * Logs an action to the audit_logs table via the SECURITY DEFINER function.
- * This captures the actor's email and role at the time of the action.
- */
-export async function logAuditAction(
-  action: string,
-  targetType?: string,
-  targetId?: string,
-  details?: Record<string, unknown>,
-): Promise<void> {
-  const { error } = await supabase.rpc('log_audit_action', {
-    p_action: action,
-    p_target_type: targetType ?? null,
-    p_target_id: targetId ?? null,
-    p_details: details ?? {},
-  });
-  if (error) {
-    console.error('Failed to log audit action:', error.message);
-  }
-}
-
 /* ============ Admin User Management RPCs ============ */
 
 export async function adminListUsers() {
@@ -225,21 +202,6 @@ export async function adminCreateAnnouncement(
 }
 
 /* ============ User Activity ============ */
-
-export async function logUserActivity(
-  type: string,
-  title: string,
-  metadata?: Record<string, unknown>,
-): Promise<void> {
-  const { error } = await supabase.from('user_activity').insert({
-    type,
-    title,
-    metadata: metadata ?? {},
-  });
-  if (error) {
-    console.error('Failed to log user activity:', error.message);
-  }
-}
 
 export async function fetchUserActivity(limit = 20) {
   const { data, error } = await supabase

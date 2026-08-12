@@ -1,19 +1,19 @@
 import {
   ArrowRight, Sparkles, Play, Star, Users, BookOpen, Award, Zap, Target,
-  TrendingUp, Check, Code2, Brain, Trophy, Flame,
+  Check, Code2, Trophy,
 } from 'lucide-react';
 import { Link } from '@/router';
 import { Reveal, SectionHeading, Eyebrow, BentoCard } from '@/components/Primitives';
 import { CourseCard, CourseFeatureCard } from '@/components/CourseCard';
 import { subjects, programmingSubjects, academicSubjects } from '@/data/subjects';
-import { featuredCourses, trendingCourses } from '@/data/courses';
+import { featuredCourses, getCoursesBySubject } from '@/data/courses';
 import { roadmaps } from '@/data/roadmaps';
 import { useTranslation } from '@/lib/i18n';
 
 const heroImage =
   'https://images.pexels.com/photos/2004161/pexels-photo-2004161.jpeg?auto=compress&cs=tinysrgb&h=650&w=940';
 
-const trustLogos = ['MIT OCW', 'Stanford', 'freeCodeCamp', 'Khan Academy', 'Coursera', 'edX'];
+const catalogueHighlights = ['Course outlines', 'Learning roadmaps', 'Subject guides', 'Articles & resources'];
 
 export function HomePage() {
   return (
@@ -106,15 +106,15 @@ function Hero() {
                 <div className="overflow-hidden rounded-3xl">
                   <img
                     src="https://images.pexels.com/photos/7972959/pexels-photo-7972959.jpeg?auto=compress&cs=tinysrgb&h=650&w=940"
-                    alt="Students learning together"
+                    alt="Notebook and study materials"
                     className="aspect-[4/3] w-full object-cover"
                   />
                 </div>
                 <div className="grid grid-cols-3 gap-2 p-3">
                   {[
-                    { icon: BookOpen, label: 'Clear lessons', color: 'text-indigo-400' },
-                    { icon: Users, label: 'Learn together', color: 'text-electric-400' },
-                    { icon: Award, label: 'Build skills', color: 'text-sun-400' },
+                    { icon: BookOpen, label: 'Course outlines', color: 'text-indigo-400' },
+                    { icon: Target, label: 'Study roadmaps', color: 'text-electric-400' },
+                    { icon: Award, label: 'Topic guides', color: 'text-sun-400' },
                   ].map(({ icon: Icon, label, color }) => (
                     <div key={label} className="flex flex-col items-center gap-1.5 rounded-2xl bg-white/5 p-3 text-center ring-1 ring-white/5">
                       <Icon className={`h-5 w-5 ${color}`} />
@@ -126,11 +126,11 @@ function Hero() {
               <div className="absolute -bottom-5 -left-5 animate-float rounded-3xl bg-white p-4 shadow-lift" style={{ animationDelay: '1.5s' }}>
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50">
-                    <TrendingUp className="h-5 w-5 text-indigo-600" />
+                    <BookOpen className="h-5 w-5 text-indigo-600" />
                   </div>
                   <div>
-                    <p className="text-xs text-slate-400">Learning focus</p>
-                    <p className="text-sm font-bold text-slate-900">Build a steady practice</p>
+                    <p className="text-xs text-slate-400">Catalogue focus</p>
+                    <p className="text-sm font-bold text-slate-900">Choose your next topic</p>
                   </div>
                 </div>
               </div>
@@ -141,7 +141,7 @@ function Hero() {
                       <span key={c} className={`h-7 w-7 rounded-full ${c} ring-2 ring-white`} />
                     ))}
                   </div>
-                  <span className="text-xs font-semibold text-slate-700">Active now</span>
+                  <span className="text-xs font-semibold text-slate-700">Browse the catalogue</span>
                 </div>
               </div>
             </div>
@@ -160,11 +160,11 @@ function TrustBar() {
     <section className="border-b border-slate-100 bg-white py-8">
       <div className="container-page">
         <p className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-          Trusted by learners from top institutions worldwide
+          What you can browse today
         </p>
         <div className="mask-fade-r mt-6 overflow-hidden">
           <div className="flex w-max animate-marquee items-center gap-12">
-            {[...trustLogos, ...trustLogos].map((name) => (
+            {[...catalogueHighlights, ...catalogueHighlights].map((name) => (
               <span key={name} className="whitespace-nowrap font-display text-lg font-bold tracking-tight text-slate-300">
                 {name}
               </span>
@@ -179,10 +179,10 @@ function TrustBar() {
 /* ---------- Value band ---------- */
 function ValueBand() {
   const items = [
-    { title: 'Start where you are', description: 'Choose a path that fits your current goals.', icon: Users, accent: 'indigo' as const },
-    { title: 'Learn by doing', description: 'Put new ideas into practice as you go.', icon: BookOpen, accent: 'electric' as const },
-    { title: 'Build useful skills', description: 'Focus on concepts you can apply with confidence.', icon: Award, accent: 'slate' as const },
-    { title: 'Keep moving forward', description: 'Use guided roadmaps to find your next step.', icon: Target, accent: 'sun' as const },
+    { title: 'Browse by topic', description: 'Choose a subject area that matches your interests.', icon: Users, accent: 'indigo' as const },
+    { title: 'Read the outline', description: 'Review the topics and estimated time for an entry.', icon: BookOpen, accent: 'electric' as const },
+    { title: 'Compare entries', description: 'Use tags and levels to find a useful reference.', icon: Award, accent: 'slate' as const },
+    { title: 'Plan the next step', description: 'Use a roadmap as a flexible study guide.', icon: Target, accent: 'sun' as const },
   ];
   return (
     <section className="bg-white py-16">
@@ -217,13 +217,13 @@ function BentoFeaturesSection() {
       <div className="container-page">
         <SectionHeading
           eyebrow="Why Cameron"
-          title="Everything you need to learn, in one platform"
-          description="A practice-first approach with structured paths, instant feedback, and a community that has your back."
+          title="A clear place to plan what to learn"
+          description="Browse static course outlines, subject guides, roadmaps, and resources. Interactive study tools are still being prepared."
         />
 
         {/* Bento grid */}
         <div className="mt-12 grid gap-5 sm:auto-rows-[180px] sm:grid-cols-2 lg:grid-cols-4">
-          {/* Large card — Practice-first */}
+          {/* Large card — catalogue outlines */}
           <BentoCard className="min-h-[360px] sm:col-span-2 sm:row-span-2 sm:min-h-0 lg:col-span-2" delay={0}>
             <div className="flex h-full flex-col justify-between p-7">
               <div>
@@ -231,11 +231,11 @@ function BentoFeaturesSection() {
                   <Code2 className="h-6 w-6 text-white" />
                 </div>
                 <h3 className="mt-5 font-display text-2xl font-bold text-slate-900">
-                  Practice-first learning
+                  Explore course outlines
                 </h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-500">
-                  Every programming lesson includes a hands-on exercise. Learn a concept, apply it
-                  immediately, and get instant feedback. No more tutorial hell.
+                  Each catalogue entry lists topics, an estimated study time, and an outline. This
+                  app does not yet provide an in-browser lesson player, exercises, or automated feedback.
                 </p>
               </div>
               {/* Mini code editor preview */}
@@ -246,10 +246,10 @@ function BentoFeaturesSection() {
                   <span className="h-2.5 w-2.5 rounded-full bg-success-500/80" />
                 </div>
                 <pre className="mt-3 leading-relaxed">
-<span className="text-indigo-400">function</span> <span className="text-electric-400">greet</span>(name) {'{'}
-  <span className="text-indigo-400">return</span> <span className="text-sun-400">{`Hello, ${name}!`}</span>
+<span className="text-indigo-400">Course</span> <span className="text-electric-400">outline</span> {'{'}
+  <span className="text-sun-400">topics:</span> ['HTML', 'CSS', 'Layout']
 {'}'}
-<span className="text-success-400">{'✓'} All 5 tests passed</span>
+<span className="text-slate-400">Browse the full topic list</span>
                 </pre>
               </div>
             </div>
@@ -264,7 +264,7 @@ function BentoFeaturesSection() {
               <div>
                 <h3 className="font-display text-lg font-bold text-slate-900">Guided roadmaps</h3>
                 <p className="mt-1 text-sm text-slate-500">
-                  Follow step-by-step paths from beginner to job-ready. Always know what comes next.
+                  Use the listed steps as a study guide and adapt the pace to your own goals.
                 </p>
               </div>
             </div>
@@ -277,8 +277,8 @@ function BentoFeaturesSection() {
                 <Trophy className="h-5 w-5 text-sun-600" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900">Earn XP & badges</h3>
-                <p className="mt-1 text-xs text-slate-500">Stay motivated with gamified progress.</p>
+                <h3 className="font-bold text-slate-900">Progress tracking is coming soon</h3>
+                <p className="mt-1 text-xs text-slate-500">Badges and completed-lesson tracking are not available yet.</p>
               </div>
             </div>
           </BentoCard>
@@ -286,39 +286,39 @@ function BentoFeaturesSection() {
           <BentoCard delay={200}>
             <div className="flex h-full flex-col justify-between p-6">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
-                <Flame className="h-5 w-5 text-error-500" />
+                <Zap className="h-5 w-5 text-error-500" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900">Build streaks</h3>
-                <p className="mt-1 text-xs text-slate-500">Daily practice habits that stick.</p>
+                <h3 className="font-bold text-slate-900">Practice tools are coming soon</h3>
+                <p className="mt-1 text-xs text-slate-500">Exercises and automatic checks are not available yet.</p>
               </div>
             </div>
           </BentoCard>
 
-          {/* Medium — Community */}
+          {/* Medium — community status */}
           <BentoCard className="sm:col-span-2" delay={250}>
             <div className="flex h-full items-center gap-5 p-6">
               <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-600 to-slate-800">
                 <Users className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h3 className="font-display text-lg font-bold text-slate-900">Community support</h3>
+                <h3 className="font-display text-lg font-bold text-slate-900">Community spaces are coming soon</h3>
                 <p className="mt-1 text-sm text-slate-500">
-                  Forums, study groups, and peer help — you are never learning alone.
+                  Forums, study groups, and peer messaging are not available in this version.
                 </p>
               </div>
             </div>
           </BentoCard>
 
-          {/* Small — AI feedback */}
+          {/* Small — feedback status */}
           <BentoCard delay={300}>
             <div className="flex h-full flex-col justify-between p-6">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50">
-                <Brain className="h-5 w-5 text-indigo-600" />
+                <Sparkles className="h-5 w-5 text-indigo-600" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900">Smart feedback</h3>
-                <p className="mt-1 text-xs text-slate-500">AI-powered explanations when you are stuck.</p>
+                <h3 className="font-bold text-slate-900">AI feedback is not available</h3>
+                <p className="mt-1 text-xs text-slate-500">We do not show simulated AI answers or feedback.</p>
               </div>
             </div>
           </BentoCard>
@@ -350,7 +350,7 @@ function SubjectsSection() {
           <SectionHeading
             eyebrow="Explore by subject"
             title="Many subjects. One platform."
-            description="Whether you are writing your first function or diving into quantum mechanics, find a structured path that meets you where you are."
+            description="Whether you are starting with code or exploring mathematics and science, browse the topics represented in this catalogue."
           />
           <Link to="/subjects" className="btn-ghost flex-shrink-0">
             All subjects
@@ -402,7 +402,7 @@ function SubjectCard({ subject, delay }: { subject: typeof subjects[number]; del
         <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-500">{subject.blurb}</p>
         <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
           <span className="text-xs font-semibold text-slate-400">
-            {subject.courseCount} courses · {subject.learnerCount} learners
+            {getCoursesBySubject(subject.slug).length} listed course {getCoursesBySubject(subject.slug).length === 1 ? 'outline' : 'outlines'}
           </span>
           <ArrowRight className="h-4 w-4 text-slate-300 transition-all group-hover:translate-x-1 group-hover:text-indigo-600" />
         </div>
@@ -418,12 +418,12 @@ function FeaturedCoursesSection() {
       <div className="container-page">
         <div className="flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-end">
           <SectionHeading
-            eyebrow="Hand-picked"
-            title="Featured courses this month"
-            description="High-quality, instructor-led courses loved by the community. Start with free preview lessons — no sign-up needed."
+            eyebrow="Catalogue picks"
+            title="Selected course outlines"
+            description="A few static entries selected for easy browsing. Lesson delivery and previews are not available in this app yet."
           />
           <Link to="/courses" className="btn-ghost flex-shrink-0">
-            View all courses
+            View all outlines
             <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
@@ -442,10 +442,10 @@ function FeaturedCoursesSection() {
 /* ---------- How it works ---------- */
 function HowItWorksSection() {
   const steps = [
-    { icon: Target, title: 'Pick your goal', description: 'Choose a subject or follow a guided roadmap tailored to where you want to go.', color: 'from-indigo-500 to-indigo-700' },
-    { icon: BookOpen, title: 'Learn by doing', description: 'Watch concise lessons and apply what you learn with exercises and projects.', color: 'from-electric-500 to-electric-700' },
-    { icon: Zap, title: 'Track progress', description: 'Mark lessons complete, see your streak, and stay motivated as you advance.', color: 'from-slate-600 to-slate-800' },
-    { icon: Award, title: 'Achieve mastery', description: 'Complete courses, build a portfolio, and reach your learning goals.', color: 'from-sun-500 to-sun-600' },
+    { icon: Target, title: 'Pick a subject', description: 'Choose a subject area or a roadmap that matches what you want to study.', color: 'from-indigo-500 to-indigo-700' },
+    { icon: BookOpen, title: 'Read the outline', description: 'Review the listed topics, lesson names, and estimated study time.', color: 'from-electric-500 to-electric-700' },
+    { icon: Zap, title: 'Use a roadmap', description: 'Treat the steps as a flexible planning guide, not an automated course.', color: 'from-slate-600 to-slate-800' },
+    { icon: Award, title: 'Save useful entries', description: 'Create an account only if you want to save catalogue entries for later.', color: 'from-sun-500 to-sun-600' },
   ];
 
   return (
@@ -460,9 +460,9 @@ function HowItWorksSection() {
             <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
             How it works
           </Eyebrow>
-          <h2 className="section-title mt-4 text-white">Learning that fits your life</h2>
+          <h2 className="section-title mt-4 text-white">A simple way to explore the catalogue</h2>
           <p className="mt-4 text-lg text-slate-400 text-pretty">
-            No rigid schedules. No pressure. Just a clear path from where you are to where you want to be.
+            These outlines and roadmaps are planning references; they are not a hosted lesson or certification service.
           </p>
         </div>
 
@@ -495,7 +495,7 @@ function RoadmapsSection() {
           <SectionHeading
             eyebrow="Guided paths"
             title="Don't know where to start?"
-            description="Follow a step-by-step roadmap that tells you exactly what to learn and in what order — from beginner to job-ready."
+            description="Use these step-by-step roadmaps as flexible references for choosing what to study next."
           />
           <Link to="/roadmaps" className="btn-ghost flex-shrink-0">
             All roadmaps
@@ -519,7 +519,7 @@ function RoadmapsSection() {
                         <Target className="h-3.5 w-3.5 text-indigo-600" />
                         {rm.steps.length} steps
                       </span>
-                      <span className="font-semibold text-indigo-700">{rm.goal}</span>
+                      <span className="font-semibold text-indigo-700">Study guide</span>
                     </div>
                   </div>
                   <ArrowRight className="mt-1 h-5 w-5 flex-shrink-0 text-slate-300 transition-all group-hover:translate-x-1 group-hover:text-indigo-600" />
@@ -539,12 +539,12 @@ function TrendingSection() {
     <section className="bg-slate-50/50 py-20">
       <div className="container-page">
         <SectionHeading
-          eyebrow="Popular right now"
-          title="Trending courses"
-          description="Discover course collections that learners are exploring right now."
+          eyebrow="Catalogue highlights"
+          title="Selected course outlines"
+          description="These entries are manually highlighted in the catalogue; they are not based on live popularity data."
         />
         <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {trendingCourses.slice(0, 4).map((course, i) => (
+          {featuredCourses.slice(0, 4).map((course, i) => (
             <Reveal key={course.slug} delay={(i % 4) * 80}>
               <CourseCard course={course} />
             </Reveal>
@@ -604,8 +604,7 @@ function CtaSection() {
               Your learning journey starts with a single step
             </h2>
             <p className="mt-4 text-lg text-indigo-100 text-pretty">
-              Create a free account to track your progress, save courses, and unlock personalized
-              recommendations. No credit card needed.
+              Create a free account if you want to save course entries for later. Browsing the catalogue does not require an account.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
               <Link to="/signup" className="btn bg-white text-indigo-700 shadow-lift hover:bg-indigo-50 px-6 py-3.5 text-base">
@@ -613,7 +612,7 @@ function CtaSection() {
                 <ArrowRight className="h-5 w-5" />
               </Link>
               <Link to="/courses" className="btn bg-white/10 text-white ring-1 ring-white/30 backdrop-blur-md hover:bg-white/15 px-6 py-3.5 text-base">
-                Browse all courses
+                Browse all outlines
               </Link>
             </div>
           </div>

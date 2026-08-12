@@ -1,12 +1,11 @@
-import { lazy, Suspense, useEffect, useState, type ComponentType } from 'react';
+import { lazy, Suspense, useEffect, type ComponentType } from 'react';
 import { RouterProvider, useRouter } from '@/router';
 import { AuthProvider } from '@/lib/auth';
-import { useAuth } from '@/lib/auth';
-import { checkAdminAccess } from '@/lib/security';
-import { canManageContests } from '@/lib/contests';
+import { useAccessControl } from '@/lib/access';
 import { Navbar } from '@/components/Navbar';
 import { Footer } from '@/components/Footer';
 import { LoadingState } from '@/components/LoadingState';
+import { NotificationCenterPage } from '@/components/NotificationBell';
 import { I18nProvider } from '@/lib/i18n';
 import { ThemeProvider } from '@/lib/theme';
 
@@ -34,11 +33,13 @@ const ContestDetailPage = page(() => import('@/pages/ContestDetailPage'), 'Conte
 const ContestWorkspacePage = page(() => import('@/pages/ContestWorkspacePage'), 'ContestWorkspacePage');
 const QuizWorkspacePage = page(() => import('@/pages/QuizWorkspacePage'), 'QuizWorkspacePage');
 const ContestManagementPage = page(() => import('@/pages/ContestManagementPage'), 'ContestManagementPage');
+const ProgrammingManagementPage = page(() => import('@/pages/ProgrammingManagementPage'), 'ProgrammingManagementPage');
+const ProblemsPage = page(() => import('@/pages/ProblemsPage'), 'ProblemsPage');
+const ProblemDetailPage = page(() => import('@/pages/ProblemDetailPage'), 'ProblemDetailPage');
 const LeaderboardPage = page(() => import('@/pages/LeaderboardPage'), 'LeaderboardPage');
 const AnalyticsDashboard = page(() => import('@/pages/AnalyticsDashboard'), 'AnalyticsDashboard');
 const AchievementsPage = page(() => import('@/pages/AchievementsPage'), 'AchievementsPage');
 const AdminDashboard = page(() => import('@/pages/AdminDashboard'), 'AdminDashboard');
-const NotificationCenterPage = page(() => import('@/components/NotificationBell'), 'NotificationCenterPage');
 
 function Routes() {
   const { path } = useRouter();
@@ -89,6 +90,12 @@ function Routes() {
     page = <AboutPage />;
   } else if (path === '/contest-management') {
     page = <ContestManagementGate />;
+  } else if (path === '/programming-management') {
+    page = <ProgrammingManagementGate />;
+  } else if (path === '/problems') {
+    page = <ProblemsPage />;
+  } else if (path.startsWith('/problems/')) {
+    page = <ProblemDetailPage slug={path.replace('/problems/', '')} />;
   } else if (path === '/contests') {
     page = <ContestLandingPage />;
   } else if (path.startsWith('/contests/')) {
@@ -117,7 +124,7 @@ function Routes() {
 }
 
 function ContestManagementGate() {
-  const { user, profile, loading } = useAuth();
+  const { canManageContests, loading } = useAccessControl();
 
   if (loading) {
     return <LoadingState variant="page" message="Kirish ruxsati tekshirilmoqda" />;
@@ -125,36 +132,34 @@ function ContestManagementGate() {
 
   // This keeps the management UI out of regular accounts. The contest RPCs
   // remain the source of truth and enforce the same authorization server-side.
-  if (!user || !profile || profile.status !== 'active' || !canManageContests(profile.role)) {
+  if (!canManageContests) {
     return <NotFoundPage />;
   }
 
   return <ContestManagementPage />;
 }
 
-function AdminGate() {
-  const { user, loading } = useAuth();
-  const [allowed, setAllowed] = useState<boolean | null>(null);
+function ProgrammingManagementGate() {
+  const { canManageContests, loading } = useAccessControl();
 
-  useEffect(() => {
-    let active = true;
-    if (loading) return () => { active = false; };
-    if (!user) {
-      setAllowed(false);
-      return () => { active = false; };
-    }
-    checkAdminAccess().then((result) => {
-      if (active) setAllowed(result);
-    }).catch(() => {
-      if (active) setAllowed(false);
-    });
-    return () => { active = false; };
-  }, [loading, user]);
-
-  if (loading || allowed === null) {
+  if (loading) {
     return <LoadingState variant="page" message="Kirish ruxsati tekshirilmoqda" />;
   }
-  if (!allowed) return <NotFoundPage />;
+
+  if (!canManageContests) {
+    return <NotFoundPage />;
+  }
+
+  return <ProgrammingManagementPage />;
+}
+
+function AdminGate() {
+  const { adminAccess, loading } = useAccessControl();
+
+  if (loading) {
+    return <LoadingState variant="page" message="Kirish ruxsati tekshirilmoqda" />;
+  }
+  if (!adminAccess) return <NotFoundPage />;
   return <AdminDashboard />;
 }
 

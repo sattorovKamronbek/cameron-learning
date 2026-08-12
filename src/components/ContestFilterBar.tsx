@@ -1,24 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react';
 import { contestSubjects, type ContestDifficulty, type ContestStatus, type ContestType } from '@/lib/contests';
-
-export type FilterState = {
-  search: string;
-  subject: string | 'all';
-  difficulty: ContestDifficulty | 'all';
-  status: ContestStatus | 'all';
-  type: ContestType | 'all';
-  sortBy: 'start' | 'participants' | 'duration';
-};
-
-export const defaultFilters: FilterState = {
-  search: '',
-  subject: 'all',
-  difficulty: 'all',
-  status: 'all',
-  type: 'all',
-  sortBy: 'start',
-};
+import { defaultFilters, type FilterState } from './contest-filter-state';
 
 const difficulties: Array<ContestDifficulty | 'all'> = ['all', 'Easy', 'Medium', 'Hard', 'Expert'];
 const statuses: Array<ContestStatus | 'all'> = ['all', 'Live', 'Upcoming', 'Finished'];

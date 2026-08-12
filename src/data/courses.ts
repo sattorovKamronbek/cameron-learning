@@ -1,34 +1,23 @@
-import {
-  Star, Clock, BarChart3, Users,
-} from 'lucide-react';
-
 export type Lesson = {
   title: string;
   duration: string;
   free: boolean;
 };
 
+/** Static catalogue metadata, not a record of hosted course delivery. */
 export type Course = {
   slug: string;
   title: string;
   subtitle: string;
   subjectSlug: string;
   level: 'Beginner' | 'Intermediate' | 'Advanced';
-  rating: number;
-  reviewCount: number;
-  learners: number;
   durationHours: number;
-  lessonCount: number;
-  instructor: string;
-  instructorTitle: string;
   tags: string[];
   description: string;
   whatYouLearn: string[];
   prerequisites: string[];
   lessons: Lesson[];
   featured: boolean;
-  trending: boolean;
-  isNew: boolean;
 };
 
 export const courses: Course[] = [
@@ -38,13 +27,7 @@ export const courses: Course[] = [
     subtitle: 'Build your first beautiful, responsive web page',
     subjectSlug: 'web-development',
     level: 'Beginner',
-    rating: 4.8,
-    reviewCount: 3420,
-    learners: 28400,
     durationHours: 14,
-    lessonCount: 48,
-    instructor: 'Maya Chen',
-    instructorTitle: 'Senior Frontend Engineer',
     tags: ['HTML5', 'CSS3', 'Flexbox', 'Grid', 'Responsive'],
     description:
       'Start from zero and learn to structure content with semantic HTML and style it with modern CSS. By the end you will hand-build a polished, fully responsive landing page that looks great on any screen.',
@@ -72,8 +55,6 @@ export const courses: Course[] = [
       { title: 'Building a landing page', duration: '28:00', free: false },
     ],
     featured: true,
-    trending: false,
-    isNew: false,
   },
   {
     slug: 'javascript-essentials',
@@ -81,13 +62,7 @@ export const courses: Course[] = [
     subtitle: 'From variables to async — the language of the web',
     subjectSlug: 'web-development',
     level: 'Beginner',
-    rating: 4.9,
-    reviewCount: 5180,
-    learners: 41200,
     durationHours: 22,
-    lessonCount: 62,
-    instructor: 'David Okoro',
-    instructorTitle: 'Full-Stack Developer & Educator',
     tags: ['JavaScript', 'ES6+', 'DOM', 'Async', 'Fetch API'],
     description:
       'JavaScript is the engine of the modern web. This course takes you from first principles to confidently writing interactive programs, handling asynchronous operations, and manipulating the DOM.',
@@ -113,8 +88,6 @@ export const courses: Course[] = [
       { title: 'Fetching data from APIs', duration: '24:20', free: false },
     ],
     featured: true,
-    trending: true,
-    isNew: false,
   },
   {
     slug: 'react-from-scratch',
@@ -122,13 +95,7 @@ export const courses: Course[] = [
     subtitle: 'Build component-driven interfaces the modern way',
     subjectSlug: 'web-development',
     level: 'Intermediate',
-    rating: 4.7,
-    reviewCount: 2960,
-    learners: 19800,
     durationHours: 26,
-    lessonCount: 54,
-    instructor: 'Priya Sharma',
-    instructorTitle: 'Staff Software Engineer',
     tags: ['React', 'Hooks', 'State', 'Components', 'Vite'],
     description:
       'Go beyond the tutorials and truly understand React. Learn how components, state, and effects work under the hood, then build a real multi-page application with routing and data fetching.',
@@ -154,8 +121,6 @@ export const courses: Course[] = [
       { title: 'Shipping a full app', duration: '38:00', free: false },
     ],
     featured: true,
-    trending: true,
-    isNew: false,
   },
   {
     slug: 'python-data-analysis',
@@ -163,13 +128,7 @@ export const courses: Course[] = [
     subtitle: 'Pandas, NumPy, and the data science workflow',
     subjectSlug: 'data-science',
     level: 'Beginner',
-    rating: 4.8,
-    reviewCount: 4120,
-    learners: 32600,
     durationHours: 20,
-    lessonCount: 50,
-    instructor: 'Dr. Amara Okafor',
-    instructorTitle: 'Data Scientist, PhD Statistics',
     tags: ['Python', 'Pandas', 'NumPy', 'Matplotlib', 'EDA'],
     description:
       'Enter the world of data science with Python. Learn to load, clean, transform, and visualize datasets using the industry-standard Pandas and NumPy libraries.',
@@ -195,8 +154,6 @@ export const courses: Course[] = [
       { title: 'EDA project', duration: '41:00', free: false },
     ],
     featured: true,
-    trending: false,
-    isNew: false,
   },
   {
     slug: 'statistics-for-everyone',
@@ -204,13 +161,7 @@ export const courses: Course[] = [
     subtitle: 'The intuition behind data and uncertainty',
     subjectSlug: 'data-science',
     level: 'Beginner',
-    rating: 4.6,
-    reviewCount: 2280,
-    learners: 18700,
     durationHours: 16,
-    lessonCount: 40,
-    instructor: 'Dr. Amara Okafor',
-    instructorTitle: 'Data Scientist, PhD Statistics',
     tags: ['Statistics', 'Probability', 'Hypothesis Testing', 'Bayes'],
     description:
       'Statistics is the grammar of data science. Build a strong intuitive understanding of distributions, uncertainty, and inference — with minimal formulas and maximum insight.',
@@ -234,8 +185,6 @@ export const courses: Course[] = [
       { title: 'Hypothesis testing', duration: '28:45', free: false },
     ],
     featured: false,
-    trending: false,
-    isNew: false,
   },
   {
     slug: 'sql-mastery',
@@ -243,13 +192,7 @@ export const courses: Course[] = [
     subtitle: 'Query databases like a professional',
     subjectSlug: 'databases',
     level: 'Beginner',
-    rating: 4.9,
-    reviewCount: 3640,
-    learners: 24100,
     durationHours: 18,
-    lessonCount: 46,
-    instructor: 'Marcus Lindqvist',
-    instructorTitle: 'Database Architect',
     tags: ['SQL', 'PostgreSQL', 'Joins', 'Aggregation', 'Window Functions'],
     description:
       'SQL is one of the most in-demand skills in tech. Learn to write powerful queries, join tables, aggregate data, and use advanced features like window functions and CTEs.',
@@ -275,8 +218,6 @@ export const courses: Course[] = [
       { title: 'CTEs and recursion', duration: '23:45', free: false },
     ],
     featured: false,
-    trending: true,
-    isNew: false,
   },
   {
     slug: 'database-design',
@@ -284,13 +225,7 @@ export const courses: Course[] = [
     subtitle: 'Model data that scales and stays clean',
     subjectSlug: 'databases',
     level: 'Intermediate',
-    rating: 4.7,
-    reviewCount: 1540,
-    learners: 9800,
     durationHours: 12,
-    lessonCount: 34,
-    instructor: 'Marcus Lindqvist',
-    instructorTitle: 'Database Architect',
     tags: ['Schema Design', 'Normalization', 'ER Models', 'Indexes'],
     description:
       'Good databases start with good design. Learn to model entities and relationships, normalize schemas, and choose the right indexes for performance.',
@@ -312,8 +247,6 @@ export const courses: Course[] = [
       { title: 'Indexing', duration: '21:15', free: false },
     ],
     featured: false,
-    trending: false,
-    isNew: false,
   },
   {
     slug: 'algorithms-data-structures',
@@ -321,13 +254,7 @@ export const courses: Course[] = [
     subtitle: 'Think like a computer scientist',
     subjectSlug: 'computer-science',
     level: 'Intermediate',
-    rating: 4.8,
-    reviewCount: 4280,
-    learners: 35600,
     durationHours: 30,
-    lessonCount: 72,
-    instructor: 'Prof. Elena Rossi',
-    instructorTitle: 'Professor of Computer Science',
     tags: ['Algorithms', 'Big-O', 'Sorting', 'Graphs', 'DP'],
     description:
       'The backbone of every technical interview and every efficient program. Master the core data structures and algorithms, analyze their complexity, and learn when to use each one.',
@@ -354,8 +281,6 @@ export const courses: Course[] = [
       { title: 'Dynamic programming', duration: '38:00', free: false },
     ],
     featured: true,
-    trending: true,
-    isNew: false,
   },
   {
     slug: 'neural-networks-intro',
@@ -363,13 +288,7 @@ export const courses: Course[] = [
     subtitle: 'Understand deep learning by building it',
     subjectSlug: 'ai-machine-learning',
     level: 'Intermediate',
-    rating: 4.7,
-    reviewCount: 2100,
-    learners: 16700,
     durationHours: 24,
-    lessonCount: 56,
-    instructor: 'Dr. Yuki Tanaka',
-    instructorTitle: 'ML Research Engineer',
     tags: ['Neural Networks', 'Backprop', 'PyTorch', 'Gradient Descent'],
     description:
       'Demystify neural networks by building one from the ground up — first with pure math, then with PyTorch. You will finish with a working image classifier and deep intuition.',
@@ -394,8 +313,6 @@ export const courses: Course[] = [
       { title: 'Training an image classifier', duration: '36:20', free: false },
     ],
     featured: false,
-    trending: true,
-    isNew: true,
   },
   {
     slug: 'calculus-one',
@@ -403,13 +320,7 @@ export const courses: Course[] = [
     subtitle: 'The mathematics of change',
     subjectSlug: 'mathematics',
     level: 'Beginner',
-    rating: 4.8,
-    reviewCount: 3890,
-    learners: 41200,
     durationHours: 28,
-    lessonCount: 64,
-    instructor: 'Prof. James Whitfield',
-    instructorTitle: 'Professor of Mathematics',
     tags: ['Calculus', 'Limits', 'Derivatives', 'Optimization'],
     description:
       'Calculus unlocks everything from physics to machine learning. Start with limits and build up to derivatives, learning not just the rules but the deep geometric intuition behind them.',
@@ -434,8 +345,6 @@ export const courses: Course[] = [
       { title: 'Optimization', duration: '29:15', free: false },
     ],
     featured: true,
-    trending: false,
-    isNew: false,
   },
   {
     slug: 'linear-algebra',
@@ -443,13 +352,7 @@ export const courses: Course[] = [
     subtitle: 'Vectors, matrices, and the math behind ML',
     subjectSlug: 'mathematics',
     level: 'Intermediate',
-    rating: 4.7,
-    reviewCount: 2410,
-    learners: 21300,
     durationHours: 22,
-    lessonCount: 48,
-    instructor: 'Prof. Elena Rossi',
-    instructorTitle: 'Professor of Computer Science',
     tags: ['Linear Algebra', 'Vectors', 'Matrices', 'Eigenvalues'],
     description:
       'Linear algebra is the language of data, graphics, and machine learning. Develop a visual, geometric understanding of vectors, matrices, transformations, and eigenvalues.',
@@ -473,8 +376,6 @@ export const courses: Course[] = [
       { title: 'SVD', duration: '30:45', free: false },
     ],
     featured: false,
-    trending: false,
-    isNew: false,
   },
   {
     slug: 'classical-mechanics',
@@ -482,13 +383,7 @@ export const courses: Course[] = [
     subtitle: 'Motion, forces, and energy',
     subjectSlug: 'physics',
     level: 'Intermediate',
-    rating: 4.6,
-    reviewCount: 1820,
-    learners: 14800,
     durationHours: 26,
-    lessonCount: 52,
-    instructor: 'Prof. Daniel Hartman',
-    instructorTitle: 'Professor of Physics',
     tags: ['Mechanics', 'Newton', 'Energy', 'Momentum'],
     description:
       'From projectiles to planetary orbits, classical mechanics describes how things move. Master Newtonian dynamics, conservation laws, and the elegant Lagrangian formulation.',
@@ -512,8 +407,6 @@ export const courses: Course[] = [
       { title: 'Rotational motion', duration: '27:30', free: false },
     ],
     featured: false,
-    trending: false,
-    isNew: false,
   },
   {
     slug: 'organic-chemistry',
@@ -521,13 +414,7 @@ export const courses: Course[] = [
     subtitle: 'Structure, bonding, and reactions',
     subjectSlug: 'chemistry',
     level: 'Intermediate',
-    rating: 4.5,
-    reviewCount: 1240,
-    learners: 9600,
     durationHours: 24,
-    lessonCount: 44,
-    instructor: 'Dr. Sofia Mendez',
-    instructorTitle: 'Chemistry Professor',
     tags: ['Organic', 'Bonding', 'Reactions', 'Mechanisms'],
     description:
       'Organic chemistry explained clearly. Understand how carbon forms the molecules of life, predict reaction products, and draw clear arrow-pushing mechanisms.',
@@ -551,8 +438,6 @@ export const courses: Course[] = [
       { title: 'Elimination reactions', duration: '22:15', free: false },
     ],
     featured: false,
-    trending: false,
-    isNew: true,
   },
   {
     slug: 'intro-economics',
@@ -560,13 +445,7 @@ export const courses: Course[] = [
     subtitle: 'How markets and incentives shape the world',
     subjectSlug: 'economics',
     level: 'Beginner',
-    rating: 4.7,
-    reviewCount: 2010,
-    learners: 17800,
     durationHours: 18,
-    lessonCount: 38,
-    instructor: 'Dr. Helen Park',
-    instructorTitle: 'Economics Professor',
     tags: ['Microeconomics', 'Supply & Demand', 'Markets'],
     description:
       'A clear, jargon-free introduction to how economies work. Understand supply and demand, market equilibrium, externalities, and why incentives matter more than intentions.',
@@ -589,8 +468,6 @@ export const courses: Course[] = [
       { title: 'Market structures', duration: '22:00', free: false },
     ],
     featured: false,
-    trending: false,
-    isNew: false,
   },
   {
     slug: 'world-history',
@@ -598,13 +475,7 @@ export const courses: Course[] = [
     subtitle: 'From ancient empires to the modern era',
     subjectSlug: 'history',
     level: 'Beginner',
-    rating: 4.6,
-    reviewCount: 1560,
-    learners: 13400,
     durationHours: 20,
-    lessonCount: 42,
-    instructor: 'Dr. Robert Kingsley',
-    instructorTitle: 'Historian & Author',
     tags: ['World History', 'Civilizations', 'Empires'],
     description:
       'A sweeping tour of human history. Trace the rise and fall of civilizations, the forces that drove change, and the patterns that connect the ancient world to our own.',
@@ -628,8 +499,6 @@ export const courses: Course[] = [
       { title: 'Industrial revolution', duration: '23:45', free: false },
     ],
     featured: false,
-    trending: false,
-    isNew: false,
   },
 ];
 
@@ -642,7 +511,3 @@ export function getCourse(slug: string): Course | undefined {
 }
 
 export const featuredCourses = courses.filter((c) => c.featured);
-export const trendingCourses = courses.filter((c) => c.trending);
-export const newCourses = courses.filter((c) => c.isNew);
-
-export const courseUtils = { Star, Clock, BarChart3, Users };

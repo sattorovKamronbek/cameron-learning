@@ -1,6 +1,5 @@
-import { ArrowLeft, ArrowRight, BookOpen, Users, Check } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, Check } from 'lucide-react';
 import { Link, useRouter } from '@/router';
-import { PageHeader } from '@/components/PageHeader';
 import { CourseCard } from '@/components/CourseCard';
 import { Reveal, SectionHeading } from '@/components/Primitives';
 import { getSubject } from '@/data/subjects';
@@ -49,7 +48,7 @@ export function SubjectDetailPage({ slug }: { slug: string }) {
           </nav>
 
           <div className="mt-8 flex items-start gap-5">
-            <div className="flex h-16 w-16 flex-shrslate-0 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20 backdrop-blur-sm">
+            <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20 backdrop-blur-sm">
               <Icon className="h-8 w-8 text-white" />
             </div>
             <div>
@@ -69,13 +68,7 @@ export function SubjectDetailPage({ slug }: { slug: string }) {
             <div className="inline-flex items-center gap-2">
               <BookOpen className="h-5 w-5 text-white/70" />
               <span className="text-sm">
-                <span className="font-bold">{subject.courseCount}</span> courses
-              </span>
-            </div>
-            <div className="inline-flex items-center gap-2">
-              <Users className="h-5 w-5 text-white/70" />
-              <span className="text-sm">
-                <span className="font-bold">{subject.learnerCount}</span> learners
+                <span className="font-bold">{subjectCourses.length}</span> listed {subjectCourses.length === 1 ? 'outline' : 'outlines'}
               </span>
             </div>
           </div>
@@ -90,14 +83,14 @@ export function SubjectDetailPage({ slug }: { slug: string }) {
               <SectionHeading
                 eyebrow="What you'll cover"
                 title={`Topics in ${subject.shortName}`}
-                description="Core concepts you will master as you work through the courses."
+                description="Topics represented by the current catalogue entries and study guides."
               />
               <div className="mt-8 grid gap-3 sm:grid-cols-2">
                 {subject.topics.map((topic, i) => (
                   <Reveal key={topic} delay={(i % 2) * 80}>
                     <div className="flex items-center gap-3 rounded-xl bg-slate-50/60 p-4 ring-1 ring-slate-100">
                       <div
-                        className="flex h-8 w-8 flex-shrslate-0 items-center justify-center rounded-lg text-white"
+                        className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-white"
                         style={{ backgroundColor: subject.accent }}
                       >
                         <Check className="h-4 w-4" />
@@ -112,25 +105,21 @@ export function SubjectDetailPage({ slug }: { slug: string }) {
             <div>
               <SectionHeading
                 eyebrow="Why learn this"
-                title="What this subject unlocks"
-                description="The practical skills and understanding you gain from this subject."
+                title="What this catalogue covers"
+                description="A reference overview of concepts associated with this subject."
               />
               <div className="mt-8 card p-6">
                 <p className="leading-relaxed text-slate-600 text-pretty">
                   {subject.description}
                 </p>
-                <div className="mt-6 grid grid-cols-3 gap-4 border-t border-slate-100 pt-6">
+                <div className="mt-6 grid grid-cols-2 gap-4 border-t border-slate-100 pt-6">
                   <div>
-                    <p className="text-2xl font-extrabold text-slate-900">{subject.courseCount}</p>
-                    <p className="text-xs text-slate-400">Courses</p>
+                    <p className="text-2xl font-extrabold text-slate-900">{subjectCourses.length}</p>
+                    <p className="text-xs text-slate-400">Listed outlines</p>
                   </div>
                   <div>
                     <p className="text-2xl font-extrabold text-slate-900">{subject.topics.length}</p>
-                    <p className="text-xs text-slate-400">Core topics</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-extrabold text-slate-900">{subject.learnerCount}</p>
-                    <p className="text-xs text-slate-400">Learners</p>
+                    <p className="text-xs text-slate-400">Listed topics</p>
                   </div>
                 </div>
               </div>
@@ -144,8 +133,8 @@ export function SubjectDetailPage({ slug }: { slug: string }) {
         <div className="container-page">
           <SectionHeading
             eyebrow="Courses"
-            title={`Courses in ${subject.name}`}
-            description="Browse all available courses in this subject, from beginner to advanced."
+            title={`Catalogue entries in ${subject.name}`}
+            description="Review the course outlines currently listed for this subject."
           />
           {subjectCourses.length > 0 ? (
             <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -173,8 +162,8 @@ export function SubjectDetailPage({ slug }: { slug: string }) {
           <div className="container-page">
             <SectionHeading
               eyebrow="Learning paths"
-              title="Recommended roadmaps"
-              description="Structured paths that include this subject."
+              title="Related roadmaps"
+              description="Reference study plans that include topics from this subject."
             />
             <div className="mt-10 grid gap-6 md:grid-cols-2">
               {relatedRoadmaps.map((rm, i) => {
@@ -186,7 +175,7 @@ export function SubjectDetailPage({ slug }: { slug: string }) {
                       className="card group flex items-start gap-5 p-6 hover:-translate-y-1 hover:shadow-lift hover:ring-indigo-200"
                     >
                       <div
-                        className={`flex h-14 w-14 flex-shrslate-0 items-center justify-center rounded-2xl bg-gradient-to-br ${rm.color}`}
+                        className={`flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${rm.color}`}
                       >
                         <RmIcon className="h-7 w-7 text-white" />
                       </div>
@@ -199,7 +188,7 @@ export function SubjectDetailPage({ slug }: { slug: string }) {
                           {rm.steps.length} steps · {rm.goal}
                         </span>
                       </div>
-                      <ArrowRight className="mt-1 h-5 w-5 flex-shrslate-0 text-slate-300 transition-all group-hover:translate-x-1 group-hover:text-indigo-600" />
+                      <ArrowRight className="mt-1 h-5 w-5 flex-shrink-0 text-slate-300 transition-all group-hover:translate-x-1 group-hover:text-indigo-600" />
                     </Link>
                   </Reveal>
                 );

@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-  Code2, Database, Cpu, Brain, FlaskConical, Calculator, BookOpen,
-  Globe, LineChart, PenTool, Languages, Scale, Atom, Sigma,
+  Code2, Database, Cpu, Brain, FlaskConical, BookOpen,
+  Globe, LineChart, Languages, Scale, Atom, Sigma,
 } from 'lucide-react';
 
 export type Subject = {
@@ -15,8 +15,6 @@ export type Subject = {
   color: string;
   accent: string;
   topics: string[];
-  courseCount: number;
-  learnerCount: string;
 };
 
 export const subjects: Subject[] = [
@@ -32,8 +30,6 @@ export const subjects: Subject[] = [
     color: 'from-indigo-500 to-indigo-700',
     accent: '#6366f1',
     topics: ['HTML & CSS', 'JavaScript', 'React', 'Node.js', 'Responsive Design', 'APIs'],
-    courseCount: 24,
-    learnerCount: '128k',
   },
   {
     slug: 'data-science',
@@ -47,8 +43,6 @@ export const subjects: Subject[] = [
     color: 'from-electric-500 to-electric-700',
     accent: '#3b82f6',
     topics: ['Python', 'Pandas', 'Statistics', 'Machine Learning', 'Visualization', 'SQL'],
-    courseCount: 18,
-    learnerCount: '94k',
   },
   {
     slug: 'databases',
@@ -62,8 +56,6 @@ export const subjects: Subject[] = [
     color: 'from-slate-600 to-slate-800',
     accent: '#475569',
     topics: ['SQL', 'PostgreSQL', 'Schema Design', 'Indexes', 'Normalization', 'NoSQL'],
-    courseCount: 12,
-    learnerCount: '67k',
   },
   {
     slug: 'computer-science',
@@ -77,8 +69,6 @@ export const subjects: Subject[] = [
     color: 'from-indigo-600 to-electric-700',
     accent: '#4f46e5',
     topics: ['Algorithms', 'Data Structures', 'Big-O', 'Recursion', 'Graphs', 'Bitwise Ops'],
-    courseCount: 16,
-    learnerCount: '81k',
   },
   {
     slug: 'ai-machine-learning',
@@ -92,8 +82,6 @@ export const subjects: Subject[] = [
     color: 'from-electric-600 to-indigo-700',
     accent: '#2563eb',
     topics: ['Neural Networks', 'Deep Learning', 'NLP', 'PyTorch', 'Computer Vision', 'Transformers'],
-    courseCount: 14,
-    learnerCount: '103k',
   },
   {
     slug: 'mathematics',
@@ -107,8 +95,6 @@ export const subjects: Subject[] = [
     color: 'from-electric-500 to-electric-800',
     accent: '#3b82f6',
     topics: ['Algebra', 'Calculus', 'Linear Algebra', 'Discrete Math', 'Probability', 'Geometry'],
-    courseCount: 22,
-    learnerCount: '156k',
   },
   {
     slug: 'physics',
@@ -122,8 +108,6 @@ export const subjects: Subject[] = [
     color: 'from-indigo-600 to-electric-800',
     accent: '#4f46e5',
     topics: ['Mechanics', 'Electromagnetism', 'Thermodynamics', 'Optics', 'Quantum', 'Relativity'],
-    courseCount: 15,
-    learnerCount: '72k',
   },
   {
     slug: 'chemistry',
@@ -137,8 +121,6 @@ export const subjects: Subject[] = [
     color: 'from-electric-400 to-indigo-500',
     accent: '#60a5fa',
     topics: ['Atomic Structure', 'Bonding', 'Organic', 'Stoichiometry', 'Acids & Bases', 'Kinetics'],
-    courseCount: 13,
-    learnerCount: '58k',
   },
   {
     slug: 'biology',
@@ -152,8 +134,6 @@ export const subjects: Subject[] = [
     color: 'from-success-500 to-electric-600',
     accent: '#10b981',
     topics: ['Cell Biology', 'Genetics', 'Evolution', 'Ecology', 'Physiology', 'Microbiology'],
-    courseCount: 11,
-    learnerCount: '49k',
   },
   {
     slug: 'economics',
@@ -167,8 +147,6 @@ export const subjects: Subject[] = [
     color: 'from-sun-500 to-sun-600',
     accent: '#f59e0b',
     topics: ['Microeconomics', 'Macroeconomics', 'Trade', 'Game Theory', 'Finance', 'Econometrics'],
-    courseCount: 10,
-    learnerCount: '43k',
   },
   {
     slug: 'history',
@@ -182,8 +160,6 @@ export const subjects: Subject[] = [
     color: 'from-slate-500 to-slate-700',
     accent: '#64748b',
     topics: ['Ancient World', 'Medieval', 'Modern Era', 'Revolutions', 'World Wars', 'Historiography'],
-    courseCount: 9,
-    learnerCount: '37k',
   },
   {
     slug: 'languages',
@@ -197,8 +173,6 @@ export const subjects: Subject[] = [
     color: 'from-electric-400 to-electric-600',
     accent: '#60a5fa',
     topics: ['Phonetics', 'Syntax', 'Semantics', 'Sociolinguistics', 'Translation', 'Etymology'],
-    courseCount: 8,
-    learnerCount: '51k',
   },
 ];
 

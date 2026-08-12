@@ -1,15 +1,12 @@
-import { createContext, useContext, useCallback, useEffect, useState, type ReactNode } from 'react';
-
-type RouterContextValue = {
-  path: string;
-  query: URLSearchParams;
-  navigate: (to: string, opts?: { replace?: boolean }) => void;
-};
-
-const RouterContext = createContext<RouterContextValue | null>(null);
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { RouterContext, useRouter } from './router-context';
 
 function getQuery(): URLSearchParams {
   return new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+}
+
+function isExternalDestination(to: string): boolean {
+  return /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(to);
 }
 
 export function RouterProvider({ children }: { children: ReactNode }) {
@@ -28,6 +25,11 @@ export function RouterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const navigate = useCallback((to: string, opts?: { replace?: boolean }) => {
+    if (isExternalDestination(to)) {
+      if (opts?.replace) window.location.replace(to);
+      else window.location.assign(to);
+      return;
+    }
     if (opts?.replace) {
       window.history.replaceState({}, '', to);
     } else {
@@ -43,12 +45,6 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       {children}
     </RouterContext.Provider>
   );
-}
-
-export function useRouter() {
-  const ctx = useContext(RouterContext);
-  if (!ctx) throw new Error('useRouter must be used within RouterProvider');
-  return ctx;
 }
 
 export function Link({
@@ -70,6 +66,7 @@ export function Link({
       if (onClick) onClick(e);
       if (e.defaultPrevented) return;
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+      if (isExternalDestination(to)) return;
       e.preventDefault();
       navigate(to);
     },

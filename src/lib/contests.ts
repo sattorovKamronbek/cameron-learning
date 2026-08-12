@@ -1,4 +1,4 @@
-import { supabase, type Role } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 type Row = Record<string, unknown>;
 
@@ -32,16 +32,58 @@ export type Contest = {
 
 export type ContestQuestion = {
   id: string;
+  partId: string | null;
   position: number;
   prompt: string;
   options: string[];
   points: number;
 };
 
+export type ExamSection = 'listening' | 'reading' | 'writing';
+
+export type ExamPart = {
+  id: string;
+  position: number;
+  section: ExamSection;
+  title: string;
+  instructions: string;
+  content: string;
+  audioUrl: string | null;
+  maxPoints: number;
+};
+
+export type ExamPartInput = Omit<ExamPart, 'id'> & { id?: string | null };
+
+export type WritingResponse = {
+  partId: string;
+  content: string;
+  submittedAt: string | null;
+  updatedAt: string | null;
+};
+
+export type WritingSubmission = {
+  id: string;
+  partId: string;
+  partPosition: number;
+  partTitle: string;
+  maxPoints: number;
+  userId: string;
+  displayName: string;
+  content: string;
+  submittedAt: string;
+  score: number | null;
+  feedback: string | null;
+  gradedAt: string | null;
+};
+
 export type ContestWorkspace = {
-  contest: Pick<Contest, 'id' | 'slug' | 'title' | 'subjectSlug' | 'subject' | 'startTime' | 'endTime' | 'type'>;
+  contest: Pick<Contest, 'id' | 'slug' | 'title' | 'subjectSlug' | 'subject' | 'startTime' | 'endTime' | 'type'> & {
+    completedAt: string | null;
+  };
+  parts: ExamPart[];
   questions: ContestQuestion[];
   answers: Record<string, number>;
+  writingResponses: Record<string, WritingResponse>;
 };
 
 export type ContestLeaderboardEntry = {
@@ -66,6 +108,7 @@ export type EditorQuestion = ContestQuestion & {
 
 export type ContestEditor = {
   contest: ManagedContest;
+  parts: ExamPart[];
   questions: EditorQuestion[];
 };
 
@@ -85,6 +128,7 @@ export type ContestInput = {
 
 export type ContestQuestionInput = {
   id?: string | null;
+  partId?: string | null;
   position: number;
   prompt: string;
   options: string[];
@@ -95,6 +139,7 @@ export type ContestQuestionInput = {
 
 export const contestSubjects = [
   ['programming', 'Programming'],
+  ['science', 'Science'],
   ['mathematics', 'Mathematics'],
   ['physics', 'Physics'],
   ['chemistry', 'Chemistry'],
@@ -127,6 +172,10 @@ function text(value: unknown, fallback = ''): string {
 function nullableText(value: unknown): string | null {
   const result = text(value);
   return result || null;
+}
+
+function nullableTimestamp(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null;
 }
 
 function number(value: unknown, fallback = 0): number {
@@ -177,10 +226,6 @@ export function formatContestDate(value: string): { date: string; time: string; 
     time: date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
     relative,
   };
-}
-
-export function canManageContests(role: Role | null | undefined): boolean {
-  return role === 'judge' || role === 'admin';
 }
 
 function mapDifficulty(value: unknown): ContestDifficulty {
@@ -242,6 +287,25 @@ function mapContest(row: Row, managed = false): ManagedContest | Contest {
   };
 }
 
+function mapExamSection(value: unknown): ExamSection {
+  const section = text(value).toLowerCase();
+  if (section === 'listening' || section === 'writing') return section;
+  return 'reading';
+}
+
+function mapExamPart(row: Row): ExamPart {
+  return {
+    id: text(valueAt(row, 'id')),
+    position: number(valueAt(row, 'position'), 1),
+    section: mapExamSection(valueAt(row, 'section')),
+    title: text(valueAt(row, 'title'), 'Exam part'),
+    instructions: text(valueAt(row, 'instructions')),
+    content: text(valueAt(row, 'content')),
+    audioUrl: nullableText(valueAt(row, 'audio_url', 'audioUrl')),
+    maxPoints: number(valueAt(row, 'max_points', 'maxPoints')),
+  };
+}
+
 function rpcError(error: { message: string } | null): void {
   if (error) throw new Error(error.message);
 }
@@ -272,6 +336,7 @@ export async function fetchContestWorkspace(slug: string): Promise<ContestWorksp
   const subjectSlug = text(valueAt(contestRow, 'subject'), 'programming');
   const questions = asRows(payload.questions).map((row) => ({
     id: text(valueAt(row, 'id')),
+    partId: nullableText(valueAt(row, 'exam_part_id', 'part_id', 'partId')),
     position: number(valueAt(row, 'position')),
     prompt: text(valueAt(row, 'prompt')),
     options: arrayOfStrings(valueAt(row, 'options')),
@@ -281,6 +346,15 @@ export async function fetchContestWorkspace(slug: string): Promise<ContestWorksp
     text(valueAt(row, 'question_id', 'questionId')),
     number(valueAt(row, 'selected_option', 'selectedOption')),
   ]));
+  const writingResponses: Record<string, WritingResponse> = Object.fromEntries(asRows(payload.writing_responses).map((row): [string, WritingResponse] => {
+    const partId = text(valueAt(row, 'part_id', 'partId'));
+    return [partId, {
+      partId,
+      content: text(valueAt(row, 'content')),
+      submittedAt: nullableTimestamp(valueAt(row, 'submitted_at', 'submittedAt')),
+      updatedAt: nullableTimestamp(valueAt(row, 'updated_at', 'updatedAt')),
+    }];
+  }));
 
   return {
     contest: {
@@ -292,9 +366,12 @@ export async function fetchContestWorkspace(slug: string): Promise<ContestWorksp
       startTime: text(valueAt(contestRow, 'start_at', 'startTime')),
       endTime: text(valueAt(contestRow, 'end_at', 'endTime')),
       type: mapType(valueAt(contestRow, 'contest_type', 'type')),
+      completedAt: nullableTimestamp(valueAt(contestRow, 'completed_at', 'completedAt')),
     },
+    parts: asRows(payload.parts).map(mapExamPart).sort((left, right) => left.position - right.position),
     questions,
     answers,
+    writingResponses,
   };
 }
 
@@ -303,6 +380,27 @@ export async function submitContestAnswer(questionId: string, selectedOption: nu
     p_question_id: questionId,
     p_selected_option: selectedOption,
   });
+  rpcError(error);
+}
+
+export async function saveExamWritingResponse(partId: string, content: string, submit = false): Promise<WritingResponse> {
+  const { data, error } = await supabase.rpc('save_exam_writing_response', {
+    p_exam_part_id: partId,
+    p_content: content.trim(),
+    p_submit: submit,
+  });
+  rpcError(error);
+  const row = asRow(data);
+  return {
+    partId,
+    content: content.trim(),
+    submittedAt: nullableTimestamp(valueAt(row, 'submitted_at', 'submittedAt')),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export async function completeEnglishExam(contestId: string): Promise<void> {
+  const { error } = await supabase.rpc('complete_exam_submission', { p_contest_id: contestId });
   rpcError(error);
 }
 
@@ -361,6 +459,7 @@ export async function fetchContestEditor(contestId: string): Promise<ContestEdit
   const contest = mapContest(asRow(payload.contest), true) as ManagedContest;
   const questions = asRows(payload.questions).map((row) => ({
     id: text(valueAt(row, 'id')),
+    partId: nullableText(valueAt(row, 'exam_part_id', 'part_id', 'partId')),
     position: number(valueAt(row, 'position')),
     prompt: text(valueAt(row, 'prompt')),
     options: arrayOfStrings(valueAt(row, 'options')),
@@ -368,13 +467,18 @@ export async function fetchContestEditor(contestId: string): Promise<ContestEdit
     points: number(valueAt(row, 'points'), 1),
     explanation: nullableText(valueAt(row, 'explanation')),
   })).sort((a, b) => a.position - b.position);
-  return { contest, questions };
+  return {
+    contest,
+    parts: asRows(payload.parts).map(mapExamPart).sort((left, right) => left.position - right.position),
+    questions,
+  };
 }
 
 export async function saveContestQuestion(contestId: string, input: ContestQuestionInput): Promise<string> {
   const { data, error } = await supabase.rpc('save_contest_question', {
     p_contest_id: contestId,
     p_question_id: input.id ?? null,
+    p_exam_part_id: input.partId ?? null,
     p_position: input.position,
     p_prompt: input.prompt.trim(),
     p_options: input.options.map((item) => item.trim()),
@@ -386,6 +490,77 @@ export async function saveContestQuestion(contestId: string, input: ContestQuest
   const id = text(data);
   if (!id) throw new Error('Question save returned no ID.');
   return id;
+}
+
+export async function saveExamPart(contestId: string, input: ExamPartInput): Promise<string> {
+  const { data, error } = await supabase.rpc('save_contest_exam_part', {
+    p_contest_id: contestId,
+    p_part_id: input.id ?? null,
+    p_position: input.position,
+    p_section: input.section,
+    p_title: input.title.trim(),
+    p_instructions: input.instructions.trim(),
+    p_content: input.content.trim(),
+    p_audio_url: input.audioUrl?.trim() || null,
+    p_max_points: input.maxPoints,
+  });
+  rpcError(error);
+  const id = text(data);
+  if (!id) throw new Error('Exam part save returned no ID.');
+  return id;
+}
+
+export async function deleteExamPart(contestId: string, partId: string): Promise<void> {
+  const { error } = await supabase.rpc('delete_contest_exam_part', {
+    p_contest_id: contestId,
+    p_part_id: partId,
+  });
+  rpcError(error);
+}
+
+export async function uploadContestAudio(contestId: string, file: File): Promise<string> {
+  if (!file.type.startsWith('audio/')) throw new Error('Faqat audio fayl yuklash mumkin.');
+  if (file.size > 25 * 1024 * 1024) throw new Error('Audio fayl hajmi 25 MB dan kichik bo‘lishi kerak.');
+  const filename = file.name.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'audio';
+  const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const path = `${contestId}/${id}-${filename}`;
+  const { error } = await supabase.storage.from('contest-audio').upload(path, file, {
+    cacheControl: '3600',
+    upsert: false,
+    contentType: file.type,
+  });
+  rpcError(error);
+  const { data } = supabase.storage.from('contest-audio').getPublicUrl(path);
+  if (!data.publicUrl) throw new Error('Audio URL yaratilmadi.');
+  return data.publicUrl;
+}
+
+export async function fetchWritingSubmissions(contestId: string): Promise<WritingSubmission[]> {
+  const { data, error } = await supabase.rpc('get_contest_writing_submissions', { p_contest_id: contestId });
+  rpcError(error);
+  return asRows(data).map((row) => ({
+    id: text(valueAt(row, 'id')),
+    partId: text(valueAt(row, 'part_id', 'partId')),
+    partPosition: number(valueAt(row, 'part_position', 'partPosition'), 1),
+    partTitle: text(valueAt(row, 'part_title', 'partTitle'), 'Writing'),
+    maxPoints: number(valueAt(row, 'max_points', 'maxPoints')),
+    userId: text(valueAt(row, 'user_id', 'userId')),
+    displayName: text(valueAt(row, 'display_name', 'displayName'), 'Participant'),
+    content: text(valueAt(row, 'content')),
+    submittedAt: text(valueAt(row, 'submitted_at', 'submittedAt')),
+    score: valueAt(row, 'score') === null || valueAt(row, 'score') === undefined ? null : number(valueAt(row, 'score')),
+    feedback: nullableText(valueAt(row, 'feedback')),
+    gradedAt: nullableTimestamp(valueAt(row, 'graded_at', 'gradedAt')),
+  }));
+}
+
+export async function gradeWritingSubmission(submissionId: string, score: number, feedback = ''): Promise<void> {
+  const { error } = await supabase.rpc('grade_contest_writing_submission', {
+    p_submission_id: submissionId,
+    p_score: score,
+    p_feedback: feedback.trim() || null,
+  });
+  rpcError(error);
 }
 
 export async function deleteContestQuestion(contestId: string, questionId: string): Promise<void> {

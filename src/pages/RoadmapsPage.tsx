@@ -9,8 +9,8 @@ export function RoadmapsPage() {
     <>
       <PageHeader
         eyebrow="Learning roadmaps"
-        title="Step-by-step paths to your goals"
-        description="Not sure what to learn first? Follow a guided roadmap that breaks down the journey into clear, ordered steps — from beginner to job-ready."
+        title="Reference study plans"
+        description="Use these curated, step-by-step roadmaps to plan independent study. They are guidance, not hosted courses or outcome guarantees."
       />
 
       <section className="bg-white py-16">
@@ -33,7 +33,7 @@ export function RoadmapsPage() {
                           </div>
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-wider text-white/70">
-                              {rm.steps.length} steps
+                              {rm.steps.length} planning steps
                             </p>
                             <p className="text-sm font-bold text-white">{rm.goal}</p>
                           </div>
@@ -53,7 +53,7 @@ export function RoadmapsPage() {
                       <div className="mt-5 space-y-2.5">
                         {rm.steps.slice(0, 3).map((step, idx) => (
                           <div key={step.title} className="flex items-center gap-3 text-sm">
-                            <span className="flex h-6 w-6 flex-shrslate-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
+                            <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
                               {idx + 1}
                             </span>
                             <span className="text-slate-700">{step.title}</span>
@@ -71,7 +71,7 @@ export function RoadmapsPage() {
                       </div>
 
                       <div className="mt-6 flex items-center gap-2 border-t border-slate-100 pt-4 text-sm font-semibold text-indigo-700">
-                        View full roadmap
+                        View study plan
                         <ArrowRight className="h-4 w-4 transition-all group-hover:translate-x-1" />
                       </div>
                     </div>

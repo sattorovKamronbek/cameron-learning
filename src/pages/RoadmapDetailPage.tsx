@@ -46,13 +46,13 @@ export function RoadmapDetailPage({ slug }: { slug: string }) {
           </nav>
 
           <div className="mt-8 flex items-start gap-5">
-            <div className="flex h-16 w-16 flex-shrslate-0 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20 backdrop-blur-sm">
+            <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20 backdrop-blur-sm">
               <Icon className="h-8 w-8 text-white" />
             </div>
             <div>
               <span className="chip bg-white/15 text-white ring-1 ring-white/20">
                 <Target className="h-3 w-3" />
-                {roadmap.goal}
+                Suggested focus: {roadmap.goal}
               </span>
               <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl text-balance">
                 {roadmap.title}
@@ -65,7 +65,7 @@ export function RoadmapDetailPage({ slug }: { slug: string }) {
 
           <div className="mt-8 inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm ring-1 ring-white/20 backdrop-blur-sm">
             <Clock className="h-4 w-4" />
-            <span>Estimated time: {roadmap.steps.reduce((acc, s) => acc + s.est, '')}</span>
+            <span>Step-by-step estimates are listed below.</span>
           </div>
         </div>
       </section>
@@ -74,9 +74,9 @@ export function RoadmapDetailPage({ slug }: { slug: string }) {
       <section className="bg-white py-16">
         <div className="container-page">
           <SectionHeading
-            eyebrow="The journey"
-            title="Your step-by-step path"
-            description="Follow these steps in order. Each builds on the last."
+            eyebrow="Reference sequence"
+            title="Suggested study steps"
+            description="Use these steps as a flexible planning reference. They do not unlock hosted lessons or guarantee an outcome."
           />
 
           <div className="mt-12 relative">
@@ -88,7 +88,7 @@ export function RoadmapDetailPage({ slug }: { slug: string }) {
                 <Reveal key={step.title} delay={i * 80}>
                   <div className="relative flex gap-5">
                     {/* Step number */}
-                    <div className="relative z-10 flex h-14 w-14 flex-shrslate-0 items-center justify-center rounded-2xl bg-white shadow-card ring-1 ring-slate-100">
+                    <div className="relative z-10 flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-white shadow-card ring-1 ring-slate-100">
                       <span className="text-lg font-extrabold text-indigo-600">{i + 1}</span>
                     </div>
 
@@ -128,8 +128,8 @@ export function RoadmapDetailPage({ slug }: { slug: string }) {
           </div>
 
           <div className="mt-10 flex justify-center">
-            <Link to="/signup" className="btn-primary px-6 py-3.5 text-base">
-              Start this roadmap
+            <Link to="/courses" className="btn-primary px-6 py-3.5 text-base">
+              Browse course outlines
               <ArrowRight className="h-5 w-5" />
             </Link>
           </div>
@@ -141,9 +141,9 @@ export function RoadmapDetailPage({ slug }: { slug: string }) {
         <section className="bg-slate-50/50 py-16">
           <div className="container-page">
             <SectionHeading
-              eyebrow="Related courses"
-              title="Courses for this path"
-              description="Hand-picked courses that map to the steps in this roadmap."
+              eyebrow="Related catalogue entries"
+              title="Course outlines for this study plan"
+              description="These static entries are matched from their listed topics; they are not hosted lessons."
             />
             <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {relatedCourses.map((course, i) => {
@@ -166,7 +166,7 @@ export function RoadmapDetailPage({ slug }: { slug: string }) {
                       <p className="mt-1 line-clamp-2 text-xs text-slate-500">{course.subtitle}</p>
                       <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-400">
                         <BookOpen className="h-3 w-3" />
-                        {course.lessonCount} lessons
+                        {course.lessons.length} outline items
                       </div>
                     </Link>
                   </Reveal>

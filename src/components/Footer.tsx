@@ -1,7 +1,20 @@
-import { Twitter, Github, Youtube, Linkedin, Mail, ArrowRight, Send } from 'lucide-react';
+import { Mail, ArrowRight } from 'lucide-react';
 import { Link } from '@/router';
 import { subjects } from '@/data/subjects';
 import { useTranslation } from '@/lib/i18n';
+
+function scrollToSection(sectionId: string) {
+  const scroll = (attempt = 0) => {
+    const target = document.getElementById(sectionId);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    if (attempt < 10) window.setTimeout(() => scroll(attempt + 1), 50);
+  };
+
+  window.setTimeout(scroll, 0);
+}
 
 export function Footer() {
   const { t } = useTranslation();
@@ -14,9 +27,9 @@ export function Footer() {
   ];
   const companyLinks = [
     { to: '/about', label: t('footer.aboutUs') },
-    { to: '/about#mission', label: t('footer.mission') },
-    { to: '/about#instructors', label: t('footer.instructors') },
-    { to: '/about#contact', label: t('footer.contact') },
+    { to: '/about#mission', anchor: 'mission', label: t('footer.mission') },
+    { to: '/about#instructors', anchor: 'instructors', label: t('footer.instructors') },
+    { to: '/about#contact', anchor: 'contact', label: t('footer.contact') },
   ];
 
   return (
@@ -64,35 +77,26 @@ export function Footer() {
               <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 {t('footer.newsletter')}
               </p>
-              <form className="mt-3 flex gap-2" onSubmit={(e) => e.preventDefault()}>
-                <input
-                  type="email"
-                  placeholder="you@example.com"
-                  className="w-full rounded-xl border-0 bg-white/5 px-4 py-2.5 text-sm text-white ring-1 ring-white/10 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                />
-                <button type="submit" className="btn-gradient flex-shrink-0 px-4 py-2.5">
-                  <Send className="h-4 w-4" />
-                </button>
-              </form>
+              <p className="mt-3 max-w-xs text-sm leading-relaxed text-slate-400">
+                {t('footer.newsletterUnavailable')}
+              </p>
+              <Link to="/resources" className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-400 transition-colors hover:text-indigo-300">
+                {t('footer.browseResources')}
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
             </div>
 
             <div className="mt-6 flex items-center gap-2">
-              {[
-                { icon: Twitter, label: 'Twitter' },
-                { icon: Github, label: 'GitHub' },
-                { icon: Youtube, label: 'YouTube' },
-                { icon: Linkedin, label: 'LinkedIn' },
-                { icon: Mail, label: 'Email' },
-              ].map(({ icon: Icon, label }) => (
-                <a
-                  key={label}
-                  href="#"
-                  aria-label={label}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 text-slate-400 ring-1 ring-white/10 transition-all hover:bg-indigo-600 hover:text-white hover:ring-indigo-600"
-                >
-                  <Icon className="h-4 w-4" />
-                </a>
-              ))}
+              <a
+                href="mailto:hello@cameron.learning"
+                aria-label="Email Cameron Learning"
+                className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 text-slate-400 ring-1 ring-white/10 transition-all hover:bg-indigo-600 hover:text-white hover:ring-indigo-600"
+              >
+                <Mail className="h-4 w-4" />
+              </a>
+              <a href="mailto:hello@cameron.learning" className="text-sm text-slate-400 transition-colors hover:text-indigo-300">
+                hello@cameron.learning
+              </a>
             </div>
           </div>
 
@@ -132,7 +136,11 @@ export function Footer() {
             <ul className="mt-4 space-y-2.5">
               {companyLinks.map((link) => (
                 <li key={link.to}>
-                  <Link to={link.to} className="text-sm text-slate-400 transition-colors hover:text-indigo-400">
+                  <Link
+                    to={link.to}
+                    onClick={link.anchor ? () => scrollToSection(link.anchor) : undefined}
+                    className="text-sm text-slate-400 transition-colors hover:text-indigo-400"
+                  >
                     {link.label}
                   </Link>
                 </li>
@@ -145,10 +153,11 @@ export function Footer() {
           <p className="text-xs text-slate-500">
             © {new Date().getFullYear()} Cameron Learning. {t('footer.rights')}
           </p>
-          <div className="flex items-center gap-5 text-xs text-slate-500">
-            <a href="#" className="transition-colors hover:text-slate-300">{t('footer.privacy')}</a>
-            <a href="#" className="transition-colors hover:text-slate-300">{t('footer.terms')}</a>
-            <a href="#" className="transition-colors hover:text-slate-300">{t('footer.cookies')}</a>
+          <div className="max-w-md text-center text-xs text-slate-500 sm:text-right">
+            <p>{t('footer.legalUnavailable')}</p>
+            <a href="mailto:hello@cameron.learning?subject=Privacy%20or%20terms%20question" className="mt-1 inline-block transition-colors hover:text-slate-300">
+              {t('footer.legalContact')}
+            </a>
           </div>
         </div>
       </div>

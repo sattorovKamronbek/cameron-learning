@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { ArrowLeft, Mail, Lock, User, Eye, EyeOff, AlertCircle, Check, RefreshCw, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Mail, Lock, User, Eye, EyeOff, AlertCircle, Check } from 'lucide-react';
 import { Link, useRouter } from '@/router';
 import { useAuth } from '@/lib/auth';
+import { checkAdminAccess } from '@/lib/security';
 import { LoadingDots } from '@/components/LoadingState';
 
 export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
-  const { signIn, signUp, verifySignUpCode, resendSignUpCode } = useAuth();
+  const { signIn, signUp } = useAuth();
   const { navigate } = useRouter();
   const isSignup = mode === 'signup';
 
@@ -14,125 +15,35 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [verificationCode, setVerificationCode] = useState('');
-  const [pendingVerification, setPendingVerification] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setNotice(null);
     setLoading(true);
 
     if (isSignup) {
-      const { error, requiresEmailConfirmation } = await signUp(email, password, fullName || undefined);
+      const { error } = await signUp(email, password, fullName || undefined);
       setLoading(false);
       if (error) {
         setError(error);
-      } else if (requiresEmailConfirmation) {
-        setPendingVerification(true);
       } else {
         navigate('/profile');
       }
     } else {
       const { error } = await signIn(email, password);
-      setLoading(false);
       if (error) {
         setError(error);
       } else {
-        navigate('/profile');
+        // The protected RPC remains the source of truth. A valid admin
+        // credential lands directly in the console; every other active
+        // account receives the regular learner dashboard.
+        const isAdmin = await checkAdminAccess();
+        navigate(isAdmin ? '/admin' : '/profile');
       }
+      setLoading(false);
     }
   };
-
-  const handleCodeVerification = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setNotice(null);
-    setLoading(true);
-    const { error } = await verifySignUpCode(email, verificationCode.trim());
-    setLoading(false);
-    if (error) {
-      setError(error);
-    } else {
-      navigate('/profile');
-    }
-  };
-
-  const handleResendCode = async () => {
-    setError(null);
-    setNotice(null);
-    setLoading(true);
-    const { error } = await resendSignUpCode(email);
-    setLoading(false);
-    if (error) {
-      setError(error);
-    } else {
-      setNotice('Yangi tasdiqlash kodi emailingizga yuborildi.');
-    }
-  };
-
-  if (pendingVerification) {
-    return (
-      <section className="theme-dark-section relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-20">
-        <div className="absolute inset-0 bg-grid opacity-10" />
-        <div className="relative w-full max-w-md">
-          <Link to="/" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white">
-            <ArrowLeft className="h-4 w-4" />
-            Back to home
-          </Link>
-          <div className="mt-6 card overflow-hidden">
-            <div className="theme-cta p-8 text-center text-white">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm ring-1 ring-white/20">
-                <ShieldCheck className="h-7 w-7" />
-              </div>
-              <h1 className="mt-4 text-2xl font-bold">Emailingizni tasdiqlang</h1>
-              <p className="mt-2 text-sm text-indigo-100">Cameron Learning Center sizga yuborgan 6 xonali kodni kiriting.</p>
-            </div>
-            <form onSubmit={handleCodeVerification} className="p-8">
-              {error && (
-                <div className="mb-5 flex items-start gap-3 rounded-xl bg-error-500/10 p-4 ring-1 ring-error-500/20">
-                  <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-error-500" />
-                  <p className="text-sm text-error-600">{error}</p>
-                </div>
-              )}
-              {notice && (
-                <div className="mb-5 flex items-start gap-3 rounded-xl bg-emerald-500/10 p-4 ring-1 ring-emerald-500/20">
-                  <Check className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-600" />
-                  <p className="text-sm text-emerald-700">{notice}</p>
-                </div>
-              )}
-              <p className="mb-5 text-center text-sm text-slate-500"><span className="font-semibold text-slate-700">{email}</span> manziliga kod yuborildi.</p>
-              <label htmlFor="verification-code" className="mb-1.5 block text-sm font-semibold text-slate-700">Tasdiqlash kodi</label>
-              <input
-                id="verification-code"
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="[0-9]{6}"
-                maxLength={6}
-                required
-                value={verificationCode}
-                onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, ''))}
-                placeholder="000000"
-                className="w-full rounded-xl border-0 bg-slate-50 px-4 py-3 text-center font-mono text-xl font-bold tracking-[0.5em] text-slate-900 ring-1 ring-slate-200 placeholder:tracking-[0.5em] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              />
-              <button type="submit" disabled={loading || verificationCode.length !== 6} className="btn-primary mt-5 w-full disabled:cursor-not-allowed disabled:opacity-60">
-                {loading ? <><LoadingDots /> Tekshirilmoqda...</> : 'Kodni tasdiqlash'}
-              </button>
-              <button type="button" onClick={handleResendCode} disabled={loading} className="btn-ghost mt-3 w-full disabled:cursor-not-allowed disabled:opacity-60">
-                <RefreshCw className="h-4 w-4" /> Kodni qayta yuborish
-              </button>
-              <button type="button" onClick={() => { setPendingVerification(false); setVerificationCode(''); setError(null); setNotice(null); }} className="mt-4 w-full text-sm font-semibold text-slate-500 hover:text-slate-700">
-                Email manzilini o‘zgartirish
-              </button>
-            </form>
-          </div>
-        </div>
-      </section>
-    );
-  }
 
   return (
     <section className="theme-dark-section relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-20">
@@ -156,23 +67,16 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
             </h1>
             <p className="mt-2 text-sm text-indigo-100">
               {isSignup
-                ? 'Join 850,000+ learners exploring programming and academic subjects.'
-                : 'Sign in to track your progress and access your saved courses.'}
+                ? 'Create an account to save useful course entries for later.'
+                : 'Sign in to access your saved course entries and account.'}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="p-8">
             {error && (
               <div className="mb-5 flex items-start gap-3 rounded-xl bg-error-500/10 p-4 ring-1 ring-error-500/20">
-                <AlertCircle className="mt-0.5 h-5 w-5 flex-shrslate-0 text-error-500" />
+                <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-error-500" />
                 <p className="text-sm text-error-600">{error}</p>
-              </div>
-            )}
-
-            {notice && (
-              <div className="mb-5 flex items-start gap-3 rounded-xl bg-emerald-500/10 p-4 ring-1 ring-emerald-500/20">
-                <Check className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-600" />
-                <p className="text-sm text-emerald-700">{notice}</p>
               </div>
             )}
 
@@ -258,7 +162,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
 
             {isSignup && (
               <div className="mt-5 space-y-2.5">
-                {['Track your learning progress', 'Save courses and roadmaps', 'Personalized recommendations'].map((f) => (
+                {['Save course entries', 'Receive real in-app announcements', 'Use your account across the catalogue'].map((f) => (
                   <div key={f} className="flex items-center gap-2.5 text-sm text-slate-500">
                     <Check className="h-4 w-4 text-indigo-600" />
                     {f}

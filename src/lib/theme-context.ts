@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext } from 'react';
 
 export const themes = [
   { id: 'indigo', primary: '#6366f1', secondary: '#3b82f6' },
@@ -14,23 +14,11 @@ type ThemeContextValue = {
   setTheme: (theme: Theme) => void;
 };
 
-const ThemeContext = createContext<ThemeContextValue | null>(null);
+export const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function getInitialTheme(): Theme {
+export function getInitialTheme(): Theme {
   const saved = typeof window !== 'undefined' ? window.localStorage.getItem('cameron-theme') : null;
   return themes.some(({ id }) => id === saved) ? saved as Theme : 'indigo';
-}
-
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(getInitialTheme);
-
-  useEffect(() => {
-    window.localStorage.setItem('cameron-theme', theme);
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
-
-  const value = useMemo(() => ({ theme, setTheme }), [theme]);
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme() {

@@ -3,6 +3,7 @@ import { Link } from '@/router';
 import { PageHeader } from '@/components/PageHeader';
 import { Reveal } from '@/components/Primitives';
 import { programmingSubjects, academicSubjects } from '@/data/subjects';
+import { getCoursesBySubject } from '@/data/courses';
 
 export function SubjectsPage() {
   return (
@@ -10,7 +11,7 @@ export function SubjectsPage() {
       <PageHeader
         eyebrow="Subjects"
         title="Explore all subjects"
-        description="From coding to calculus, chemistry to history — dive into twelve structured subject areas, each with curated courses and learning paths."
+        description="From coding to calculus, chemistry to history — explore the subject areas represented in the current curated catalogue."
       />
 
       <section className="bg-white py-16">
@@ -70,6 +71,7 @@ function SubjectGroup({
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {subjects.map((subject, i) => {
           const SubjectIcon = subject.icon;
+          const outlineCount = getCoursesBySubject(subject.slug).length;
           return (
             <Reveal key={subject.slug} delay={(i % 3) * 80}>
               <Link
@@ -101,7 +103,7 @@ function SubjectGroup({
 
                 <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
                   <span className="text-xs font-semibold text-slate-400">
-                    {subject.courseCount} courses · {subject.learnerCount} learners
+                    {outlineCount} listed {outlineCount === 1 ? 'outline' : 'outlines'}
                   </span>
                   <ArrowRight className="h-4 w-4 text-slate-300 transition-all group-hover:translate-x-1 group-hover:text-indigo-600" />
                 </div>
