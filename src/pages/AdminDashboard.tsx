@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Link, useRouter } from '@/router';
 import { LoadingState } from '@/components/LoadingState';
+import { AppSelect } from '@/components/AppSelect';
 import { useAuth } from '@/lib/auth';
 import {
   adminAddAdminEmail,
@@ -480,28 +481,30 @@ function UsersPanel({
                   <td className="px-5 py-4 text-sm text-slate-600">{formatDate(entry.created_at)}</td>
                   <td className="px-5 py-4">
                     <label className="sr-only" htmlFor={'role-' + entry.id}>Role for {entry.email}</label>
-                    <select
+                    <AppSelect
                       id={'role-' + entry.id}
                       value={entry.role}
                       disabled={isLocked}
-                      onChange={(event) => void onChangeRole(entry, event.target.value as Role)}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {roles.map((role) => <option key={role} value={role}>{role}</option>)}
-                    </select>
+                      onChange={(value) => void onChangeRole(entry, value as Role)}
+                      options={roles.map((role) => ({ value: role, label: role }))}
+                      ariaLabel={`Role for ${entry.email}`}
+                      className="min-w-[120px]"
+                      triggerClassName="rounded-lg py-2"
+                    />
                     {isRoleUpdating && <p className="mt-1 text-xs text-slate-400">Saving…</p>}
                   </td>
                   <td className="px-5 py-4">
                     <label className="sr-only" htmlFor={'status-' + entry.id}>Status for {entry.email}</label>
-                    <select
+                    <AppSelect
                       id={'status-' + entry.id}
                       value={entry.status}
                       disabled={isLocked}
-                      onChange={(event) => void onChangeStatus(entry, event.target.value as UserStatus)}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
-                    </select>
+                      onChange={(value) => void onChangeStatus(entry, value as UserStatus)}
+                      options={statuses.map((status) => ({ value: status, label: status }))}
+                      ariaLabel={`Status for ${entry.email}`}
+                      className="min-w-[120px]"
+                      triggerClassName="rounded-lg py-2"
+                    />
                     {entry.suspended_reason && <p className="mt-1 max-w-xs text-xs text-slate-400">Reason: {entry.suspended_reason}</p>}
                     {isStatusUpdating && <p className="mt-1 text-xs text-slate-400">Saving…</p>}
                   </td>

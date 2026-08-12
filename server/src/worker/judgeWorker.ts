@@ -4,6 +4,7 @@ import os from "os";
 import { spawn } from "child_process";
 import { prisma } from "../index";
 import { dequeueJob } from "../services/judgeQueueService";
+import { scanSubmissionForSimilarity } from "../services/codeSimilarityService";
 
 const WORKDIR = process.env.JUDGE_WORKDIR || "/tmp/judge";
 
@@ -109,6 +110,11 @@ async function handleSubmission(job: any) {
   }
 
   await prisma.submission.update({ where: { id: submissionId }, data: { verdict: overallVerdict, score: totalScore } as any });
+  if (overallVerdict === 'ACCEPTED') {
+    // Review creation is deliberately best-effort: judging stays available if
+    // an integrity provider is temporarily unavailable.
+    scanSubmissionForSimilarity(submissionId).catch((error) => console.error("Similarity scan failed:", error));
+  }
 }
 
 async function loop() {

@@ -122,7 +122,7 @@ CREATE POLICY contest_audio_judge_upload
   TO authenticated
   WITH CHECK (
     bucket_id = 'contest-audio'
-    AND owner_id = auth.uid()
+    AND owner_id = auth.uid()::text
     AND public.can_upload_contest_audio()
   );
 
@@ -132,12 +132,12 @@ CREATE POLICY contest_audio_owner_update
   TO authenticated
   USING (
     bucket_id = 'contest-audio'
-    AND owner_id = auth.uid()
+    AND owner_id = auth.uid()::text
     AND public.can_upload_contest_audio()
   )
   WITH CHECK (
     bucket_id = 'contest-audio'
-    AND owner_id = auth.uid()
+    AND owner_id = auth.uid()::text
     AND public.can_upload_contest_audio()
   );
 
@@ -147,7 +147,7 @@ CREATE POLICY contest_audio_owner_delete
   TO authenticated
   USING (
     bucket_id = 'contest-audio'
-    AND owner_id = auth.uid()
+    AND owner_id = auth.uid()::text
     AND public.can_upload_contest_audio()
   );
 

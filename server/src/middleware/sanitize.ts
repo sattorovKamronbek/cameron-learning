@@ -1,6 +1,8 @@
 import sanitizeHtml from "sanitize-html";
 import { Request, Response, NextFunction } from "express";
 
+const rawExecutionFields = new Set(["source", "generatorSource", "referenceSource", "input", "output"]);
+
 function sanitizeObject(obj: any): any {
   if (!obj || typeof obj !== "object") return obj;
   if (Array.isArray(obj)) return obj.map(sanitizeObject);
@@ -8,7 +10,10 @@ function sanitizeObject(obj: any): any {
   for (const k of Object.keys(obj)) {
     const v = obj[k];
     if (typeof v === "string") {
-      out[k] = sanitizeHtml(v, { allowedTags: [], allowedAttributes: {} });
+      // These values are written to a sandboxed compiler/test store and never
+      // rendered as HTML. Sanitizing them corrupts valid operators such as <
+      // and >, so output encoding belongs at every display boundary instead.
+      out[k] = rawExecutionFields.has(k) ? v : sanitizeHtml(v, { allowedTags: [], allowedAttributes: {} });
     } else if (typeof v === "object") {
       out[k] = sanitizeObject(v);
     } else {

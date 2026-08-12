@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { CourseCard } from '@/components/CourseCard';
+import { AppSelect } from '@/components/AppSelect';
 import { Reveal } from '@/components/Primitives';
 import { courses, type Course } from '@/data/courses';
 import { subjects } from '@/data/subjects';
@@ -95,17 +96,14 @@ export function CoursesPage() {
           </div>
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="h-4 w-4 text-slate-400" />
-            <select
+            <AppSelect
               value={sort}
-              onChange={(e) => setSort(e.target.value as SortValue)}
-              className="rounded-xl bg-white py-3 pl-3 pr-8 text-sm font-semibold text-slate-700 shadow-soft ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            >
-              {sortOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setSort(value as SortValue)}
+              options={sortOptions.map((option) => ({ ...option }))}
+              ariaLabel="Saralash"
+              className="min-w-[190px]"
+              triggerClassName="shadow-soft"
+            />
           </div>
         </div>
       </PageHeader>

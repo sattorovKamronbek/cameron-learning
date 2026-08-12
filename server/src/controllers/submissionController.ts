@@ -14,6 +14,8 @@ export async function submitSolution(req: any, res: Response) {
     return res.status(400).json({ error: "Unsupported language" });
   }
   try {
+    const contestant = await prisma.user.findUnique({ where: { id: userId }, select: { isSuspended: true, isBanned: true } });
+    if (!contestant || contestant.isSuspended || contestant.isBanned) return res.status(403).json({ error: "This account cannot submit solutions" });
     const problem = await prisma.problem.findUnique({ where: { id: problemId } });
     if (!problem) return res.status(404).json({ error: "Problem not found" });
     if (contestId) {

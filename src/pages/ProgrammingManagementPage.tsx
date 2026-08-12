@@ -22,16 +22,23 @@ import {
 } from 'lucide-react';
 import { Link } from '@/router';
 import { useAccessControl } from '@/lib/access';
+import { useAuth } from '@/lib/auth';
 import { LoadingState } from '@/components/LoadingState';
+import { AppSelect } from '@/components/AppSelect';
 import {
   archiveContest,
   createContest,
+  deleteContest,
   fetchManagedContests,
   formatContestDate,
+  generatePrivateAccessCode,
   publishContest,
+  promotePrivateGymToRated,
   updateContest,
   type ContestDifficulty,
   type ContestInput,
+  type ContestMode,
+  type ContestVisibility,
   type ManagedContest,
 } from '@/lib/contests';
 import {
@@ -61,6 +68,9 @@ type ContestForm = {
   description: string;
   difficulty: ContestDifficulty;
   type: 'Rated' | 'Unrated';
+  mode: ContestMode;
+  visibility: ContestVisibility;
+  privateAccessCode: string;
   startTime: string;
   endTime: string;
   maxParticipants: string;
@@ -94,7 +104,7 @@ function defaultContestForm(): ContestForm {
   const start = new Date(Date.now() + 24 * 60 * 60 * 1000);
   const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
   return {
-    title: '', description: '', difficulty: 'Medium', type: 'Unrated',
+    title: '', description: '', difficulty: 'Medium', type: 'Unrated', mode: 'Gym', visibility: 'Public', privateAccessCode: '',
     startTime: localDateTime(start), endTime: localDateTime(end), maxParticipants: '1000',
     rulesText: 'Only one account may be used.\nDo not share solutions during the contest.',
     tagsText: 'algorithms', prize: '',
@@ -107,6 +117,9 @@ function contestFormFrom(contest: ManagedContest): ContestForm {
     description: contest.description,
     difficulty: contest.difficulty,
     type: contest.type,
+    mode: contest.mode,
+    visibility: contest.visibility,
+    privateAccessCode: '',
     startTime: localDateTime(new Date(contest.startTime)),
     endTime: localDateTime(new Date(contest.endTime)),
     maxParticipants: String(contest.maxParticipants),
@@ -123,6 +136,9 @@ function contestInput(form: ContestForm): ContestInput {
     subjectSlug: 'programming',
     difficulty: form.difficulty,
     type: form.type,
+    mode: form.mode,
+    visibility: form.visibility,
+    privateAccessCode: form.privateAccessCode || null,
     startTime: form.startTime,
     endTime: form.endTime,
     maxParticipants: Number(form.maxParticipants),
@@ -189,6 +205,7 @@ function isEditable(contest: ManagedContest | null): boolean {
 
 export function ProgrammingManagementPage() {
   const { adminAccess } = useAccessControl();
+  const { profile } = useAuth();
   const [tab, setTab] = useState<Tab>('contests');
   const [contests, setContests] = useState<ManagedContest[]>([]);
   const [problems, setProblems] = useState<ManagedProgrammingProblem[]>([]);
@@ -210,6 +227,7 @@ export function ProgrammingManagementPage() {
   );
   const editingContest = selectedContest !== null;
   const canEdit = isEditable(selectedContest);
+  const isJudge = profile?.role === 'judge';
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -288,13 +306,15 @@ export function ProgrammingManagementPage() {
     event.preventDefault();
     if (!contestForm.title.trim()) return setError('Contest nomini kiriting.');
     if (Number(contestForm.maxParticipants) < 1) return setError('Ishtirokchilar limitini tekshiring.');
+    if (contestForm.visibility === 'Private' && !selectedContest && contestForm.privateAccessCode.trim().length < 10) return setError('Private contest uchun kamida 10 belgili access code kiriting.');
+    const protectedForm: ContestForm = isJudge ? { ...contestForm, mode: 'Gym', type: 'Unrated' } : contestForm;
     await run('contest', async () => {
       if (selectedContest) {
-        await updateContest(selectedContest.id, contestInput(contestForm));
+        await updateContest(selectedContest.id, contestInput(protectedForm));
         await refresh();
-        await loadContest({ ...selectedContest, ...contestInput(contestForm), startTime: new Date(contestForm.startTime).toISOString(), endTime: new Date(contestForm.endTime).toISOString() });
+        await loadContest({ ...selectedContest, ...contestInput(protectedForm), startTime: new Date(protectedForm.startTime).toISOString(), endTime: new Date(protectedForm.endTime).toISOString() });
       } else {
-        const contestId = await createContest(contestInput(contestForm));
+        const contestId = await createContest(contestInput(protectedForm));
         await refresh();
         const next = (await fetchManagedContests()).find((contest) => contest.id === contestId);
         if (next) await loadContest(next);
@@ -386,6 +406,25 @@ export function ProgrammingManagementPage() {
     }, 'Contest arxivlandi.');
   };
 
+  const removeContest = async () => {
+    if (!selectedContest || !window.confirm('Draft contestni va uning biriktirilgan ma’lumotlarini butunlay o‘chirasizmi? Bu amalni qaytarib bo‘lmaydi.')) return;
+    await run('delete-contest', async () => {
+      await deleteContest(selectedContest.id);
+      newContest();
+      await refresh();
+    }, 'Draft contest o‘chirildi.');
+  };
+
+  const promotePrivateGym = async () => {
+    if (!selectedContest || !window.confirm('Bu private Gym rated contestga o‘tkaziladi. Shundan so‘ng uni faqat admin boshqara oladi. Davom etasizmi?')) return;
+    await run('promote-private-gym', async () => {
+      await promotePrivateGymToRated(selectedContest.id);
+      await refresh();
+      const updated = (await fetchManagedContests()).find((contest) => contest.id === selectedContest.id);
+      if (updated) await loadContest(updated);
+    }, 'Private Gym rated contestga o‘tkazildi.');
+  };
+
   const filteredProblems = useMemo(() => {
     const search = problemSearch.trim().toLowerCase();
     return problems.filter((problem) => !search || [problem.title, ...problem.tags].some((entry) => entry.toLowerCase().includes(search)));
@@ -440,7 +479,7 @@ export function ProgrammingManagementPage() {
                   <div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{editingContest ? 'Contest settings' : 'New programming contest'}</p><h2 className="mt-1 text-xl font-bold text-slate-900">{editingContest ? selectedContest?.title : 'Programming contest yaratish'}</h2><p className="mt-1 text-sm text-slate-500">Bu panel faqat contest jadvali, qoidalari va nashri uchun. Masalalar quyidagi alohida problem-set kartasida boshqariladi.</p></div>
                   {selectedContest && <ContestPill contest={selectedContest} />}
                 </div>
-                <ContestSettingsForm form={contestForm} setForm={setContestForm} onSubmit={saveContest} busy={busy === 'contest'} disabled={editingContest && !canEdit} canCreateRated={adminAccess} isNew={!editingContest} />
+                <ContestSettingsForm form={contestForm} setForm={setContestForm} onSubmit={saveContest} busy={busy === 'contest'} disabled={editingContest && !canEdit} canCreateRated={adminAccess} isJudge={isJudge} isNew={!editingContest} />
               </section>
 
               {selectedContest && (
@@ -455,7 +494,7 @@ export function ProgrammingManagementPage() {
 
                   {canEdit && <section className="card overflow-hidden"><div className="workspace-panel-heading"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Reusable library</p><h2 className="mt-1 text-lg font-bold text-slate-900">Masalalar bankidan qo‘shish</h2><p className="mt-1 text-sm text-slate-500">Bu yer faqat tayyor masalani contestga biriktirish uchun. Yangi masala yaratish “Masalalar banki” ish maydonida amalga oshadi.</p></div><input value={problemSearch} onChange={(event) => setProblemSearch(event.target.value)} className="input w-full sm:w-64" placeholder="Masalani qidiring" /></div><div className="divide-y divide-slate-100">{filteredProblems.filter((problem) => !linkedIds.has(problem.id)).slice(0, 12).map((problem) => <div key={problem.id} className="flex flex-wrap items-center justify-between gap-3 p-4"><div className="min-w-0"><p className="font-semibold text-slate-800">{problem.title}</p><p className="mt-1 text-xs text-slate-500">{problem.difficulty} · {formatProblemLimit(problem.timeLimitMs, problem.memoryLimitMb)} · {problem.publicationScope === 'contest' ? 'Contest → Practice' : 'Site masalasi'}</p></div><button type="button" onClick={() => void attach(problem.id)} disabled={busy !== null} className="btn-ghost px-3 py-2 text-xs disabled:opacity-50"><Plus className="h-3.5 w-3.5" />Qo‘shish</button></div>)}{!filteredProblems.filter((problem) => !linkedIds.has(problem.id)).length && <p className="p-6 text-sm text-slate-500">Qo‘shiladigan masala topilmadi. Yangi contest masalasini yarating.</p>}</div></section>}
 
-                  <section className="card p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-5"><div><h2 className="text-lg font-bold text-slate-900">Nashr holati</h2><p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-500">E’lon qilingan contest va problem set o‘zgarmaydi. Tugash vaqti yetishi bilan contest-scope masalalar Practice katalogida avtomatik ochiladi.</p></div><div className="flex flex-wrap gap-2">{canEdit && <button type="button" onClick={() => void publish()} disabled={!contestEditor?.problems.length || busy !== null} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"><Send className="h-4 w-4" />E’lon qilish</button>}{!selectedContest.archivedAt && <button type="button" onClick={() => void archive()} disabled={busy !== null} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Archive className="h-4 w-4" />Arxivlash</button>}</div></div></section>
+                  <section className="card p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-5"><div><h2 className="text-lg font-bold text-slate-900">Nashr holati</h2><p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-500">E’lon qilingan contest va problem set o‘zgarmaydi. Tugash vaqti yetishi bilan contest-scope masalalar Practice katalogida avtomatik ochiladi.</p></div><div className="flex flex-wrap gap-2">{adminAccess && selectedContest.mode === 'Gym' && selectedContest.visibility === 'Private' && !selectedContest.isPublished && <button type="button" onClick={() => void promotePrivateGym()} disabled={busy !== null} className="btn-ghost px-4 py-2.5 text-sm text-violet-700 disabled:opacity-50"><Trophy className="h-4 w-4" />Ratedga o‘tkazish</button>}{canEdit && <button type="button" onClick={() => void publish()} disabled={!contestEditor?.problems.length || busy !== null} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"><Send className="h-4 w-4" />E’lon qilish</button>}{canEdit && !selectedContest.isPublished && <button type="button" onClick={() => void removeContest()} disabled={busy !== null} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Trash2 className="h-4 w-4" />O‘chirish</button>}{!selectedContest.archivedAt && <button type="button" onClick={() => void archive()} disabled={busy !== null} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Archive className="h-4 w-4" />Arxivlash</button>}</div></div></section>
                 </>
               )}
             </div>
@@ -492,9 +531,36 @@ function ContestPill({ contest, compact = false }: { contest: ManagedContest; co
   return <span className={`shrink-0 rounded-full font-bold ${compact ? 'px-2 py-1 text-[10px]' : 'px-3 py-1.5 text-xs'} ${color}`}>{label}</span>;
 }
 
-function ContestSettingsForm({ form, setForm, onSubmit, busy, disabled, canCreateRated, isNew }: { form: ContestForm; setForm: React.Dispatch<React.SetStateAction<ContestForm>>; onSubmit: (event: FormEvent) => void; busy: boolean; disabled: boolean; canCreateRated: boolean; isNew: boolean }) {
+function ContestSettingsForm({ form, setForm, onSubmit, busy, disabled, canCreateRated, isJudge, isNew }: { form: ContestForm; setForm: React.Dispatch<React.SetStateAction<ContestForm>>; onSubmit: (event: FormEvent) => void; busy: boolean; disabled: boolean; canCreateRated: boolean; isJudge: boolean; isNew: boolean }) {
   const set = <K extends keyof ContestForm>(key: K, value: ContestForm[K]) => setForm((current) => ({ ...current, [key]: value }));
-  return <form onSubmit={onSubmit} className="p-5 sm:p-6">{disabled && <div className="mb-5 rounded-xl bg-slate-50 p-3 text-xs text-slate-500">E’lon qilingan yoki boshlangan contest sozlamalari o‘zgarmaydi.</div>}<div className="grid gap-5 md:grid-cols-2"><Field label="Contest nomi" className="md:col-span-2"><input required disabled={disabled} value={form.title} onChange={(event) => set('title', event.target.value)} className="input" placeholder="Masalan: UzAlgo Round #12" /></Field><Field label="Qisqa tavsif" className="md:col-span-2"><textarea disabled={disabled} value={form.description} onChange={(event) => set('description', event.target.value)} className="input min-h-24 resize-y" placeholder="Format, qoidalar va contest haqida qisqacha" /></Field><Field label="Turi"><select disabled={disabled} value={form.type} onChange={(event) => set('type', event.target.value as ContestForm['type'])} className="input"><option value="Unrated">Unrated</option><option value="Rated" disabled={!canCreateRated}>Rated</option></select>{!canCreateRated && <p className="mt-1 text-xs text-slate-500">Rated contestni faqat tasdiqlangan admin yaratadi.</p>}</Field><Field label="Umumiy qiyinlik"><select disabled={disabled} value={form.difficulty} onChange={(event) => set('difficulty', event.target.value as ContestDifficulty)} className="input"><option value="Easy">Easy</option><option value="Medium">Medium</option><option value="Hard">Hard</option><option value="Expert">Expert</option></select></Field><Field label="Boshlanish vaqti"><input required disabled={disabled} type="datetime-local" value={form.startTime} onChange={(event) => set('startTime', event.target.value)} className="input" /></Field><Field label="Tugash vaqti"><input required disabled={disabled} type="datetime-local" value={form.endTime} onChange={(event) => set('endTime', event.target.value)} className="input" /></Field><Field label="Ishtirokchilar limiti"><input required disabled={disabled} min="1" max="100000" type="number" value={form.maxParticipants} onChange={(event) => set('maxParticipants', event.target.value)} className="input" /></Field><Field label="Teglar (vergul bilan)"><input disabled={disabled} value={form.tagsText} onChange={(event) => set('tagsText', event.target.value)} className="input" placeholder="dp, graphs, beginner" /></Field><Field label="Qoidalar (har qatorda bittadan)" className="md:col-span-2"><textarea disabled={disabled} value={form.rulesText} onChange={(event) => set('rulesText', event.target.value)} className="input min-h-24 resize-y" /></Field><Field label="Sovrin (ixtiyoriy)" className="md:col-span-2"><input disabled={disabled} value={form.prize} onChange={(event) => set('prize', event.target.value)} className="input" placeholder="Certificate, prize pool…" /></Field></div>{!disabled && <div className="mt-6 flex justify-end"><button type="submit" disabled={busy} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : isNew ? 'Draft yaratish' : 'Sozlamalarni saqlash'}</button></div>}</form>;
+  const setMode = (mode: ContestMode) => setForm((current) => ({ ...current, mode, type: mode === 'Gym' ? 'Unrated' : current.type }));
+  const setVisibility = (visibility: ContestVisibility) => setForm((current) => ({
+    ...current,
+    visibility,
+    privateAccessCode: visibility === 'Private' && (isNew || current.visibility !== 'Private')
+      ? current.privateAccessCode || generatePrivateAccessCode()
+      : current.privateAccessCode,
+  }));
+  return <form onSubmit={onSubmit} className="p-5 sm:p-6">
+    {disabled && <div className="mb-5 rounded-xl bg-slate-50 p-3 text-xs text-slate-500">E’lon qilingan yoki boshlangan contest sozlamalari o‘zgarmaydi.</div>}
+    {isJudge && <div className="mb-5 rounded-2xl border border-cyan-100 bg-cyan-50 p-4 text-sm text-cyan-900"><p className="font-bold">Judge uchun Gym rejimi</p><p className="mt-1 text-xs leading-relaxed">Judge faqat unrated Gym yaratadi. Private Gym’ni keyinchalik tasdiqlangan admin Rated contestga o‘tkaza oladi.</p></div>}
+    <div className="grid gap-5 md:grid-cols-2">
+      <Field label="Contest nomi" className="md:col-span-2"><input required disabled={disabled} value={form.title} onChange={(event) => set('title', event.target.value)} className="input" placeholder="Masalan: UzAlgo Round #12" /></Field>
+      <Field label="Qisqa tavsif" className="md:col-span-2"><textarea disabled={disabled} value={form.description} onChange={(event) => set('description', event.target.value)} className="input min-h-24 resize-y" placeholder="Format, qoidalar va contest haqida qisqacha" /></Field>
+      <Field label="Rejim"><AppSelect disabled={disabled || isJudge} value={form.mode} onChange={(value) => setMode(value as ContestMode)} options={[{ value: 'Gym', label: 'Gym', description: 'Mashq rejimi, doim Unrated' }, { value: 'Contest', label: 'Contest', description: 'Rated yoki Unrated' }]} ariaLabel="Contest rejimi" /></Field>
+      <Field label="Turi"><AppSelect disabled={disabled || isJudge || form.mode === 'Gym'} value={form.type} onChange={(value) => set('type', value as ContestForm['type'])} options={[{ value: 'Unrated', label: 'Unrated' }, { value: 'Rated', label: 'Rated', disabled: !canCreateRated }]} ariaLabel="Contest turi" />{form.mode === 'Gym' ? <p className="mt-1 text-xs text-cyan-700">Gym reytingga ta’sir qilmaydi.</p> : !canCreateRated && <p className="mt-1 text-xs text-slate-500">Rated contestni faqat tasdiqlangan admin yaratadi.</p>}</Field>
+      <Field label="Kirish"><AppSelect disabled={disabled} value={form.visibility} onChange={(value) => setVisibility(value as ContestVisibility)} options={[{ value: 'Public', label: 'Public', description: 'Katalogda ko‘rinadi' }, { value: 'Private', label: 'Private', description: 'Access code bilan' }]} ariaLabel="Contestga kirish turi" /></Field>
+      <Field label="Umumiy qiyinlik"><AppSelect disabled={disabled} value={form.difficulty} onChange={(value) => set('difficulty', value as ContestDifficulty)} options={['Easy', 'Medium', 'Hard', 'Expert'].map((value) => ({ value, label: value }))} ariaLabel="Contest qiyinligi" /></Field>
+      {form.visibility === 'Private' && <Field label={isNew ? 'Private access code' : 'Yangi access code (ixtiyoriy)'} className="md:col-span-2"><div className="flex flex-col gap-2 sm:flex-row"><input disabled={disabled} required={isNew} readOnly value={form.privateAccessCode} className="input flex-1 font-mono tracking-wide" placeholder="Private tanlanganda xavfsiz kod yaratiladi" /><button type="button" disabled={disabled} onClick={() => set('privateAccessCode', generatePrivateAccessCode())} className="btn-ghost shrink-0 px-4 py-2.5 text-sm disabled:opacity-50">Yangi kod yaratish</button></div><p className="mt-1 text-xs text-slate-500">Har yaratishda 100-bit tasodifiy kod olinadi. U hash holatida saqlanadi va bitta private contestga bog‘lanadi.</p></Field>}
+      <Field label="Boshlanish vaqti"><input required disabled={disabled} type="datetime-local" value={form.startTime} onChange={(event) => set('startTime', event.target.value)} className="input" /></Field>
+      <Field label="Tugash vaqti"><input required disabled={disabled} type="datetime-local" value={form.endTime} onChange={(event) => set('endTime', event.target.value)} className="input" /></Field>
+      <Field label="Ishtirokchilar limiti"><input required disabled={disabled} min="1" max="100000" type="number" value={form.maxParticipants} onChange={(event) => set('maxParticipants', event.target.value)} className="input" /></Field>
+      <Field label="Teglar (vergul bilan)"><input disabled={disabled} value={form.tagsText} onChange={(event) => set('tagsText', event.target.value)} className="input" placeholder="dp, graphs, beginner" /></Field>
+      <Field label="Qoidalar (har qatorda bittadan)" className="md:col-span-2"><textarea disabled={disabled} value={form.rulesText} onChange={(event) => set('rulesText', event.target.value)} className="input min-h-24 resize-y" /></Field>
+      <Field label="Sovrin (ixtiyoriy)" className="md:col-span-2"><input disabled={disabled} value={form.prize} onChange={(event) => set('prize', event.target.value)} className="input" placeholder="Certificate, prize pool…" /></Field>
+    </div>
+    {!disabled && <div className="mt-6 flex justify-end"><button type="submit" disabled={busy} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : isNew ? 'Draft yaratish' : 'Sozlamalarni saqlash'}</button></div>}
+  </form>;
 }
 
 function EmptyProblemSet({ editable, onCreate }: { editable: boolean; onCreate: () => void }) {
@@ -514,7 +580,25 @@ function ProblemEditorForm({ form, setForm, onSubmit, busy, contestContext }: { 
   const set = <K extends keyof ProblemForm>(key: K, value: ProblemForm[K]) => setForm((current) => ({ ...current, [key]: value }));
   const editExample = (index: number, key: keyof ProblemExample, value: string) => setForm((current) => ({ ...current, examples: current.examples.map((entry, entryIndex) => entryIndex === index ? { ...entry, [key]: value } : entry) }));
   const editTest = (index: number, key: keyof ProblemTestCase, value: string | number | boolean) => setForm((current) => ({ ...current, testCases: current.testCases.map((entry, entryIndex) => entryIndex === index ? { ...entry, [key]: value } : entry) }));
-  return <form onSubmit={onSubmit} className="p-5 sm:p-6"><div className="grid gap-5"><Field label="Masala nomi"><input required value={form.title} onChange={(event) => set('title', event.target.value)} className="input" placeholder="A. Two Sum" /></Field><Field label="Masala sharti"><textarea required value={form.statement} onChange={(event) => set('statement', event.target.value)} className="input min-h-44 resize-y font-mono text-sm" placeholder="Masalani aniq, to‘liq va Markdown-uslubida yozing." /></Field><div className="grid gap-5 md:grid-cols-2"><Field label="Input"><textarea value={form.inputDescription} onChange={(event) => set('inputDescription', event.target.value)} className="input min-h-28 resize-y" placeholder="Kirish formati" /></Field><Field label="Output"><textarea value={form.outputDescription} onChange={(event) => set('outputDescription', event.target.value)} className="input min-h-28 resize-y" placeholder="Chiqish formati" /></Field></div><Field label="Cheklovlar"><textarea value={form.constraints} onChange={(event) => set('constraints', event.target.value)} className="input min-h-24 resize-y font-mono text-sm" placeholder="1 ≤ n ≤ 2 × 10⁵" /></Field><div className="grid gap-5 md:grid-cols-2"><Field label="Qiyinlik"><select value={form.difficulty} onChange={(event) => set('difficulty', event.target.value as ProgrammingDifficulty)} className="input"><option value="Easy">Easy</option><option value="Medium">Medium</option><option value="Hard">Hard</option></select></Field><Field label="Teglar (vergul bilan)"><input value={form.tagsText} onChange={(event) => set('tagsText', event.target.value)} className="input" placeholder="arrays, sorting" /></Field><Field label="Time limit (ms)"><input required min="50" max="60000" type="number" value={form.timeLimitMs} onChange={(event) => set('timeLimitMs', event.target.value)} className="input" /></Field><Field label="Memory limit (MB)"><input required min="16" max="1024" type="number" value={form.memoryLimitMb} onChange={(event) => set('memoryLimitMb', event.target.value)} className="input" /></Field></div><Field label="Nashr oqimi"><select value={form.publicationScope} onChange={(event) => set('publicationScope', event.target.value as ProblemPublicationScope)} className="input"><option value="site">Site masalasi — saqlangach Practice’da ko‘rinadi</option><option value="contest">Contest masalasi — contest tugagach Practice’da avtomatik ko‘rinadi</option></select>{form.publicationScope === 'contest' && <p className="mt-2 text-xs leading-relaxed text-sun-700">{contestContext ? `Bu masalani saqlagach “${contestContext.title}” contestiga biriktiring. Practice nashri ${contestDate(contestContext.endTime)} dan keyin avtomatik ishlaydi.` : 'Contest scope masalani saqlang, so‘ng Contestlar yorlig‘ida problem setga biriktiring.'}</p>}</Field><ExamplesEditor examples={form.examples} onChange={editExample} onAdd={() => setForm((current) => ({ ...current, examples: [...current.examples, { input: '', output: '', explanation: '' }] }))} onRemove={(index) => setForm((current) => current.examples.length > 1 ? { ...current, examples: current.examples.filter((_, itemIndex) => itemIndex !== index) } : current)} /><TestCasesEditor tests={form.testCases} onChange={editTest} onAdd={() => setForm((current) => ({ ...current, testCases: [...current.testCases, { input: '', output: '', isSample: false, weight: 1 }] }))} onRemove={(index) => setForm((current) => current.testCases.length > 1 ? { ...current, testCases: current.testCases.filter((_, itemIndex) => itemIndex !== index) } : current)} /><Field label="Editorial (contest tugagach ko‘rsatilishi mumkin)"><textarea value={form.editorial} onChange={(event) => set('editorial', event.target.value)} className="input min-h-28 resize-y" placeholder="Yechim g‘oyasi va murakkablik tahlili" /></Field></div><div className="mt-6 flex justify-end"><button type="submit" disabled={busy} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : 'Masalani saqlash'}</button></div></form>;
+  return <form onSubmit={onSubmit} className="p-5 sm:p-6">
+    <div className="grid gap-5">
+      <Field label="Masala nomi"><input required value={form.title} onChange={(event) => set('title', event.target.value)} className="input" placeholder="A. Two Sum" /></Field>
+      <Field label="Masala sharti"><textarea required value={form.statement} onChange={(event) => set('statement', event.target.value)} className="input min-h-44 resize-y font-mono text-sm" placeholder="Masalani aniq, to‘liq va Markdown-uslubida yozing." /></Field>
+      <div className="grid gap-5 md:grid-cols-2"><Field label="Input"><textarea value={form.inputDescription} onChange={(event) => set('inputDescription', event.target.value)} className="input min-h-28 resize-y" placeholder="Kirish formati" /></Field><Field label="Output"><textarea value={form.outputDescription} onChange={(event) => set('outputDescription', event.target.value)} className="input min-h-28 resize-y" placeholder="Chiqish formati" /></Field></div>
+      <Field label="Cheklovlar"><textarea value={form.constraints} onChange={(event) => set('constraints', event.target.value)} className="input min-h-24 resize-y font-mono text-sm" placeholder="1 ≤ n ≤ 2 × 10⁵" /></Field>
+      <div className="grid gap-5 md:grid-cols-2">
+        <Field label="Qiyinlik"><AppSelect value={form.difficulty} onChange={(value) => set('difficulty', value as ProgrammingDifficulty)} options={['Easy', 'Medium', 'Hard'].map((value) => ({ value, label: value }))} ariaLabel="Masala qiyinligi" /></Field>
+        <Field label="Teglar (vergul bilan)"><input value={form.tagsText} onChange={(event) => set('tagsText', event.target.value)} className="input" placeholder="arrays, sorting" /></Field>
+        <Field label="Time limit (ms)"><input required min="50" max="60000" type="number" value={form.timeLimitMs} onChange={(event) => set('timeLimitMs', event.target.value)} className="input" /></Field>
+        <Field label="Memory limit (MB)"><input required min="16" max="1024" type="number" value={form.memoryLimitMb} onChange={(event) => set('memoryLimitMb', event.target.value)} className="input" /></Field>
+      </div>
+      <Field label="Nashr oqimi"><AppSelect value={form.publicationScope} onChange={(value) => set('publicationScope', value as ProblemPublicationScope)} options={[{ value: 'site', label: 'Site masalasi', description: 'Saqlangach Practice’da ko‘rinadi' }, { value: 'contest', label: 'Contest masalasi', description: 'Contest tugagach Practice’da ko‘rinadi' }]} ariaLabel="Nashr oqimi" />{form.publicationScope === 'contest' && <p className="mt-2 text-xs leading-relaxed text-sun-700">{contestContext ? `Bu masalani saqlagach “${contestContext.title}” contestiga biriktiring. Practice nashri ${contestDate(contestContext.endTime)} dan keyin avtomatik ishlaydi.` : 'Contest scope masalani saqlang, so‘ng Contestlar yorlig‘ida problem setga biriktiring.'}</p>}</Field>
+      <ExamplesEditor examples={form.examples} onChange={editExample} onAdd={() => setForm((current) => ({ ...current, examples: [...current.examples, { input: '', output: '', explanation: '' }] }))} onRemove={(index) => setForm((current) => current.examples.length > 1 ? { ...current, examples: current.examples.filter((_, itemIndex) => itemIndex !== index) } : current)} />
+      <TestCasesEditor tests={form.testCases} onChange={editTest} onAdd={() => setForm((current) => ({ ...current, testCases: [...current.testCases, { input: '', output: '', isSample: false, weight: 1 }] }))} onRemove={(index) => setForm((current) => current.testCases.length > 1 ? { ...current, testCases: current.testCases.filter((_, itemIndex) => itemIndex !== index) } : current)} />
+      <Field label="Editorial (contest tugagach ko‘rsatilishi mumkin)"><textarea value={form.editorial} onChange={(event) => set('editorial', event.target.value)} className="input min-h-28 resize-y" placeholder="Yechim g‘oyasi va murakkablik tahlili" /></Field>
+    </div>
+    <div className="mt-6 flex justify-end"><button type="submit" disabled={busy} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : 'Masalani saqlash'}</button></div>
+  </form>;
 }
 
 function ExamplesEditor({ examples, onChange, onAdd, onRemove }: { examples: ProblemExample[]; onChange: (index: number, key: keyof ProblemExample, value: string) => void; onAdd: () => void; onRemove: (index: number) => void }) {

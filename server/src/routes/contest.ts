@@ -10,10 +10,10 @@ router.get("/", listContests);
 router.get("/:id", getContest);
 
 // admin
-router.post("/", requireAuth, requireRole(["ADMIN"]), createContest);
-router.put("/:id", requireAuth, requireRole(["ADMIN"]), editContest);
-router.post("/:id/publish", requireAuth, requireRole(["ADMIN"]), publishContest);
-router.post("/:id/archive", requireAuth, requireRole(["ADMIN"]), archiveContest);
-router.delete("/:id", requireAuth, requireRole(["ADMIN"]), deleteContest);
+router.post("/", requireAuth, requireRole(["ADMIN", "JUDGE"]), createContest);
+router.put("/:id", requireAuth, requireRole(["ADMIN", "JUDGE"]), editContest);
+router.post("/:id/publish", requireAuth, requireRole(["ADMIN", "JUDGE"]), publishContest);
+router.post("/:id/archive", requireAuth, requireRole(["ADMIN", "JUDGE"]), archiveContest);
+router.delete("/:id", requireAuth, requireRole(["ADMIN", "JUDGE"]), deleteContest);
 
 export default router;

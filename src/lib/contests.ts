@@ -5,6 +5,19 @@ type Row = Record<string, unknown>;
 export type ContestDifficulty = 'Easy' | 'Medium' | 'Hard' | 'Expert';
 export type ContestType = 'Rated' | 'Unrated';
 export type ContestStatus = 'Upcoming' | 'Live' | 'Finished';
+export type ContestMode = 'Contest' | 'Gym';
+export type ContestVisibility = 'Public' | 'Private';
+
+const PRIVATE_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+/** Creates a 100-bit, human-friendly code for one private contest. */
+export function generatePrivateAccessCode(): string {
+  if (!globalThis.crypto?.getRandomValues) throw new Error('Secure access-code generation is unavailable in this browser.');
+  const bytes = new Uint8Array(20);
+  globalThis.crypto.getRandomValues(bytes);
+  const characters = Array.from(bytes, (byte) => PRIVATE_CODE_ALPHABET[byte & 31]);
+  return `PVT-${characters.slice(0, 5).join('')}-${characters.slice(5, 10).join('')}-${characters.slice(10, 15).join('')}-${characters.slice(15).join('')}`;
+}
 
 export type Contest = {
   id: string;
@@ -15,6 +28,8 @@ export type Contest = {
   subject: string;
   difficulty: ContestDifficulty;
   type: ContestType;
+  mode: ContestMode;
+  visibility: ContestVisibility;
   status: ContestStatus;
   startTime: string;
   endTime: string;
@@ -54,6 +69,18 @@ export type ExamPart = {
 
 export type ExamPartInput = Omit<ExamPart, 'id'> & { id?: string | null };
 
+export type ExamSectionTimings = {
+  listeningMinutes: number;
+  readingMinutes: number;
+  writingMinutes: number;
+};
+
+export type ActiveExamTiming = ExamSectionTimings & {
+  activeSection: ExamSection;
+  sectionStartsAt: string;
+  sectionEndsAt: string;
+};
+
 export type WritingResponse = {
   partId: string;
   content: string;
@@ -81,6 +108,7 @@ export type ContestWorkspace = {
     completedAt: string | null;
   };
   parts: ExamPart[];
+  examTiming: ActiveExamTiming | null;
   questions: ContestQuestion[];
   answers: Record<string, number>;
   writingResponses: Record<string, WritingResponse>;
@@ -109,6 +137,7 @@ export type EditorQuestion = ContestQuestion & {
 export type ContestEditor = {
   contest: ManagedContest;
   parts: ExamPart[];
+  sectionTimings: ExamSectionTimings | null;
   questions: EditorQuestion[];
 };
 
@@ -118,6 +147,11 @@ export type ContestInput = {
   subjectSlug: string;
   difficulty: ContestDifficulty;
   type: ContestType;
+  /** Existing callers intentionally default to a public competitive contest. */
+  mode?: ContestMode;
+  visibility?: ContestVisibility;
+  /** Required only for a new private contest; never returned from the server. */
+  privateAccessCode?: string | null;
   startTime: string;
   endTime: string;
   maxParticipants: number;
@@ -240,6 +274,14 @@ function mapType(value: unknown): ContestType {
   return text(value).toLowerCase() === 'rated' ? 'Rated' : 'Unrated';
 }
 
+function mapMode(value: unknown): ContestMode {
+  return text(value).toLowerCase() === 'gym' ? 'Gym' : 'Contest';
+}
+
+function mapVisibility(value: unknown): ContestVisibility {
+  return text(value).toLowerCase() === 'private' ? 'Private' : 'Public';
+}
+
 function mapStatus(value: unknown, startTime: string, endTime: string): ContestStatus {
   const normalized = text(value).toLowerCase();
   if (normalized === 'live') return 'Live';
@@ -263,6 +305,8 @@ function mapContest(row: Row, managed = false): ManagedContest | Contest {
     subject: subjectLabel(subjectSlug),
     difficulty: mapDifficulty(valueAt(row, 'difficulty')),
     type: mapType(valueAt(row, 'contest_type', 'type')),
+    mode: mapMode(valueAt(row, 'contest_mode', 'mode')),
+    visibility: mapVisibility(valueAt(row, 'visibility')),
     status: mapStatus(valueAt(row, 'status'), startTime, endTime),
     startTime,
     endTime,
@@ -306,26 +350,55 @@ function mapExamPart(row: Row): ExamPart {
   };
 }
 
+function mapExamSectionTimings(value: unknown): ExamSectionTimings | null {
+  const row = asRow(value);
+  if (!Object.keys(row).length) return null;
+  const listeningMinutes = number(valueAt(row, 'listening_minutes', 'listeningMinutes'));
+  const readingMinutes = number(valueAt(row, 'reading_minutes', 'readingMinutes'));
+  const writingMinutes = number(valueAt(row, 'writing_minutes', 'writingMinutes'));
+  if (listeningMinutes < 1 || readingMinutes < 1 || writingMinutes < 1) return null;
+  return { listeningMinutes, readingMinutes, writingMinutes };
+}
+
+function mapActiveExamTiming(value: unknown): ActiveExamTiming | null {
+  const timings = mapExamSectionTimings(value);
+  if (!timings) return null;
+  const row = asRow(value);
+  const activeSection = mapExamSection(valueAt(row, 'active_section', 'activeSection'));
+  const sectionStartsAt = text(valueAt(row, 'section_starts_at', 'sectionStartsAt'));
+  const sectionEndsAt = text(valueAt(row, 'section_ends_at', 'sectionEndsAt'));
+  if (!sectionStartsAt || !sectionEndsAt) return null;
+  return { ...timings, activeSection, sectionStartsAt, sectionEndsAt };
+}
+
 function rpcError(error: { message: string } | null): void {
   if (error) throw new Error(error.message);
 }
 
 export async function fetchPublicContests(): Promise<Contest[]> {
-  const { data, error } = await supabase.rpc('get_public_contests');
+  const { data, error } = await supabase.rpc('get_discoverable_contests');
   rpcError(error);
   return asRows(data).map((row) => mapContest(row) as Contest);
 }
 
 export async function fetchPublicContest(slug: string): Promise<Contest | null> {
-  const { data, error } = await supabase.rpc('get_public_contest', { p_slug: slug });
+  const { data, error } = await supabase.rpc('get_discoverable_contest', { p_slug: slug });
   rpcError(error);
   const row = asRows(data)[0];
   return row ? mapContest(row) as Contest : null;
 }
 
 export async function registerForContest(contestId: string): Promise<void> {
-  const { error } = await supabase.rpc('register_for_contest', { p_contest_id: contestId });
+  const { error } = await supabase.rpc('register_for_contest_v2', { p_contest_id: contestId });
   rpcError(error);
+}
+
+export async function redeemPrivateContestAccess(accessCode: string): Promise<string> {
+  const { data, error } = await supabase.rpc('redeem_private_contest_access', { p_access_code: accessCode.trim() });
+  rpcError(error);
+  const slug = text(valueAt(asRow(data), 'slug'));
+  if (!slug) throw new Error('Private contest access was not confirmed.');
+  return slug;
 }
 
 export async function fetchContestWorkspace(slug: string): Promise<ContestWorkspace> {
@@ -369,6 +442,7 @@ export async function fetchContestWorkspace(slug: string): Promise<ContestWorksp
       completedAt: nullableTimestamp(valueAt(contestRow, 'completed_at', 'completedAt')),
     },
     parts: asRows(payload.parts).map(mapExamPart).sort((left, right) => left.position - right.position),
+    examTiming: mapActiveExamTiming(payload.exam_timing),
     questions,
     answers,
     writingResponses,
@@ -424,6 +498,9 @@ function contestParams(input: ContestInput) {
     p_subject: input.subjectSlug,
     p_difficulty: input.difficulty.toLowerCase(),
     p_contest_type: input.type.toLowerCase(),
+    p_contest_mode: (input.mode ?? 'Contest').toLowerCase(),
+    p_visibility: (input.visibility ?? 'Public').toLowerCase(),
+    p_private_access_code: input.privateAccessCode?.trim() || null,
     p_start_at: new Date(input.startTime).toISOString(),
     p_end_at: new Date(input.endTime).toISOString(),
     p_max_participants: input.maxParticipants,
@@ -434,13 +511,13 @@ function contestParams(input: ContestInput) {
 }
 
 export async function fetchManagedContests(): Promise<ManagedContest[]> {
-  const { data, error } = await supabase.rpc('get_managed_contests');
+  const { data, error } = await supabase.rpc('get_managed_contests_v2');
   rpcError(error);
   return asRows(data).map((row) => mapContest(row, true) as ManagedContest);
 }
 
 export async function createContest(input: ContestInput): Promise<string> {
-  const { data, error } = await supabase.rpc('create_contest', contestParams(input));
+  const { data, error } = await supabase.rpc('create_contest_v2', contestParams(input));
   rpcError(error);
   const id = text(data);
   if (!id) throw new Error('Contest creation returned no ID.');
@@ -448,7 +525,7 @@ export async function createContest(input: ContestInput): Promise<string> {
 }
 
 export async function updateContest(contestId: string, input: ContestInput): Promise<void> {
-  const { error } = await supabase.rpc('update_contest', { p_contest_id: contestId, ...contestParams(input) });
+  const { error } = await supabase.rpc('update_contest_v2', { p_contest_id: contestId, ...contestParams(input) });
   rpcError(error);
 }
 
@@ -470,6 +547,7 @@ export async function fetchContestEditor(contestId: string): Promise<ContestEdit
   return {
     contest,
     parts: asRows(payload.parts).map(mapExamPart).sort((left, right) => left.position - right.position),
+    sectionTimings: mapExamSectionTimings(payload.section_timings),
     questions,
   };
 }
@@ -508,6 +586,16 @@ export async function saveExamPart(contestId: string, input: ExamPartInput): Pro
   const id = text(data);
   if (!id) throw new Error('Exam part save returned no ID.');
   return id;
+}
+
+export async function saveExamSectionTimings(contestId: string, input: ExamSectionTimings): Promise<void> {
+  const { error } = await supabase.rpc('save_contest_exam_section_timings', {
+    p_contest_id: contestId,
+    p_listening_minutes: input.listeningMinutes,
+    p_reading_minutes: input.readingMinutes,
+    p_writing_minutes: input.writingMinutes,
+  });
+  rpcError(error);
 }
 
 export async function deleteExamPart(contestId: string, partId: string): Promise<void> {
@@ -581,7 +669,17 @@ export async function archiveContest(contestId: string): Promise<void> {
   rpcError(error);
 }
 
+export async function deleteContest(contestId: string): Promise<void> {
+  const { error } = await supabase.rpc('delete_contest', { p_contest_id: contestId });
+  rpcError(error);
+}
+
+export async function promotePrivateGymToRated(contestId: string): Promise<void> {
+  const { error } = await supabase.rpc('promote_private_gym_to_rated', { p_contest_id: contestId });
+  rpcError(error);
+}
+
 export async function finalizeContest(contestId: string): Promise<void> {
-  const { error } = await supabase.rpc('finalize_contest', { p_contest_id: contestId });
+  const { error } = await supabase.rpc('finalize_contest_v2', { p_contest_id: contestId });
   rpcError(error);
 }

@@ -21,6 +21,8 @@ model User {
   role           Role      @default(USER)
   emailVerified  Boolean   @default(false)
   isSuspended    Boolean   @default(false)
+  isBanned       Boolean   @default(false)
+  cheatingStrikes Int      @default(0)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   profile        Json?     // progress, settings, preferences
@@ -42,6 +44,10 @@ model User {
   enrollments     Enrollment[]
   ratings         RatingReview[]
   bookmarks       Bookmark[]
+  cheatingCases   CheatingCase[] @relation("SuspectedUser")
+  resolvedCheatingCases CheatingCase[] @relation("CheatingCaseResolver")
+  cheatingAppeals CheatingAppeal[] @relation("AppealingUser")
+  reviewedAppeals CheatingAppeal[] @relation("AppealReviewer")
 }
 
 model Session {
@@ -134,6 +140,23 @@ enum ContestVisibility {
   PASSWORD
 }
 
+enum ContestMode {
+  CONTEST
+  GYM
+}
+
+enum CheatingCaseStatus {
+  SUSPECTED
+  CONFIRMED
+  DISMISSED
+}
+
+enum AppealStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
 enum ProblemDifficulty {
   EASY
   MEDIUM
@@ -161,6 +184,7 @@ model Contest {
   startAt       DateTime?
   endAt         DateTime?
   visibility    ContestVisibility @default(PUBLIC)
+  mode          ContestMode @default(CONTEST)
   passwordHash  String?   // hashed password for PASSWORD contests
   isPublished   Boolean   @default(false)
   allowPractice Boolean   @default(true)
@@ -174,6 +198,7 @@ model Contest {
   updatedAt     DateTime  @updatedAt
   submissions   Submission[]
   scoreboardEntries ScoreboardEntry[]
+  cheatingCases CheatingCase[]
 }
 
 model Problem {
@@ -239,13 +264,63 @@ model Submission {
   timeMs       Int?
   memoryKb     Int?
   compileError String?  @db.Text
+  similarityFingerprint String? @db.Text
   runs         Run[]
+  cheatingCases CheatingCase[] @relation("PrimarySubmission")
+  matchedInCheatingCases CheatingCase[] @relation("MatchedSubmission")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([userId, createdAt])
   @@index([problemId, createdAt])
   @@index([contestId, createdAt])
+}
+
+model CheatingCase {
+  id                  String             @id @default(cuid())
+  contest             Contest?           @relation(fields: [contestId], references: [id])
+  contestId           String?
+  user                User               @relation("SuspectedUser", fields: [userId], references: [id])
+  userId              String
+  submission          Submission         @relation("PrimarySubmission", fields: [submissionId], references: [id])
+  submissionId        String             @unique
+  matchedSubmission   Submission?        @relation("MatchedSubmission", fields: [matchedSubmissionId], references: [id])
+  matchedSubmissionId String?
+  similarityScore     Float
+  aiConfidence        Float?
+  aiSummary           String?            @db.Text
+  evidence            Json?
+  status              CheatingCaseStatus @default(SUSPECTED)
+  appealDeadline      DateTime?
+  strikesApplied      Boolean            @default(false)
+  resolvedBy          User?              @relation("CheatingCaseResolver", fields: [resolvedById], references: [id])
+  resolvedById        String?
+  resolvedAt          DateTime?
+  resolutionNote      String?            @db.Text
+  appeal              CheatingAppeal?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([userId, status, createdAt])
+  @@index([contestId, status])
+}
+
+model CheatingAppeal {
+  id           String       @id @default(cuid())
+  cheatingCase CheatingCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  caseId       String       @unique
+  user         User         @relation("AppealingUser", fields: [userId], references: [id])
+  userId       String
+  message      String       @db.Text
+  status       AppealStatus @default(PENDING)
+  reviewedBy   User?        @relation("AppealReviewer", fields: [reviewedById], references: [id])
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewNote   String?      @db.Text
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([userId, status, createdAt])
 }
 
 model Run {

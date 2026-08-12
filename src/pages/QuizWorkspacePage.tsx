@@ -116,7 +116,7 @@ export function QuizWorkspacePage({ slug }: { slug: string }) {
   }
 
   if ((workspace.contest.subjectSlug === 'ielts' || workspace.contest.subjectSlug === 'cefr') && workspace.parts.length > 0) {
-    return <EnglishExamWorkspace workspace={workspace} now={now} />;
+    return <EnglishExamWorkspace workspace={workspace} now={now} onRefresh={load} />;
   }
 
   if (!question) {
@@ -243,7 +243,7 @@ export function QuizWorkspacePage({ slug }: { slug: string }) {
   );
 }
 
-function EnglishExamWorkspace({ workspace, now }: { workspace: ContestWorkspace; now: number }) {
+function EnglishExamWorkspace({ workspace, now, onRefresh }: { workspace: ContestWorkspace; now: number; onRefresh: () => Promise<void> }) {
   const [answers, setAnswers] = useState<Record<string, number>>(workspace.answers);
   const [writingResponses, setWritingResponses] = useState<Record<string, WritingResponse>>(workspace.writingResponses);
   const [drafts, setDrafts] = useState<Record<string, string>>(() => Object.fromEntries(workspace.parts.filter((part) => part.section === 'writing').map((part) => [part.id, workspace.writingResponses[part.id]?.content ?? ''])));
@@ -255,16 +255,28 @@ function EnglishExamWorkspace({ workspace, now }: { workspace: ContestWorkspace;
   const [completing, setCompleting] = useState(false);
 
   const part = workspace.parts[currentPartIndex] ?? null;
-  const remaining = Math.max(0, new Date(workspace.contest.endTime).getTime() - now);
-  const hasEnded = remaining <= 0;
-  const locked = hasEnded || completed;
+  const sectionTiming = workspace.examTiming;
+  const contestRemaining = Math.max(0, new Date(workspace.contest.endTime).getTime() - now);
+  const sectionRemaining = sectionTiming
+    ? Math.max(0, new Date(sectionTiming.sectionEndsAt).getTime() - now)
+    : contestRemaining;
+  const contestEnded = contestRemaining <= 0;
+  const sectionEnded = sectionRemaining <= 0;
+  const locked = sectionEnded || contestEnded || completed;
   const partQuestions = useMemo(() => part ? workspace.questions.filter((question) => question.partId === part.id) : [], [part, workspace.questions]);
   const answeredCount = useMemo(() => workspace.questions.filter((question) => answers[question.id] !== undefined).length, [answers, workspace.questions]);
   const submittedWritingCount = useMemo(() => workspace.parts.filter((item) => item.section === 'writing' && writingResponses[item.id]?.submittedAt).length, [workspace.parts, writingResponses]);
   const completedPartCount = useMemo(() => workspace.parts.filter((item) => isPartComplete(item, workspace.questions, answers, writingResponses)).length, [answers, workspace.parts, workspace.questions, writingResponses]);
   const allComplete = completedPartCount === workspace.parts.length;
   const progress = workspace.parts.length ? Math.round((completedPartCount / workspace.parts.length) * 100) : 0;
-  const urgent = remaining > 0 && remaining < 30 * 60 * 1000;
+  const urgent = sectionRemaining > 0 && sectionRemaining < 5 * 60 * 1000;
+  const isWritingSection = sectionTiming?.activeSection === 'writing' || part?.section === 'writing';
+
+  useEffect(() => {
+    if (!sectionTiming || !sectionEnded || contestEnded || completed) return;
+    const timeout = window.setTimeout(() => { void onRefresh(); }, 800);
+    return () => window.clearTimeout(timeout);
+  }, [completed, contestEnded, onRefresh, sectionEnded, sectionTiming]);
 
   const saveAnswer = async (questionId: string, selectedOption: number) => {
     if (locked || savingKey) return;
@@ -305,8 +317,8 @@ function EnglishExamWorkspace({ workspace, now }: { workspace: ContestWorkspace;
 
   const completeExam = async () => {
     if (locked || completing) return;
-    if (!allComplete) {
-      setError('Barcha Listening/Reading savollariga javob bering va Writing javoblarini yuboring.');
+    if (!isWritingSection || !allComplete) {
+      setError('Writing bo‘limidagi barcha javoblarni yuboring. Oldingi bo‘limlardagi javoblar ham serverda saqlangan bo‘lishi kerak.');
       return;
     }
     if (!window.confirm('Imtihonni yakunlab yuborasizmi? Keyin javoblarni o‘zgartirib bo‘lmaydi.')) return;
@@ -330,13 +342,14 @@ function EnglishExamWorkspace({ workspace, now }: { workspace: ContestWorkspace;
     <div className="flex h-screen flex-col overflow-hidden bg-slate-100">
       <header className="relative z-20 flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-950 px-4 py-2.5 text-white">
         <div className="flex min-w-0 items-center gap-3"><Link to={`/contests/${workspace.contest.slug}`} className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-400 transition-colors hover:text-white"><ArrowLeft className="h-4 w-4" /><span className="hidden sm:inline">Chiqish</span></Link><div className="hidden h-5 w-px bg-slate-700 sm:block" /><div className="min-w-0"><p className="truncate text-sm font-bold">{workspace.contest.title}</p><p className="truncate text-[10px] text-slate-400">{workspace.contest.subject} · {workspace.parts.length} ta part</p></div></div>
-        <div className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-bold tabular-nums ${urgent || hasEnded ? 'bg-error-500/20 text-error-200' : 'bg-slate-800 text-slate-200'}`}><Clock className="h-4 w-4" />{hasEnded ? 'Vaqt tugadi' : formatRemaining(remaining)}</div>
+        <div className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-bold tabular-nums ${urgent || sectionEnded ? 'bg-error-500/20 text-error-200' : 'bg-slate-800 text-slate-200'}`}><Clock className="h-4 w-4" />{sectionTiming ? `${examSectionLabel(sectionTiming.activeSection)} · ` : ''}{sectionEnded ? 'Vaqt tugadi' : formatRemaining(sectionRemaining)}</div>
         <button type="button" onClick={() => setShowNavigator((current) => !current)} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700">{showNavigator ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}<span className="hidden lg:inline">Partlar</span></button>
       </header>
 
-      <div className="flex min-h-0 flex-1"><main className="min-w-0 flex-1 overflow-y-auto bg-white"><div className="mx-auto max-w-4xl p-5 sm:p-8"><div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-sm font-bold text-white">{part.position}</span><div><p className="text-sm font-bold text-slate-900">{examSectionLabel(part.section)} · Part {currentPartIndex + 1} / {workspace.parts.length}</p><p className="text-xs text-slate-400">{answeredCount} ta test javobi · {submittedWritingCount} ta writing yuborilgan</p></div></div><div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><div className="h-2 w-28 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${progress}%` }} /></div>{progress}%</div></div>
+      <div className="flex min-h-0 flex-1"><main className="min-w-0 flex-1 overflow-y-auto bg-white"><div className="mx-auto max-w-4xl p-5 sm:p-8"><div className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Hozirgi bo‘lim</p><p className="mt-1 text-sm font-bold text-slate-900">{sectionTiming ? `${examSectionLabel(sectionTiming.activeSection)} uchun ${sectionMinutes(sectionTiming)} minut` : `${examSectionLabel(part.section)} bo‘limi`}</p></div><p className="text-xs leading-relaxed text-slate-600">Bo‘lim vaqti tugashi bilan keyingi bo‘lim avtomatik ochiladi. Oldingi bo‘limga qaytib bo‘lmaydi.</p></div></div><div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-sm font-bold text-white">{part.position}</span><div><p className="text-sm font-bold text-slate-900">{examSectionLabel(part.section)} · Part {currentPartIndex + 1} / {workspace.parts.length}</p><p className="text-xs text-slate-400">{answeredCount} ta test javobi · {submittedWritingCount} ta writing yuborilgan</p></div></div><div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><div className="h-2 w-28 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${progress}%` }} /></div>{progress}%</div></div>
 
-        {hasEnded && <ExamNotice kind="error" title="Imtihon vaqti tugadi">Yangi javob qabul qilinmaydi. Saqlangan javoblar organizer tomonidan yakunlanadi.</ExamNotice>}
+        {contestEnded && <ExamNotice kind="error" title="Imtihon vaqti tugadi">Yangi javob qabul qilinmaydi. Saqlangan javoblar organizer tomonidan yakunlanadi.</ExamNotice>}
+        {sectionEnded && !contestEnded && <ExamNotice kind="success" title={`${examSectionLabel(part.section)} vaqti tugadi`}>Keyingi bo‘lim ochilmoqda. Bu bo‘limga endi qaytib bo‘lmaydi.</ExamNotice>}
         {completed && <ExamNotice kind="success" title="Imtihon yuborildi">Barcha bo‘limlar yakunlandi. Writing javoblari tekshirilgach, organizer natija va reytingni e’lon qiladi.</ExamNotice>}
         {error && <ExamNotice kind="error" title="Amal bajarilmadi">{error}</ExamNotice>}
 
@@ -344,9 +357,9 @@ function EnglishExamWorkspace({ workspace, now }: { workspace: ContestWorkspace;
           <div className="p-6 sm:p-8">{part.section === 'listening' ? <ListeningPart part={part} questions={partQuestions} answers={answers} locked={locked} savingKey={savingKey} onAnswer={saveAnswer} /> : part.section === 'reading' ? <ReadingPart part={part} questions={partQuestions} answers={answers} locked={locked} savingKey={savingKey} onAnswer={saveAnswer} /> : <WritingPart part={part} draft={drafts[part.id] ?? ''} response={writingResponses[part.id]} locked={locked} saving={savingKey === `writing:${part.id}`} onChange={(value) => setDrafts((current) => ({ ...current, [part.id]: value }))} onSave={() => void saveWriting(part, false)} onSubmit={() => void saveWriting(part, true)} />}</div>
         </section>
 
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-3"><button type="button" disabled={currentPartIndex === 0} onClick={() => setCurrentPartIndex((index) => Math.max(0, index - 1))} className="btn-ghost px-4 py-2.5 text-sm disabled:opacity-40"><ChevronLeft className="h-4 w-4" />Oldingi part</button>{currentPartIndex < workspace.parts.length - 1 ? <button type="button" onClick={() => setCurrentPartIndex((index) => Math.min(workspace.parts.length - 1, index + 1))} className="btn-primary px-5 py-2.5 text-sm">Keyingi part<ChevronRight className="h-4 w-4" /></button> : <button type="button" disabled={locked || !allComplete || completing} onClick={() => void completeExam()} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">{completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{completed ? 'Yuborilgan' : 'Imtihonni yakunlash'}</button>}</div>
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3"><button type="button" disabled={currentPartIndex === 0 || sectionEnded} onClick={() => setCurrentPartIndex((index) => Math.max(0, index - 1))} className="btn-ghost px-4 py-2.5 text-sm disabled:opacity-40"><ChevronLeft className="h-4 w-4" />Oldingi part</button>{currentPartIndex < workspace.parts.length - 1 ? <button type="button" disabled={sectionEnded} onClick={() => setCurrentPartIndex((index) => Math.min(workspace.parts.length - 1, index + 1))} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">Keyingi part<ChevronRight className="h-4 w-4" /></button> : isWritingSection ? <button type="button" disabled={locked || !allComplete || completing} onClick={() => void completeExam()} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">{completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{completed ? 'Yuborilgan' : 'Imtihonni yakunlash'}</button> : <div className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-500">Keyingi bo‘lim vaqt tugaganda ochiladi</div>}</div>
       </div></main>
-        {showNavigator && <aside className="hidden w-72 shrink-0 border-l border-slate-200 bg-white lg:block"><div className="flex h-full flex-col p-5"><div className="border-b border-slate-100 pb-5"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Exam navigatsiyasi</p><p className="mt-2 text-sm font-semibold text-slate-700">{completedPartCount} / {workspace.parts.length} part tayyor</p></div><div className="mt-5 space-y-2">{workspace.parts.map((item, index) => { const selected = index === currentPartIndex; const done = isPartComplete(item, workspace.questions, answers, writingResponses); return <button key={item.id} type="button" onClick={() => setCurrentPartIndex(index)} className={`flex w-full items-center gap-3 rounded-xl p-3 text-left text-sm transition-colors ${selected ? 'bg-indigo-600 text-white' : done ? 'bg-success-50 text-success-800 hover:bg-success-100' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${selected ? 'bg-white/20 text-white' : done ? 'bg-success-100 text-success-700' : 'bg-white text-slate-500 ring-1 ring-slate-200'}`}>{item.position}</span><span className="min-w-0"><span className="block truncate font-bold">{examSectionLabel(item.section)}</span><span className={`block truncate text-[11px] ${selected ? 'text-white/70' : 'text-slate-400'}`}>{item.title}</span></span></button>; })}</div><div className="mt-auto rounded-2xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-500"><p className="font-bold text-slate-700">Natijalar haqida</p><p className="mt-1">Listening va Reading avtomatik hisoblanadi. Writing esa tekshiruvdan keyin qo‘shiladi; shundan keyingina final natija va rating yangilanadi.</p></div></div></aside>}
+        {showNavigator && <aside className="hidden w-72 shrink-0 border-l border-slate-200 bg-white lg:block"><div className="flex h-full flex-col p-5"><div className="border-b border-slate-100 pb-5"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">{sectionTiming ? `${examSectionLabel(sectionTiming.activeSection)} navigatsiyasi` : 'Exam navigatsiyasi'}</p><p className="mt-2 text-sm font-semibold text-slate-700">{completedPartCount} / {workspace.parts.length} part tayyor</p></div><div className="mt-5 space-y-2">{workspace.parts.map((item, index) => { const selected = index === currentPartIndex; const done = isPartComplete(item, workspace.questions, answers, writingResponses); return <button key={item.id} type="button" disabled={sectionEnded} onClick={() => setCurrentPartIndex(index)} className={`flex w-full items-center gap-3 rounded-xl p-3 text-left text-sm transition-colors disabled:cursor-not-allowed ${selected ? 'bg-indigo-600 text-white' : done ? 'bg-success-50 text-success-800 hover:bg-success-100' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${selected ? 'bg-white/20 text-white' : done ? 'bg-success-100 text-success-700' : 'bg-white text-slate-500 ring-1 ring-slate-200'}`}>{item.position}</span><span className="min-w-0"><span className="block truncate font-bold">Part {item.position}</span><span className={`block truncate text-[11px] ${selected ? 'text-white/70' : 'text-slate-400'}`}>{item.title}</span></span></button>; })}</div><div className="mt-auto rounded-2xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-500"><p className="font-bold text-slate-700">Natijalar haqida</p><p className="mt-1">Listening va Reading avtomatik hisoblanadi. Writing esa tekshiruvdan keyin qo‘shiladi; shundan keyingina final natija va rating yangilanadi.</p></div></div></aside>}
       </div>
     </div>
   );
@@ -360,6 +373,12 @@ function isPartComplete(part: ExamPart, questions: ContestWorkspace['questions']
 
 function examSectionLabel(section: ExamPart['section']): string {
   return section.charAt(0).toUpperCase() + section.slice(1);
+}
+
+function sectionMinutes(timing: NonNullable<ContestWorkspace['examTiming']>): number {
+  if (timing.activeSection === 'listening') return timing.listeningMinutes;
+  if (timing.activeSection === 'reading') return timing.readingMinutes;
+  return timing.writingMinutes;
 }
 
 function ExamNotice({ kind, title, children }: { kind: 'error' | 'success'; title: string; children: string }) {

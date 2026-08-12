@@ -4,6 +4,7 @@ import {
   Archive,
   CheckCircle2,
   ClipboardList,
+  Clock,
   Code2,
   Compass,
   FileAudio,
@@ -22,11 +23,14 @@ import {
 } from 'lucide-react';
 import { Link, useRouter } from '@/router';
 import { useAccessControl } from '@/lib/access';
+import { useAuth } from '@/lib/auth';
 import { LoadingState } from '@/components/LoadingState';
+import { AppSelect } from '@/components/AppSelect';
 import {
   archiveContest,
   contestSubjects,
   createContest,
+  deleteContest,
   deleteExamPart,
   deleteContestQuestion,
   fetchContestEditor,
@@ -34,10 +38,12 @@ import {
   fetchWritingSubmissions,
   finalizeContest,
   formatContestDate,
+  generatePrivateAccessCode,
   gradeWritingSubmission,
   publishContest,
   saveExamPart,
   saveContestQuestion,
+  saveExamSectionTimings,
   uploadContestAudio,
   updateContest,
   type ContestDifficulty,
@@ -45,8 +51,10 @@ import {
   type ContestInput,
   type ContestQuestionInput,
   type ContestType,
+  type ContestVisibility,
   type ExamPart,
   type ExamPartInput,
+  type ExamSectionTimings,
   type ExamSection,
   type EditorQuestion,
   type ManagedContest,
@@ -59,6 +67,8 @@ type ContestForm = {
   subjectSlug: string;
   difficulty: ContestDifficulty;
   type: ContestType;
+  visibility: ContestVisibility;
+  privateAccessCode: string;
   startTime: string;
   endTime: string;
   maxParticipants: string;
@@ -94,6 +104,12 @@ type WritingGradeForm = {
   feedback: string;
 };
 
+type ExamTimingForm = {
+  listeningMinutes: string;
+  readingMinutes: string;
+  writingMinutes: string;
+};
+
 // Programming contests use a separate problem-set and judge workflow. This
 // page is deliberately for multiple-choice academic contests and exams.
 const academicContestSubjects = contestSubjects.filter(([slug]) => slug !== 'programming');
@@ -116,6 +132,8 @@ function defaultContestForm(): ContestForm {
     subjectSlug: 'science',
     difficulty: 'Medium',
     type: 'Unrated',
+    visibility: 'Public',
+    privateAccessCode: '',
     startTime: localDateTime(start),
     endTime: localDateTime(end),
     maxParticipants: '100',
@@ -132,6 +150,8 @@ function contestFormFrom(contest: ManagedContest): ContestForm {
     subjectSlug: contest.subjectSlug,
     difficulty: contest.difficulty,
     type: contest.type,
+    visibility: contest.visibility,
+    privateAccessCode: '',
     startTime: localDateTime(new Date(contest.startTime)),
     endTime: localDateTime(new Date(contest.endTime)),
     maxParticipants: String(contest.maxParticipants),
@@ -148,6 +168,8 @@ function contestInput(form: ContestForm): ContestInput {
     subjectSlug: form.subjectSlug,
     difficulty: form.difficulty,
     type: form.type,
+    visibility: form.visibility,
+    privateAccessCode: form.privateAccessCode || null,
     startTime: form.startTime,
     endTime: form.endTime,
     maxParticipants: Number(form.maxParticipants),
@@ -230,6 +252,19 @@ function writingGradeFormFrom(submission: WritingSubmission): WritingGradeForm {
   return { score: submission.score === null ? '' : String(submission.score), feedback: submission.feedback ?? '' };
 }
 
+function defaultExamTimingForm(): ExamTimingForm {
+  return { listeningMinutes: '35', readingMinutes: '30', writingMinutes: '25' };
+}
+
+function examTimingFormFrom(timings: ExamSectionTimings | null): ExamTimingForm {
+  if (!timings) return defaultExamTimingForm();
+  return {
+    listeningMinutes: String(timings.listeningMinutes),
+    readingMinutes: String(timings.readingMinutes),
+    writingMinutes: String(timings.writingMinutes),
+  };
+}
+
 function displayDate(value: string): string {
   const result = formatContestDate(value);
   return `${result.date} · ${result.time}`;
@@ -237,12 +272,14 @@ function displayDate(value: string): string {
 
 export function ContestManagementPage() {
   const { adminAccess } = useAccessControl();
+  const { profile } = useAuth();
   const { navigate } = useRouter();
   const [contests, setContests] = useState<ManagedContest[]>([]);
   const [editor, setEditor] = useState<ContestEditor | null>(null);
   const [form, setForm] = useState<ContestForm>(defaultContestForm);
   const [question, setQuestion] = useState<QuestionForm>(emptyQuestion(1));
   const [examPart, setExamPart] = useState<ExamPartForm>(emptyExamPart(1));
+  const [examTiming, setExamTiming] = useState<ExamTimingForm>(defaultExamTimingForm);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [writingSubmissions, setWritingSubmissions] = useState<WritingSubmission[]>([]);
   const [writingGrades, setWritingGrades] = useState<Record<string, WritingGradeForm>>({});
@@ -277,6 +314,7 @@ export function ContestManagementPage() {
       const firstObjectivePart = next.parts.find((part) => part.section !== 'writing')?.id ?? null;
       setQuestion(emptyQuestion(next.questions.length + 1, firstObjectivePart));
       setExamPart(emptyExamPart(next.parts.length + 1));
+      setExamTiming(examTimingFormFrom(next.sectionTimings));
       setAudioFile(null);
       if (isEnglishExam(next.contest) && next.contest.status === 'Finished') {
         const submissions = await fetchWritingSubmissions(contestId);
@@ -308,6 +346,7 @@ export function ContestManagementPage() {
     setForm(defaultContestForm());
     setQuestion(emptyQuestion(1));
     setExamPart(emptyExamPart(1));
+    setExamTiming(defaultExamTimingForm());
     setAudioFile(null);
     setWritingSubmissions([]);
     setWritingGrades({});
@@ -333,6 +372,10 @@ export function ContestManagementPage() {
     event.preventDefault();
     if (!form.title.trim()) {
       setError('Contest nomini kiriting.');
+      return;
+    }
+    if (form.visibility === 'Private' && newContest && form.privateAccessCode.trim().length < 10) {
+      setError('Private contest uchun kamida 10 belgili access code kiriting.');
       return;
     }
 
@@ -383,6 +426,28 @@ export function ContestManagementPage() {
       await refresh();
       await loadEditor(currentContest.id, false);
     }, examPart.id ? 'Exam parti yangilandi.' : 'Yangi exam parti qo‘shildi.');
+  };
+
+  const saveExamTiming = async () => {
+    if (!currentContest) return;
+    const input: ExamSectionTimings = {
+      listeningMinutes: Number(examTiming.listeningMinutes),
+      readingMinutes: Number(examTiming.readingMinutes),
+      writingMinutes: Number(examTiming.writingMinutes),
+    };
+    const contestMinutes = Math.round((new Date(currentContest.endTime).getTime() - new Date(currentContest.startTime).getTime()) / 60_000);
+    if (![input.listeningMinutes, input.readingMinutes, input.writingMinutes].every((minutes) => Number.isInteger(minutes) && minutes > 0)) {
+      setError('Har bir bo‘lim uchun butun va musbat minut kiriting.');
+      return;
+    }
+    if (input.listeningMinutes + input.readingMinutes + input.writingMinutes !== contestMinutes) {
+      setError(`Bo‘limlar jami ${contestMinutes} minut bo‘lishi shart.`);
+      return;
+    }
+    await run('exam-timing', async () => {
+      await saveExamSectionTimings(currentContest.id, input);
+      await loadEditor(currentContest.id, false);
+    }, 'Listening, Reading va Writing vaqtlari saqlandi.');
   };
 
   const removeExamPart = async (partId: string) => {
@@ -452,6 +517,15 @@ export function ContestManagementPage() {
     }, 'Contest arxivlandi.');
   };
 
+  const removeContest = async () => {
+    if (!currentContest || !window.confirm('Draft contestni butunlay o‘chirasizmi? Savollar va partlar ham o‘chadi; bu amal qaytarilmaydi.')) return;
+    await run('delete-contest', async () => {
+      await deleteContest(currentContest.id);
+      await refresh();
+      openNewContest();
+    }, 'Draft contest o‘chirildi.');
+  };
+
   const deleteQuestion = async (questionId: string) => {
     if (!currentContest || !window.confirm('Bu savolni o‘chirasizmi?')) return;
     await run(`delete:${questionId}`, async () => {
@@ -466,6 +540,10 @@ export function ContestManagementPage() {
     const parts = englishExam ? ` · ${editor?.parts.length ?? 0} ta exam part` : '';
     return `${currentContest.questionCount} savol${parts} · ${currentContest.participants} ro‘yxatdan o‘tgan`;
   }, [currentContest, editor?.parts.length, englishExam]);
+
+  if (profile?.role === 'judge') {
+    return <div className="container-page py-32"><div className="card mx-auto max-w-2xl p-8 text-center"><Code2 className="mx-auto h-10 w-10 text-indigo-600" /><h1 className="mt-4 text-xl font-bold text-slate-900">Judge uchun Gym studio</h1><p className="mt-2 text-sm leading-relaxed text-slate-500">Judge faqat unrated Gym contest yaratishi mumkin. Academic Rated/Unrated contestlar faqat tasdiqlangan admin tomonidan yaratiladi.</p><Link to="/programming-management" className="btn-primary mt-6">Programming Gym studio’ga o‘tish</Link></div></div>;
+  }
 
   return (
     <div className="management-canvas min-h-screen">
@@ -510,7 +588,7 @@ export function ContestManagementPage() {
             {currentContest && (
               <>
                 {englishExam && (
-                  <><section className="workspace-callout"><div className="flex flex-wrap items-start gap-3"><Headphones className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" /><div><p className="font-bold">IELTS / CEFR oqimi</p><p className="mt-1 leading-relaxed text-indigo-900/80">1. Listening uchun audio biriktiring. 2. Reading uchun passage yozing. 3. Har bir objective partga savol ulang. 4. Writing javoblari contest tugagach alohida baholanadi.</p></div></div></section><ExamPartsSection
+                  <><section className="workspace-callout"><div className="flex flex-wrap items-start gap-3"><Headphones className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" /><div><p className="font-bold">IELTS / CEFR oqimi</p><p className="mt-1 leading-relaxed text-indigo-900/80">1. Listening uchun audio biriktiring. 2. Reading uchun passage yozing. 3. Har bir objective partga savol ulang. 4. Writing javoblari contest tugagach alohida baholanadi.</p></div></div></section><ExamSectionTimingSection form={examTiming} setForm={setExamTiming} contest={currentContest} savedTimings={editor?.sectionTimings ?? null} editable={editable} busy={busy === 'exam-timing'} onSave={() => void saveExamTiming()} /><ExamPartsSection
                     parts={editor?.parts ?? []}
                     form={examPart}
                     setForm={setExamPart}
@@ -533,7 +611,7 @@ export function ContestManagementPage() {
 
                 {englishExam && currentContest.status === 'Finished' && <WritingReviewSection submissions={writingSubmissions} grades={writingGrades} setGrades={setWritingGrades} busy={busy} finalized={currentContest.isFinalized} onGrade={saveWritingGrade} />}
 
-                <section className="card p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-5"><div><h2 className="text-lg font-bold text-slate-900">Contest holati</h2><p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-500">E’lon qilinganidan keyin contest ommaviy ro‘yxatda chiqadi. Tugagan rated contest faqat tasdiqlangan admin yakunlagach foydalanuvchilarning haqiqiy ratingiga ta’sir qiladi.</p>{englishExam && currentContest.status === 'Finished' && ungradedWritingCount > 0 && <p className="mt-2 text-xs font-semibold text-sun-700">{ungradedWritingCount} ta writing hali baholanmagan. Reyting va yakuniy natijalar shu baholar kiritilguncha kutadi.</p>}{currentContest.type === 'Rated' && !adminAccess && <p className="mt-2 text-xs font-medium text-slate-500">Rated contest natijasini yakunlash admin tasdiqlovini talab qiladi.</p>}</div><div className="flex flex-wrap gap-2">{editable && <button type="button" onClick={() => void publish()} disabled={questionCount === 0 || isBusy} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"><Send className="h-4 w-4" />E’lon qilish</button>}{canFinalize && <button type="button" onClick={() => void finalize()} disabled={isBusy} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"><Trophy className="h-4 w-4" />Natijani yakunlash</button>}{!currentContest.archivedAt && <button type="button" onClick={() => void archive()} disabled={isBusy} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Archive className="h-4 w-4" />Arxivlash</button>}</div></div></section>
+                <section className="card p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-5"><div><h2 className="text-lg font-bold text-slate-900">Contest holati</h2><p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-500">E’lon qilinganidan keyin contest ommaviy ro‘yxatda chiqadi. Tugagan rated contest faqat tasdiqlangan admin yakunlagach foydalanuvchilarning haqiqiy ratingiga ta’sir qiladi.</p>{englishExam && currentContest.status === 'Finished' && ungradedWritingCount > 0 && <p className="mt-2 text-xs font-semibold text-sun-700">{ungradedWritingCount} ta writing hali baholanmagan. Reyting va yakuniy natijalar shu baholar kiritilguncha kutadi.</p>}{currentContest.type === 'Rated' && !adminAccess && <p className="mt-2 text-xs font-medium text-slate-500">Rated contest natijasini yakunlash admin tasdiqlovini talab qiladi.</p>}</div><div className="flex flex-wrap gap-2">{editable && <button type="button" onClick={() => void publish()} disabled={questionCount === 0 || isBusy} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"><Send className="h-4 w-4" />E’lon qilish</button>}{canFinalize && <button type="button" onClick={() => void finalize()} disabled={isBusy} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"><Trophy className="h-4 w-4" />Natijani yakunlash</button>}{editable && <button type="button" onClick={() => void removeContest()} disabled={isBusy} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Trash2 className="h-4 w-4" />O‘chirish</button>}{!currentContest.archivedAt && <button type="button" onClick={() => void archive()} disabled={isBusy} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Archive className="h-4 w-4" />Arxivlash</button>}</div></div></section>
               </>
             )}
           </div>
@@ -556,15 +634,24 @@ function StatusPill({ contest, large = false }: { contest: ManagedContest; large
 
 function ContestFormFields({ form, setForm, disabled, onSubmit, busy, isNew, canCreateRated }: { form: ContestForm; setForm: Dispatch<SetStateAction<ContestForm>>; disabled: boolean; onSubmit: (event: FormEvent) => void; busy: boolean; isNew: boolean; canCreateRated: boolean }) {
   const update = <K extends keyof ContestForm>(key: K, value: ContestForm[K]) => setForm((current) => ({ ...current, [key]: value }));
+  const updateVisibility = (visibility: ContestVisibility) => setForm((current) => ({
+    ...current,
+    visibility,
+    privateAccessCode: visibility === 'Private' && (isNew || current.visibility !== 'Private')
+      ? current.privateAccessCode || generatePrivateAccessCode()
+      : current.privateAccessCode,
+  }));
   return (
     <form onSubmit={onSubmit} className="p-5 sm:p-6">
       {disabled && <div className="mb-5 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">E’lon qilingan yoki boshlangan contestning jadvali va tavsifi o‘zgartirilmaydi.</div>}
       <div className="grid gap-5 md:grid-cols-2">
         <Field label="Contest nomi" className="md:col-span-2"><input required value={form.title} disabled={disabled} onChange={(event) => update('title', event.target.value)} className="input" placeholder="Masalan: August Mathematics Challenge" /></Field>
         <Field label="Tavsif" className="md:col-span-2"><textarea value={form.description} disabled={disabled} onChange={(event) => update('description', event.target.value)} className="input min-h-28 resize-y" placeholder="Contest maqsadi va qatnashuvchilar bilishi kerak bo‘lgan ma’lumotlar" /></Field>
-        <Field label="Fan yoki imtihon"><select value={form.subjectSlug} disabled={disabled} onChange={(event) => update('subjectSlug', event.target.value)} className="input">{academicContestSubjects.map(([slug, label]) => <option key={slug} value={slug}>{label}</option>)}</select><p className="mt-1.5 text-xs text-slate-500">Programming contestlarni maxsus programming boshqaruvida yarating.</p></Field>
-        <Field label="Turi"><select value={form.type} disabled={disabled} onChange={(event) => update('type', event.target.value as ContestType)} className="input"><option value="Unrated">Unrated — ratingga ta’sir qilmaydi</option><option value="Rated" disabled={!canCreateRated}>Rated — yakunlangach ratingga ta’sir qiladi</option></select>{!canCreateRated && <p className="mt-1.5 text-xs text-slate-500">Rated contestlarni faqat tasdiqlangan admin yaratadi.</p>}</Field>
-        <Field label="Qiyinlik"><select value={form.difficulty} disabled={disabled} onChange={(event) => update('difficulty', event.target.value as ContestDifficulty)} className="input"><option value="Easy">Easy</option><option value="Medium">Medium</option><option value="Hard">Hard</option><option value="Expert">Expert</option></select></Field>
+        <Field label="Fan yoki imtihon"><AppSelect value={form.subjectSlug} disabled={disabled} onChange={(value) => update('subjectSlug', value)} options={academicContestSubjects.map(([value, label]) => ({ value, label }))} ariaLabel="Fan yoki imtihon" /><p className="mt-1.5 text-xs text-slate-500">Programming contestlarni maxsus programming boshqaruvida yarating.</p></Field>
+        <Field label="Turi"><AppSelect value={form.type} disabled={disabled} onChange={(value) => update('type', value as ContestType)} options={[{ value: 'Unrated', label: 'Unrated', description: 'Ratingga ta’sir qilmaydi' }, { value: 'Rated', label: 'Rated', description: 'Yakunlangach ratingga ta’sir qiladi', disabled: !canCreateRated }]} ariaLabel="Contest turi" />{!canCreateRated && <p className="mt-1.5 text-xs text-slate-500">Rated contestlarni faqat tasdiqlangan admin yaratadi.</p>}</Field>
+        <Field label="Kirish"><AppSelect value={form.visibility} disabled={disabled} onChange={(value) => updateVisibility(value as ContestVisibility)} options={[{ value: 'Public', label: 'Public', description: 'Contest katalogida ko‘rinadi' }, { value: 'Private', label: 'Private', description: 'Faqat access code bilan' }]} ariaLabel="Contestga kirish turi" /></Field>
+        <Field label="Qiyinlik"><AppSelect value={form.difficulty} disabled={disabled} onChange={(value) => update('difficulty', value as ContestDifficulty)} options={['Easy', 'Medium', 'Hard', 'Expert'].map((value) => ({ value, label: value }))} ariaLabel="Contest qiyinligi" /></Field>
+        {form.visibility === 'Private' && <Field label={isNew ? 'Private access code' : 'Yangi access code (ixtiyoriy)'} className="md:col-span-2"><div className="flex flex-col gap-2 sm:flex-row"><input required={isNew} readOnly value={form.privateAccessCode} disabled={disabled} className="input flex-1 font-mono tracking-wide" placeholder="Private tanlanganda xavfsiz kod yaratiladi" /><button type="button" disabled={disabled} onClick={() => update('privateAccessCode', generatePrivateAccessCode())} className="btn-ghost shrink-0 px-4 py-2.5 text-sm disabled:opacity-50">Yangi kod yaratish</button></div><p className="mt-1.5 text-xs text-slate-500">Har yangi kod 100-bit tasodifiy qiymatdir. U faqat hash holatida saqlanadi va bitta private contestga bog‘lanadi.</p></Field>}
         <Field label="Ishtirokchilar limiti"><input required min="1" max="100000" type="number" value={form.maxParticipants} disabled={disabled} onChange={(event) => update('maxParticipants', event.target.value)} className="input" /></Field>
         <Field label="Boshlanish vaqti"><input required type="datetime-local" value={form.startTime} disabled={disabled} onChange={(event) => update('startTime', event.target.value)} className="input" /></Field>
         <Field label="Tugash vaqti"><input required type="datetime-local" value={form.endTime} disabled={disabled} onChange={(event) => update('endTime', event.target.value)} className="input" /></Field>
@@ -596,13 +683,55 @@ function QuestionFormFields({ form, setForm, busy, onSubmit, englishExam, parts 
         : current.correctOption;
     return { ...current, options, correctOption };
   });
-  return <form onSubmit={onSubmit} className="border-t border-slate-100 bg-slate-50 p-5 sm:p-6"><div className="flex items-center justify-between gap-3"><div><p className="text-sm font-bold text-slate-900">{form.id ? `Savol ${form.position} ni tahrirlash` : 'Yangi savol'}</p><p className="mt-1 text-xs text-slate-500">Javoblar va to‘g‘ri variant serverda himoyalangan tarzda saqlanadi.</p></div>{form.id && <button type="button" onClick={() => setForm(emptyQuestion(form.position, englishExam ? objectiveParts[0]?.id ?? null : null))} className="btn-ghost px-3 py-2 text-xs">Bekor qilish</button>}</div><div className="mt-5 grid gap-4">{englishExam && <Field label="Exam parti"><select required value={form.partId ?? ''} onChange={(event) => setForm((current) => ({ ...current, partId: event.target.value || null }))} className="input"><option value="">Listening yoki Reading partini tanlang</option>{objectiveParts.map((part) => <option key={part.id} value={part.id}>{part.position}. {part.section === 'listening' ? 'Listening' : 'Reading'} — {part.title}</option>)}</select>{objectiveParts.length === 0 && <p className="mt-1.5 text-xs text-error-700">Avval Listening yoki Reading partini yarating.</p>}</Field>}<Field label="Savol raqami"><input required min="1" type="number" value={form.position} onChange={(event) => setForm((current) => ({ ...current, position: Number(event.target.value) }))} className="input max-w-36" /></Field><Field label="Savol matni"><textarea required value={form.prompt} onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))} className="input min-h-24 resize-y" placeholder="Savolni aniq va to‘liq yozing" /></Field><div><div className="mb-2 flex items-center justify-between"><label className="text-sm font-semibold text-slate-700">Variantlar</label>{form.options.length < 8 && <button type="button" onClick={addOption} className="text-xs font-bold text-indigo-700 hover:text-indigo-800">+ Variant qo‘shish</button>}</div><div className="space-y-2">{form.options.map((option, index) => <div key={index} className="flex items-center gap-2"><label className="flex cursor-pointer items-center"><input type="radio" name="correct-option" checked={form.correctOption === index} onChange={() => setForm((current) => ({ ...current, correctOption: index }))} className="h-4 w-4 accent-indigo-600" /><span className="ml-2 w-5 text-xs font-bold text-slate-500">{String.fromCharCode(65 + index)}</span></label><input required value={option} onChange={(event) => updateOption(index, event.target.value)} className="input flex-1" placeholder={`${String.fromCharCode(65 + index)} variant`} />{form.options.length > 2 && <button type="button" onClick={() => removeOption(index)} className="rounded-lg p-2 text-slate-400 hover:bg-error-50 hover:text-error-700" aria-label={`Variant ${index + 1} ni o‘chirish`}><Trash2 className="h-4 w-4" /></button>}</div>)}</div><p className="mt-2 text-xs text-slate-500">Radio tugmasi to‘g‘ri variantni belgilaydi; foydalanuvchiga u ko‘rsatilmaydi.</p></div><div className="grid gap-4 md:grid-cols-3"><Field label="Ball"><input required min="1" max="1000" type="number" value={form.points} onChange={(event) => setForm((current) => ({ ...current, points: event.target.value }))} className="input" /></Field><Field label="Izoh (ixtiyoriy)" className="md:col-span-2"><input value={form.explanation} onChange={(event) => setForm((current) => ({ ...current, explanation: event.target.value }))} className="input" placeholder="Natija chiqqandan keyingi tushuntirish" /></Field></div></div><div className="mt-5 flex justify-end"><button type="submit" disabled={busy || (englishExam && objectiveParts.length === 0)} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : form.id ? 'Savolni saqlash' : 'Savol qo‘shish'}</button></div></form>;
+  return <form onSubmit={onSubmit} className="border-t border-slate-100 bg-slate-50 p-5 sm:p-6">
+    <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-bold text-slate-900">{form.id ? `Savol ${form.position} ni tahrirlash` : 'Yangi savol'}</p><p className="mt-1 text-xs text-slate-500">Javoblar va to‘g‘ri variant serverda himoyalangan tarzda saqlanadi.</p></div>{form.id && <button type="button" onClick={() => setForm(emptyQuestion(form.position, englishExam ? objectiveParts[0]?.id ?? null : null))} className="btn-ghost px-3 py-2 text-xs">Bekor qilish</button>}</div>
+    <div className="mt-5 grid gap-4">
+      {englishExam && <Field label="Exam parti"><AppSelect value={form.partId ?? ''} onChange={(value) => setForm((current) => ({ ...current, partId: value || null }))} options={[{ value: '', label: 'Listening yoki Reading partini tanlang' }, ...objectiveParts.map((part) => ({ value: part.id, label: `${part.position}. ${part.section === 'listening' ? 'Listening' : 'Reading'} — ${part.title}` }))]} ariaLabel="Exam parti" />{objectiveParts.length === 0 && <p className="mt-1.5 text-xs text-error-700">Avval Listening yoki Reading partini yarating.</p>}</Field>}
+      <Field label="Savol raqami"><input required min="1" type="number" value={form.position} onChange={(event) => setForm((current) => ({ ...current, position: Number(event.target.value) }))} className="input max-w-36" /></Field>
+      <Field label="Savol matni"><textarea required value={form.prompt} onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))} className="input min-h-24 resize-y" placeholder="Savolni aniq va to‘liq yozing" /></Field>
+      <div><div className="mb-2 flex items-center justify-between"><label className="text-sm font-semibold text-slate-700">Variantlar</label>{form.options.length < 8 && <button type="button" onClick={addOption} className="text-xs font-bold text-indigo-700 hover:text-indigo-800">+ Variant qo‘shish</button>}</div><div className="space-y-2">{form.options.map((option, index) => <div key={index} className="flex items-center gap-2"><label className="flex cursor-pointer items-center"><input type="radio" name="correct-option" checked={form.correctOption === index} onChange={() => setForm((current) => ({ ...current, correctOption: index }))} className="h-4 w-4 accent-indigo-600" /><span className="ml-2 w-5 text-xs font-bold text-slate-500">{String.fromCharCode(65 + index)}</span></label><input required value={option} onChange={(event) => updateOption(index, event.target.value)} className="input flex-1" placeholder={`${String.fromCharCode(65 + index)} variant`} />{form.options.length > 2 && <button type="button" onClick={() => removeOption(index)} className="rounded-lg p-2 text-slate-400 hover:bg-error-50 hover:text-error-700" aria-label={`Variant ${index + 1} ni o‘chirish`}><Trash2 className="h-4 w-4" /></button>}</div>)}</div><p className="mt-2 text-xs text-slate-500">Radio tugmasi to‘g‘ri variantni belgilaydi; foydalanuvchiga u ko‘rsatilmaydi.</p></div>
+      <div className="grid gap-4 md:grid-cols-3"><Field label="Ball"><input required min="1" max="1000" type="number" value={form.points} onChange={(event) => setForm((current) => ({ ...current, points: event.target.value }))} className="input" /></Field><Field label="Izoh (ixtiyoriy)" className="md:col-span-2"><input value={form.explanation} onChange={(event) => setForm((current) => ({ ...current, explanation: event.target.value }))} className="input" placeholder="Natija chiqqandan keyingi tushuntirish" /></Field></div>
+    </div>
+    <div className="mt-5 flex justify-end"><button type="submit" disabled={busy || (englishExam && objectiveParts.length === 0)} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : form.id ? 'Savolni saqlash' : 'Savol qo‘shish'}</button></div>
+  </form>;
+}
+
+function ExamSectionTimingSection({ form, setForm, contest, savedTimings, editable, busy, onSave }: { form: ExamTimingForm; setForm: Dispatch<SetStateAction<ExamTimingForm>>; contest: ManagedContest; savedTimings: ExamSectionTimings | null; editable: boolean; busy: boolean; onSave: () => void }) {
+  const contestMinutes = Math.max(0, Math.round((new Date(contest.endTime).getTime() - new Date(contest.startTime).getTime()) / 60_000));
+  const listeningMinutes = Number(form.listeningMinutes) || 0;
+  const readingMinutes = Number(form.readingMinutes) || 0;
+  const writingMinutes = Number(form.writingMinutes) || 0;
+  const totalMinutes = listeningMinutes + readingMinutes + writingMinutes;
+  const remainingMinutes = contestMinutes - totalMinutes;
+  const update = (key: keyof ExamTimingForm, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  return <section className="card overflow-hidden ring-cyan-100"><div className="workspace-panel-heading bg-gradient-to-r from-cyan-50/80 to-white"><div><p className="text-xs font-bold uppercase tracking-wider text-cyan-700">Section timers</p><h2 className="mt-1 text-xl font-bold text-slate-900">Listening, Reading va Writing vaqti</h2><p className="mt-1 max-w-2xl text-sm text-slate-500">Har bir bo‘limning alohida server timeri bo‘ladi. Vaqt tugashi bilan oldingi bo‘lim yopiladi va keyingi bo‘lim avtomatik ochiladi.</p></div><span className={`rounded-full px-3 py-1.5 text-xs font-bold ${savedTimings ? 'bg-success-50 text-success-700' : 'bg-sun-50 text-sun-700'}`}>{savedTimings ? 'Sozlangan' : 'Sozlanmagan'}</span></div><div className="p-5 sm:p-6"><div className="grid gap-4 md:grid-cols-3"><SectionTimerField label="Listening" value={form.listeningMinutes} icon={<Headphones className="h-4 w-4" />} color="indigo" disabled={!editable} onChange={(value) => update('listeningMinutes', value)} /><SectionTimerField label="Reading" value={form.readingMinutes} icon={<ClipboardList className="h-4 w-4" />} color="cyan" disabled={!editable} onChange={(value) => update('readingMinutes', value)} /><SectionTimerField label="Writing" value={form.writingMinutes} icon={<PenLine className="h-4 w-4" />} color="violet" disabled={!editable} onChange={(value) => update('writingMinutes', value)} /></div><div className={`mt-5 flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4 ${remainingMinutes === 0 ? 'border-success-200 bg-success-50/70' : 'border-sun-200 bg-sun-50/70'}`}><div><p className="text-sm font-bold text-slate-800">Jami: {totalMinutes} / {contestMinutes} minut</p><p className="mt-1 text-xs leading-relaxed text-slate-600">Masalan: 35 min Listening + 30 min Reading + 25 min Writing = 90 min imtihon.</p></div><div className={`rounded-xl px-3 py-2 text-sm font-bold ${remainingMinutes === 0 ? 'bg-success-100 text-success-700' : 'bg-sun-100 text-sun-700'}`}>{remainingMinutes === 0 ? 'Vaqtlar mos' : remainingMinutes > 0 ? `${remainingMinutes} min ajratilmagan` : `${Math.abs(remainingMinutes)} min ortiqcha`}</div></div>{editable && <div className="mt-5 flex justify-end"><button type="button" disabled={busy || remainingMinutes !== 0 || totalMinutes < 3} onClick={onSave} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : 'Bo‘lim vaqtlarini saqlash'}</button></div>}</div></section>;
+}
+
+function SectionTimerField({ label, value, icon, color, disabled, onChange }: { label: string; value: string; icon: ReactNode; color: 'indigo' | 'cyan' | 'violet'; disabled: boolean; onChange: (value: string) => void }) {
+  const palette = color === 'cyan' ? 'bg-cyan-50 text-cyan-700 ring-cyan-100' : color === 'violet' ? 'bg-violet-50 text-violet-700 ring-violet-100' : 'bg-indigo-50 text-indigo-700 ring-indigo-100';
+  return <label className={`rounded-2xl p-4 ring-1 ${palette}`}><span className="flex items-center gap-2 text-sm font-bold">{icon}{label}</span><span className="mt-4 flex items-center gap-2"><input required min="1" max="720" type="number" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} className="input w-full bg-white" /><span className="text-sm font-semibold">min</span></span></label>;
 }
 
 function ExamPartsSection({ parts, form, setForm, audioFile, setAudioFile, editable, busy, onSubmit, onNew, onEdit, onDelete }: { parts: ExamPart[]; form: ExamPartForm; setForm: Dispatch<SetStateAction<ExamPartForm>>; audioFile: File | null; setAudioFile: Dispatch<SetStateAction<File | null>>; editable: boolean; busy: string | null; onSubmit: (event: FormEvent) => void; onNew: () => void; onEdit: (part: ExamPart) => void; onDelete: (partId: string) => void }) {
   const update = <K extends keyof ExamPartForm>(key: K, value: ExamPartForm[K]) => setForm((current) => ({ ...current, [key]: value }));
   const sectionLabel: Record<ExamSection, string> = { listening: 'Listening', reading: 'Reading', writing: 'Writing' };
-  return <section className="card overflow-hidden"><div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 p-5 sm:p-6"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">IELTS / CEFR exam builder</p><h2 className="mt-1 text-xl font-bold text-slate-900">Partlar ({parts.length})</h2><p className="mt-1 max-w-2xl text-sm text-slate-500">Listening uchun audio, Reading uchun passage va Writing uchun topic yarating. Har bir Listening/Reading partiga savol biriktiriladi.</p></div>{editable && <button type="button" onClick={onNew} className="btn-ghost px-3 py-2 text-sm"><Plus className="h-4 w-4" />Yangi part</button>}</div>{parts.length ? <div className="divide-y divide-slate-100">{parts.map((part) => <div key={part.id} className="flex items-start justify-between gap-4 p-5"><div className="min-w-0"><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{part.position}. {sectionLabel[part.section]}</p><p className="mt-1 text-sm font-bold text-slate-800">{part.title}</p><p className="mt-1 text-xs text-slate-500">{part.section === 'listening' ? (part.audioUrl ? 'Audio biriktirilgan' : 'Audio kiritilmagan') : part.section === 'reading' ? `${part.content.length} belgilik passage` : `${part.maxPoints} ballik writing topic`}</p></div>{editable && <div className="flex shrink-0 gap-1"><button type="button" onClick={() => onEdit(part)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-indigo-700" title="Tahrirlash"><Pencil className="h-4 w-4" /></button><button type="button" disabled={busy === `delete-part:${part.id}`} onClick={() => onDelete(part.id)} className="rounded-lg p-2 text-slate-500 hover:bg-error-50 hover:text-error-700 disabled:opacity-50" title="O‘chirish">{busy === `delete-part:${part.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}</button></div>}</div>)}</div> : <div className="p-6 text-sm text-slate-500">Partlar hali yo‘q. Listening, Reading yoki Writing partini qo‘shing.</div>}{editable && <form onSubmit={onSubmit} className="border-t border-slate-100 bg-slate-50 p-5 sm:p-6"><div className="flex items-center justify-between gap-3"><div><p className="text-sm font-bold text-slate-900">{form.id ? `Part ${form.position} ni tahrirlash` : 'Yangi exam parti'}</p><p className="mt-1 text-xs text-slate-500">Audio fayl 25 MB gacha bo‘lishi mumkin. URL ham berish mumkin.</p></div>{form.id && <button type="button" onClick={onNew} className="btn-ghost px-3 py-2 text-xs">Bekor qilish</button>}</div><div className="mt-5 grid gap-4 md:grid-cols-2"><Field label="Bo‘lim"><select value={form.section} onChange={(event) => update('section', event.target.value as ExamSection)} className="input"><option value="listening">Listening</option><option value="reading">Reading</option><option value="writing">Writing</option></select></Field><Field label="Part raqami"><input required min="1" max="50" type="number" value={form.position} onChange={(event) => update('position', Number(event.target.value))} className="input" /></Field><Field label="Part nomi" className="md:col-span-2"><input required value={form.title} onChange={(event) => update('title', event.target.value)} className="input" placeholder="Masalan: Part 1 — Campus conversation" /></Field><Field label="Ko‘rsatmalar" className="md:col-span-2"><textarea value={form.instructions} onChange={(event) => update('instructions', event.target.value)} className="input min-h-20 resize-y" placeholder="Ishtirokchi ko‘radigan yo‘riqnoma" /></Field>{form.section === 'listening' && <><Field label="Audio fayl"><input type="file" accept="audio/*" onChange={(event) => setAudioFile(event.target.files?.[0] ?? null)} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700" />{audioFile && <p className="mt-1.5 text-xs text-indigo-700">Yuklanadi: {audioFile.name}</p>}</Field><Field label="Audio URL (ixtiyoriy)"><input value={form.audioUrl} onChange={(event) => update('audioUrl', event.target.value)} className="input" placeholder="https://…/audio.mp3" /></Field>{form.audioUrl && <div className="md:col-span-2 rounded-xl bg-white p-3 ring-1 ring-slate-200"><audio controls className="w-full" src={form.audioUrl}>Audio preview</audio></div>}</>}{form.section === 'reading' && <Field label="Reading passage" className="md:col-span-2"><textarea required value={form.content} onChange={(event) => update('content', event.target.value)} className="input min-h-44 resize-y" placeholder="Passage matnini shu yerga yozing" /></Field>}{form.section === 'writing' && <><Field label="Writing topic" className="md:col-span-2"><textarea required value={form.content} onChange={(event) => update('content', event.target.value)} className="input min-h-32 resize-y" placeholder="Task 1 yoki Task 2 topicini yozing" /></Field><Field label="Maksimal ball"><input required min="1" max="1000" type="number" value={form.maxPoints} onChange={(event) => update('maxPoints', event.target.value)} className="input" /></Field></>}</div><div className="mt-5 flex justify-end"><button type="submit" disabled={busy !== null} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-60">{busy === 'exam-part' ? <Loader2 className="h-4 w-4 animate-spin" /> : form.section === 'listening' ? <FileAudio className="h-4 w-4" /> : form.section === 'reading' ? <Headphones className="h-4 w-4" /> : <PenLine className="h-4 w-4" />}{busy === 'exam-part' ? 'Saqlanmoqda…' : form.id ? 'Partni saqlash' : 'Part qo‘shish'}</button></div></form>}</section>;
+  return <section className="card overflow-hidden">
+    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 p-5 sm:p-6"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">IELTS / CEFR exam builder</p><h2 className="mt-1 text-xl font-bold text-slate-900">Partlar ({parts.length})</h2><p className="mt-1 max-w-2xl text-sm text-slate-500">Listening uchun audio, Reading uchun passage va Writing uchun topic yarating. Har bir Listening/Reading partiga savol biriktiriladi.</p></div>{editable && <button type="button" onClick={onNew} className="btn-ghost px-3 py-2 text-sm"><Plus className="h-4 w-4" />Yangi part</button>}</div>
+    {parts.length ? <div className="divide-y divide-slate-100">{parts.map((part) => <div key={part.id} className="flex items-start justify-between gap-4 p-5"><div className="min-w-0"><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{part.position}. {sectionLabel[part.section]}</p><p className="mt-1 text-sm font-bold text-slate-800">{part.title}</p><p className="mt-1 text-xs text-slate-500">{part.section === 'listening' ? (part.audioUrl ? 'Audio biriktirilgan' : 'Audio kiritilmagan') : part.section === 'reading' ? `${part.content.length} belgilik passage` : `${part.maxPoints} ballik writing topic`}</p></div>{editable && <div className="flex shrink-0 gap-1"><button type="button" onClick={() => onEdit(part)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-indigo-700" title="Tahrirlash"><Pencil className="h-4 w-4" /></button><button type="button" disabled={busy === `delete-part:${part.id}`} onClick={() => onDelete(part.id)} className="rounded-lg p-2 text-slate-500 hover:bg-error-50 hover:text-error-700 disabled:opacity-50" title="O‘chirish">{busy === `delete-part:${part.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}</button></div>}</div>)}</div> : <div className="p-6 text-sm text-slate-500">Partlar hali yo‘q. Listening, Reading yoki Writing partini qo‘shing.</div>}
+    {editable && <form onSubmit={onSubmit} className="border-t border-slate-100 bg-slate-50 p-5 sm:p-6">
+      <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-bold text-slate-900">{form.id ? `Part ${form.position} ni tahrirlash` : 'Yangi exam parti'}</p><p className="mt-1 text-xs text-slate-500">Audio fayl 25 MB gacha bo‘lishi mumkin. URL ham berish mumkin.</p></div>{form.id && <button type="button" onClick={onNew} className="btn-ghost px-3 py-2 text-xs">Bekor qilish</button>}</div>
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <Field label="Bo‘lim"><AppSelect value={form.section} onChange={(value) => update('section', value as ExamSection)} options={['listening', 'reading', 'writing'].map((value) => ({ value, label: sectionLabel[value as ExamSection] }))} ariaLabel="Exam bo‘limi" /></Field>
+        <Field label="Part raqami"><input required min="1" max="50" type="number" value={form.position} onChange={(event) => update('position', Number(event.target.value))} className="input" /></Field>
+        <Field label="Part nomi" className="md:col-span-2"><input required value={form.title} onChange={(event) => update('title', event.target.value)} className="input" placeholder="Masalan: Part 1 — Campus conversation" /></Field>
+        <Field label="Ko‘rsatmalar" className="md:col-span-2"><textarea value={form.instructions} onChange={(event) => update('instructions', event.target.value)} className="input min-h-20 resize-y" placeholder="Ishtirokchi ko‘radigan yo‘riqnoma" /></Field>
+        {form.section === 'listening' && <><Field label="Audio fayl"><input type="file" accept="audio/*" onChange={(event) => setAudioFile(event.target.files?.[0] ?? null)} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700" />{audioFile && <p className="mt-1.5 text-xs text-indigo-700">Yuklanadi: {audioFile.name}</p>}</Field><Field label="Audio URL (ixtiyoriy)"><input value={form.audioUrl} onChange={(event) => update('audioUrl', event.target.value)} className="input" placeholder="https://…/audio.mp3" /></Field>{form.audioUrl && <div className="md:col-span-2 rounded-xl bg-white p-3 ring-1 ring-slate-200"><audio controls className="w-full" src={form.audioUrl}>Audio preview</audio></div>}</>}
+        {form.section === 'reading' && <Field label="Reading passage" className="md:col-span-2"><textarea required value={form.content} onChange={(event) => update('content', event.target.value)} className="input min-h-44 resize-y" placeholder="Passage matnini shu yerga yozing" /></Field>}
+        {form.section === 'writing' && <><Field label="Writing topic" className="md:col-span-2"><textarea required value={form.content} onChange={(event) => update('content', event.target.value)} className="input min-h-32 resize-y" placeholder="Task 1 yoki Task 2 topicini yozing" /></Field><Field label="Maksimal ball"><input required min="1" max="1000" type="number" value={form.maxPoints} onChange={(event) => update('maxPoints', event.target.value)} className="input" /></Field></>}
+      </div>
+      <div className="mt-5 flex justify-end"><button type="submit" disabled={busy !== null} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-60">{busy === 'exam-part' ? <Loader2 className="h-4 w-4 animate-spin" /> : form.section === 'listening' ? <FileAudio className="h-4 w-4" /> : form.section === 'reading' ? <Headphones className="h-4 w-4" /> : <PenLine className="h-4 w-4" />}{busy === 'exam-part' ? 'Saqlanmoqda…' : form.id ? 'Partni saqlash' : 'Part qo‘shish'}</button></div>
+    </form>}
+  </section>;
 }
 
 function WritingReviewSection({ submissions, grades, setGrades, busy, finalized, onGrade }: { submissions: WritingSubmission[]; grades: Record<string, WritingGradeForm>; setGrades: Dispatch<SetStateAction<Record<string, WritingGradeForm>>>; busy: string | null; finalized: boolean; onGrade: (submission: WritingSubmission) => void }) {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, Medal, RefreshCw, Trophy, Users } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { LoadingState } from '@/components/LoadingState';
+import { AppSelect } from '@/components/AppSelect';
 import { ratingSubjects } from '@/data/ratings';
 import { getRankBadge, getRatingColorHex } from '@/data/leaderboards';
 import {
@@ -45,17 +46,14 @@ export function LeaderboardPage() {
         <label className="text-sm font-semibold text-slate-600" htmlFor="leaderboard-subject">
           Subject
         </label>
-        <select
+        <AppSelect
           id="leaderboard-subject"
           value={subject}
-          onChange={(event) => setSubject(event.target.value)}
-          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-100"
-        >
-          <option value="all">All subjects</option>
-          {ratingSubjects.map((item) => (
-            <option key={item.slug} value={item.slug}>{item.name}</option>
-          ))}
-        </select>
+          onChange={setSubject}
+          options={[{ value: 'all', label: 'All subjects' }, ...ratingSubjects.map((item) => ({ value: item.slug, label: item.name }))]}
+          className="min-w-[180px]"
+          ariaLabel="Subject"
+        />
         {!loading && !error && (
           <span className="ml-auto text-sm text-slate-400">
             {entries.length} rated competitor{entries.length === 1 ? '' : 's'}

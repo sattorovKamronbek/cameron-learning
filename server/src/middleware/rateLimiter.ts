@@ -15,3 +15,13 @@ export const generalRateLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many requests, slow down" }
 });
+
+// Generator runs consume isolated compiler containers. Keep this deliberately
+// tighter than ordinary API traffic to prevent resource exhaustion.
+export const generatorRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 12,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many testcase generation requests, try again later" },
+});

@@ -15,6 +15,7 @@ import courseRoutes from "./routes/courses";
 import progressRoutes from "./routes/progress";
 import notificationRoutes from "./routes/notifications";
 import analyticsRoutes from "./routes/analytics";
+import integrityRoutes from "./routes/integrity";
 import { errorHandler } from "./middleware/errorHandler";
 import { generalRateLimiter, authRateLimiter } from "./middleware/rateLimiter";
 import { sanitizeMiddleware } from "./middleware/sanitize";
@@ -63,6 +64,7 @@ app.use("/api/courses", courseRoutes);
 app.use("/api/progress", progressRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/integrity", integrityRoutes);
 
 app.use(errorHandler);
 

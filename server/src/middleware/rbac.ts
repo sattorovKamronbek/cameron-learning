@@ -8,7 +8,7 @@ export function requireRole(roles: string[]) {
     const userId = (req.user as any).sub;
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    if (user.isSuspended) return res.status(403).json({ error: "Account suspended" });
+    if (user.isSuspended || user.isBanned) return res.status(403).json({ error: "Account suspended or banned" });
     if (!roles.includes(user.role)) return res.status(403).json({ error: "Insufficient role" });
     // Admin panel extra check: ensure admin's email is in allowlist
     if (user.role === "ADMIN") {

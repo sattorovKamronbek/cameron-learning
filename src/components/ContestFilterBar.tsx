@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Search, SlidersHorizontal, X } from 'lucide-react';
 import { contestSubjects, type ContestDifficulty, type ContestStatus, type ContestType } from '@/lib/contests';
+import { AppSelect } from '@/components/AppSelect';
 import { defaultFilters, type FilterState } from './contest-filter-state';
 
 const difficulties: Array<ContestDifficulty | 'all'> = ['all', 'Easy', 'Medium', 'Hard', 'Expert'];
@@ -9,15 +10,10 @@ const types: Array<ContestType | 'all'> = ['all', 'Rated', 'Unrated'];
 
 function Select({ label, value, options, onChange }: { label: string; value: string; options: Array<{ value: string; label: string }>; onChange: (value: string) => void }) {
   return (
-    <label className="block min-w-0 flex-1">
+    <div className="block min-w-0 flex-1">
       <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-400">{label}</span>
-      <span className="relative block">
-        <select value={value} onChange={(event) => onChange(event.target.value)} className="w-full appearance-none rounded-xl border-0 bg-white px-3 py-2.5 pr-9 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 outline-none focus:ring-2 focus:ring-indigo-300">
-          {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-      </span>
-    </label>
+      <AppSelect value={value} options={options} onChange={onChange} ariaLabel={label} triggerClassName="border-0 py-2.5 shadow-none ring-1 ring-slate-200 hover:ring-slate-300" />
+    </div>
   );
 }
 

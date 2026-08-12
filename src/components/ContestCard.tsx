@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, Calendar, Clock, Trophy, Users } from 'lucide-react';
+import { ArrowRight, Calendar, Clock, LockKeyhole, Sparkles, Trophy, Users } from 'lucide-react';
 import { Link } from '@/router';
 import { subjectGradient } from '@/lib/contest-appearance';
 import {
@@ -7,6 +7,7 @@ import {
   formatContestDuration,
   type Contest,
   type ContestDifficulty,
+  type ContestMode,
   type ContestStatus,
   type ContestType,
 } from '@/lib/contests';
@@ -44,6 +45,10 @@ export function TypeBadge({ type }: { type: ContestType }) {
   );
 }
 
+export function ModeBadge({ mode }: { mode: ContestMode }) {
+  return <span className={`chip ${mode === 'Gym' ? 'bg-cyan-400/15 text-cyan-100 ring-1 ring-cyan-200/30' : 'bg-violet-400/15 text-violet-100 ring-1 ring-violet-200/30'}`}>{mode === 'Gym' ? <Sparkles className="h-3 w-3" /> : <Trophy className="h-3 w-3" />}{mode}</span>;
+}
+
 export function ContestCard({ contest }: { contest: Contest }) {
   const start = formatContestDate(contest.startTime);
   const atCapacity = contest.participants >= contest.maxParticipants;
@@ -55,7 +60,7 @@ export function ContestCard({ contest }: { contest: Contest }) {
         <div className="relative flex items-start justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-white/70">{contest.subject}</p>
-            <div className="mt-1"><TypeBadge type={contest.type} /></div>
+            <div className="mt-1 flex flex-wrap gap-1.5"><ModeBadge mode={contest.mode} /><TypeBadge type={contest.type} /></div>
           </div>
           <StatusBadge status={contest.status} />
         </div>
@@ -66,6 +71,7 @@ export function ContestCard({ contest }: { contest: Contest }) {
       <div className="flex flex-1 flex-col p-5">
         <div className="flex flex-wrap gap-2">
           <DifficultyBadge difficulty={contest.difficulty} />
+          {contest.visibility === 'Private' && <span className="chip bg-slate-900 text-white"><LockKeyhole className="h-3 w-3" />Private</span>}
           {contest.prize && <span className="chip bg-sun-500/10 text-sun-700 ring-1 ring-sun-500/20"><Trophy className="h-3 w-3" />Prize</span>}
           {contest.registered && <span className="chip bg-success-500/10 text-success-700 ring-1 ring-success-500/20">Registered</span>}
         </div>
