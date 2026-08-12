@@ -296,6 +296,7 @@ DECLARE
   v_contest public.contests%ROWTYPE;
   v_part public.contest_exam_parts%ROWTYPE;
   v_marker_numbers integer[];
+  v_expected_numbers integer[];
   v_key jsonb;
   v_blank_number integer;
   v_answers jsonb;
@@ -307,23 +308,24 @@ BEGIN
   IF NOT FOUND OR v_contest.subject <> 'cefr' THEN RAISE EXCEPTION 'CEFR contest not found'; END IF;
   IF v_contest.is_published OR v_contest.start_at <= now() THEN RAISE EXCEPTION 'Answer keys cannot be changed after publication or start'; END IF;
   SELECT * INTO v_part FROM public.contest_exam_parts WHERE id = p_exam_part_id AND contest_id = p_contest_id;
-  IF NOT FOUND OR v_part.section <> 'listening' OR v_part.position <> 2 THEN RAISE EXCEPTION 'Gap-fill answer keys are available only for CEFR Listening Part 2'; END IF;
+  IF NOT FOUND OR v_part.section <> 'listening' OR v_part.position NOT IN (2, 6) THEN RAISE EXCEPTION 'Gap-fill answer keys are available only for CEFR Listening Parts 2 and 6'; END IF;
   IF coalesce(jsonb_typeof(p_answer_keys), '') <> 'array' THEN RAISE EXCEPTION 'Answer keys must be an array'; END IF;
+  v_expected_numbers := CASE v_part.position WHEN 2 THEN ARRAY[9, 10, 11, 12, 13, 14]::integer[] ELSE ARRAY[30, 31, 32, 33, 34, 35]::integer[] END;
 
   SELECT array_agg(DISTINCT (marker.values)[1]::integer ORDER BY (marker.values)[1]::integer)
   INTO v_marker_numbers
   FROM regexp_matches(v_part.content, '\{\{([1-9][0-9]*)\}\}', 'g') AS marker(values);
-  IF v_marker_numbers IS DISTINCT FROM ARRAY[9, 10, 11, 12, 13, 14]::integer[] THEN
-    RAISE EXCEPTION 'CEFR Listening Part 2 must use exactly {{9}} through {{14}}';
+  IF v_marker_numbers IS DISTINCT FROM v_expected_numbers THEN
+    RAISE EXCEPTION 'CEFR Listening Part % must use its required question markers', v_part.position;
   END IF;
-  IF jsonb_array_length(p_answer_keys) <> 6 THEN RAISE EXCEPTION 'Enter one answer key for each of Questions 9–14'; END IF;
+  IF jsonb_array_length(p_answer_keys) <> array_length(v_expected_numbers, 1) THEN RAISE EXCEPTION 'Enter one answer key for every required Part % marker', v_part.position; END IF;
 
   FOR v_key IN SELECT value FROM jsonb_array_elements(p_answer_keys) AS item(value) LOOP
     IF jsonb_typeof(v_key) <> 'object' OR coalesce(v_key->>'blank_number', '') !~ '^[1-9][0-9]*$' THEN RAISE EXCEPTION 'Every answer key needs a valid blank_number'; END IF;
     v_blank_number := (v_key->>'blank_number')::integer;
     v_answers := v_key->'accepted_answers';
     v_points := coalesce((v_key->>'points')::integer, 1);
-    IF v_blank_number NOT BETWEEN 9 AND 14 OR v_blank_number = ANY(v_seen) THEN RAISE EXCEPTION 'Part 2 answer keys must cover Questions 9–14 exactly once'; END IF;
+    IF v_blank_number <> ALL(v_expected_numbers) OR v_blank_number = ANY(v_seen) THEN RAISE EXCEPTION 'Part % answer keys must cover every marker exactly once', v_part.position; END IF;
     IF coalesce(jsonb_typeof(v_answers), '') <> 'array' OR jsonb_array_length(v_answers) NOT BETWEEN 1 AND 8
       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_answers) AS item(value) WHERE jsonb_typeof(item.value) <> 'string' OR char_length(trim(item.value #>> '{}')) NOT BETWEEN 1 AND 120) THEN
       RAISE EXCEPTION 'Each blank needs one to eight non-empty accepted answers';
@@ -334,8 +336,8 @@ BEGIN
     ON CONFLICT (exam_part_id, blank_number) DO UPDATE SET accepted_answers = EXCLUDED.accepted_answers, points = EXCLUDED.points, updated_at = now();
     v_seen := array_append(v_seen, v_blank_number);
   END LOOP;
-  DELETE FROM public.contest_gap_fill_answer_keys WHERE exam_part_id = p_exam_part_id AND blank_number NOT BETWEEN 9 AND 14;
-  PERFORM public.log_audit_action('contest.gap_fill_keys.save', 'contest', p_contest_id, jsonb_build_object('part_id', p_exam_part_id, 'blank_count', 6));
+  DELETE FROM public.contest_gap_fill_answer_keys WHERE exam_part_id = p_exam_part_id AND blank_number <> ALL(v_expected_numbers);
+  PERFORM public.log_audit_action('contest.gap_fill_keys.save', 'contest', p_contest_id, jsonb_build_object('part_id', p_exam_part_id, 'blank_count', array_length(v_expected_numbers, 1)));
 END;
 $$;
 
@@ -639,9 +641,9 @@ BEGIN
     FOR v_part IN SELECT * FROM public.contest_exam_parts WHERE contest_id = p_contest_id LOOP
       IF v_part.section = 'listening' AND nullif(trim(v_part.audio_url), '') IS NULL THEN RAISE EXCEPTION 'Every listening part must include an audio file'; END IF;
       IF v_part.section IN ('reading', 'writing') AND char_length(trim(v_part.content)) < 1 THEN RAISE EXCEPTION 'Every reading passage and writing topic must contain text'; END IF;
-      IF v_part.section = 'listening' AND v_part.position = 2 THEN
-        IF NOT EXISTS (SELECT 1 FROM regexp_matches(v_part.content, '\{\{([1-9][0-9]*)\}\}', 'g')) THEN RAISE EXCEPTION 'CEFR Listening Part 2 needs {{9}} through {{14}} blanks in its text'; END IF;
-        IF EXISTS (SELECT 1 FROM regexp_matches(v_part.content, '\{\{([1-9][0-9]*)\}\}', 'g') marker(values) LEFT JOIN public.contest_gap_fill_answer_keys key ON key.exam_part_id = v_part.id AND key.blank_number = (marker.values)[1]::integer WHERE key.id IS NULL) THEN RAISE EXCEPTION 'Save every CEFR Listening Part 2 answer key before publishing'; END IF;
+      IF v_part.section = 'listening' AND v_part.position IN (2, 6) THEN
+        IF NOT EXISTS (SELECT 1 FROM regexp_matches(v_part.content, '\{\{([1-9][0-9]*)\}\}', 'g')) THEN RAISE EXCEPTION 'CEFR Listening Part % needs gap-fill markers in its text', v_part.position; END IF;
+        IF EXISTS (SELECT 1 FROM regexp_matches(v_part.content, '\{\{([1-9][0-9]*)\}\}', 'g') marker(values) LEFT JOIN public.contest_gap_fill_answer_keys key ON key.exam_part_id = v_part.id AND key.blank_number = (marker.values)[1]::integer WHERE key.id IS NULL) THEN RAISE EXCEPTION 'Save every CEFR Listening Part % answer key before publishing', v_part.position; END IF;
       ELSIF v_part.section = 'listening' AND v_part.position IN (3, 4) THEN
         IF v_part.position = 4 AND nullif(trim(v_part.image_url), '') IS NULL THEN RAISE EXCEPTION 'CEFR Listening Part 4 needs a high-resolution map or photo'; END IF;
         IF NOT EXISTS (SELECT 1 FROM public.contest_matching_options WHERE exam_part_id = v_part.id) OR NOT EXISTS (SELECT 1 FROM public.contest_matching_speakers WHERE exam_part_id = v_part.id) THEN RAISE EXCEPTION 'Configure the CEFR Listening matching answer bank before publishing'; END IF;

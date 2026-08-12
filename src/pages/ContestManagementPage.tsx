@@ -242,7 +242,7 @@ function isCefrAudioOnlyPart(parts: ExamPart[], partId: string | null, cefrExam:
 }
 
 function isCefrGapFillPart(part: ExamPart, cefrExam: boolean): boolean {
-  return cefrExam && part.section === 'listening' && part.position === 2;
+  return cefrExam && part.section === 'listening' && (part.position === 2 || part.position === 6);
 }
 
 function isCefrMatchingPart(part: ExamPart, cefrExam: boolean): boolean {
@@ -259,10 +259,12 @@ const CEFR_LISTENING_PARTS = [
   { position: 3, title: 'Speaker matching', description: 'Speakerlarni umumiy A/B/C… javob bankiga moslash.' },
   { position: 4, title: 'Map labelling', description: 'Xarita rasmi bo‘yicha joylarni harflarga moslash.' },
   { position: 5, title: 'Three extracts', description: '3 extract, har birida 2 tadan — umumiy raqamlashda 24–29.' },
+  { position: 6, title: 'Gap-fill', description: 'Matndagi bo‘sh joylarni audio asosida to‘ldirish — 30–35.' },
 ] as const;
 
 const CEFR_PART_FIVE_QUESTION_POSITIONS = [24, 25, 26, 27, 28, 29] as const;
 const CEFR_PART_TWO_QUESTION_POSITIONS = [9, 10, 11, 12, 13, 14] as const;
+const CEFR_PART_SIX_QUESTION_POSITIONS = [30, 31, 32, 33, 34, 35] as const;
 const CEFR_PART_THREE_QUESTION_POSITIONS = [15, 16, 17, 18] as const;
 const CEFR_PART_FOUR_QUESTION_POSITIONS = [19, 20, 21, 22, 23] as const;
 
@@ -298,6 +300,7 @@ function cefrListeningPartTemplate(position: number): Pick<ExamPartForm, 'title'
     3: 'Har bir speaker uchun mos javob harfini tanlang. Ayrim variantlar ortiqcha bo‘lishi mumkin.',
     4: 'Audio asosida xaritadagi harflardan mos joyni tanlang. Ayrim harflar ortiqcha bo‘lishi mumkin.',
     5: '3 ta extractni tinglang. Har bir extract uchun 2 tadan savolga javob bering.',
+    6: 'Audio asosida matndagi bo‘sh joylarni to‘ldiring.',
   };
   return { title: `Part ${position} — ${part.title}`, instructions: instructions[position] ?? '' };
 }
@@ -720,7 +723,7 @@ export function ContestManagementPage() {
     return run('gap-fill-keys', async () => {
       await saveCefrGapFillAnswerKeys(currentContest.id, partId, keys);
       await loadEditor(currentContest.id, false);
-    }, 'CEFR Part 2 javob kaliti saqlandi.');
+    }, 'CEFR gap-fill javob kaliti saqlandi.');
   };
 
   const saveMatchingConfig = async (partId: string, config: Omit<MatchingEditorConfig, 'partId'>) => {
@@ -787,7 +790,7 @@ export function ContestManagementPage() {
     }
     const existing = editor?.parts.find((part) => part.section === 'listening' && part.position === position);
     setExamPart(existing ? examPartFormFrom(existing) : emptyCefrListeningPart(position));
-    setQuestion(emptyQuestion(1, position === 5 ? null : existing?.id ?? null));
+    setQuestion(emptyQuestion(1, position === 5 || position === 6 ? null : existing?.id ?? null));
   };
 
   const openIeltsPart = (position: number) => {
@@ -924,7 +927,7 @@ export function ContestManagementPage() {
                     onDelete={(partId) => void removeExamPart(partId)}
                   /></>
                 )}
-                {editable && currentContest.subjectSlug === 'cefr' && activeCefrListeningPart === 2 && <CefrGapFillAnswerKeySection parts={editor?.parts ?? []} answerKeys={editor?.gapFillAnswerKeys ?? []} busy={busy === 'gap-fill-keys'} onSave={saveGapFillAnswerKeys} />}
+                {editable && currentContest.subjectSlug === 'cefr' && (activeCefrListeningPart === 2 || activeCefrListeningPart === 6) && <CefrGapFillAnswerKeySection parts={editor?.parts ?? []} answerKeys={editor?.gapFillAnswerKeys ?? []} busy={busy === 'gap-fill-keys'} onSave={saveGapFillAnswerKeys} partPosition={activeCefrListeningPart} />}
                 {editable && currentContest.subjectSlug === 'cefr' && activeCefrListeningPart === 3 && <CefrMatchingConfigSection parts={editor?.parts ?? []} configs={editor?.matchingConfigs ?? []} busy={busy === 'matching-config'} onSave={saveMatchingConfig} />}
                 {editable && currentContest.subjectSlug === 'cefr' && activeCefrListeningPart === 4 && <CefrMatchingConfigSection parts={editor?.parts ?? []} configs={editor?.matchingConfigs ?? []} busy={busy === 'matching-config'} onSave={saveMatchingConfig} partPosition={4} mapMode />}
                 {currentContest.subjectSlug === 'cefr' && activeCefrListeningPart === 5 ? <CefrPartFiveQuestions part={focusedCefrPart} questions={focusedCefrQuestions} form={question} setForm={setQuestion} parts={editor?.parts ?? []} editable={editable} busy={busy} editingId={question.id} onSave={saveQuestion} onEdit={(item) => setQuestion(questionFormFrom(item))} onDelete={(questionId) => void deleteQuestion(questionId)} /> : (currentContest.subjectSlug !== 'cefr' || activeCefrListeningPart === null || activeCefrListeningPart === 1) && <section className="card overflow-hidden">
@@ -985,8 +988,9 @@ function ContestFormFields({ form, setForm, disabled, onSubjectChange, onSubmit,
   );
 }
 
-function CefrGapFillAnswerKeySection({ parts, answerKeys, busy, onSave }: { parts: ExamPart[]; answerKeys: GapFillAnswerKey[]; busy: boolean; onSave: (partId: string, keys: GapFillAnswerKey[]) => Promise<boolean> }) {
-  const part = parts.find((item) => isCefrGapFillPart(item, true));
+function CefrGapFillAnswerKeySection({ parts, answerKeys, busy, onSave, partPosition }: { parts: ExamPart[]; answerKeys: GapFillAnswerKey[]; busy: boolean; onSave: (partId: string, keys: GapFillAnswerKey[]) => Promise<boolean>; partPosition: 2 | 6 }) {
+  const expectedNumbers = partPosition === 2 ? CEFR_PART_TWO_QUESTION_POSITIONS : CEFR_PART_SIX_QUESTION_POSITIONS;
+  const part = parts.find((item) => item.section === 'listening' && item.position === partPosition);
   const blankNumbers = gapFillBlankNumbers(part?.content ?? '');
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -997,14 +1001,14 @@ function CefrGapFillAnswerKeySection({ parts, answerKeys, busy, onSave }: { part
       return [blankNumber, key?.acceptedAnswers.join(', ') ?? ''];
     })));
     setError(null);
-  }, [answerKeys, part?.id, part?.content]); // Reset only when saved server data or the template changes.
+  }, [answerKeys, part?.id, part?.content, partPosition]); // Reset only when saved server data or the template changes.
 
   if (!part) return null;
-  if (blankNumbers.length === 0) return <section className="card border border-dashed border-sun-300 bg-sun-50/70 p-5 sm:p-6"><p className="text-xs font-bold uppercase tracking-wider text-sun-700">CEFR · Listening Part 2</p><h2 className="mt-1 text-lg font-bold text-slate-900">Gap-fill javob kaliti</h2><p className="mt-2 text-sm leading-relaxed text-sun-900">Part 2 matniga 9–14 savol raqamlarini qo‘ying: <code className="rounded bg-white px-1.5 py-0.5">{'{{9}}'}</code> dan <code className="rounded bg-white px-1.5 py-0.5">{'{{14}}'}</code> gacha. Saqlangandan keyin shu yerda javoblarni alohida yozasiz.</p></section>;
+  if (blankNumbers.length === 0) return <section className="card border border-dashed border-sun-300 bg-sun-50/70 p-5 sm:p-6"><p className="text-xs font-bold uppercase tracking-wider text-sun-700">CEFR · Listening Part {partPosition}</p><h2 className="mt-1 text-lg font-bold text-slate-900">Gap-fill javob kaliti</h2><p className="mt-2 text-sm leading-relaxed text-sun-900">Part {partPosition} matniga {expectedNumbers[0]}–{expectedNumbers[expectedNumbers.length - 1]} savol raqamlarini qo‘ying: <code className="rounded bg-white px-1.5 py-0.5">{`{{${expectedNumbers[0]}}}`}</code> dan <code className="rounded bg-white px-1.5 py-0.5">{`{{${expectedNumbers[expectedNumbers.length - 1]}}}`}</code> gacha. Saqlangandan keyin shu yerda javoblarni alohida yozasiz.</p></section>;
 
   const save = async () => {
-    if (blankNumbers.length !== CEFR_PART_TWO_QUESTION_POSITIONS.length || blankNumbers.some((blankNumber, index) => blankNumber !== CEFR_PART_TWO_QUESTION_POSITIONS[index])) {
-      setError('CEFR Listening Part 2 bo‘sh joylari umumiy raqamlashda aynan 9–14 bo‘lishi kerak. Matnda {{9}} dan {{14}} gacha ishlating.');
+    if (blankNumbers.length !== expectedNumbers.length || blankNumbers.some((blankNumber, index) => blankNumber !== expectedNumbers[index])) {
+      setError(`CEFR Listening Part ${partPosition} bo‘sh joylari umumiy raqamlashda aynan ${expectedNumbers[0]}–${expectedNumbers[expectedNumbers.length - 1]} bo‘lishi kerak. Matnda {{${expectedNumbers[0]}}} dan {{${expectedNumbers[expectedNumbers.length - 1]}}} gacha ishlating.`);
       return;
     }
     const keys: GapFillAnswerKey[] = blankNumbers.map((blankNumber) => ({
@@ -1021,7 +1025,7 @@ function CefrGapFillAnswerKeySection({ parts, answerKeys, busy, onSave }: { part
     if (saved) setError(null);
   };
 
-  return <section className="card overflow-hidden ring-1 ring-violet-100"><div className="workspace-panel-heading bg-gradient-to-r from-violet-50 to-white"><div><p className="text-xs font-bold uppercase tracking-wider text-violet-700">CEFR · Listening Part 2</p><h2 className="mt-1 text-xl font-bold text-slate-900">Gap-fill javob kaliti</h2><p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-600">Bu javoblar faqat admin/judge uchun. Ishtirokchi matndagi bo‘sh joylarga yozadi, keyin server javobni avtomatik tekshiradi.</p></div><span className="rounded-full bg-violet-100 px-3 py-1.5 text-xs font-bold text-violet-700">{blankNumbers.length} ta bo‘sh joy</span></div><div className="p-5 sm:p-6"><div className="grid gap-3 md:grid-cols-2">{blankNumbers.map((blankNumber) => <label key={blankNumber} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><span className="text-sm font-bold text-slate-800">({blankNumber}) javob</span><input value={drafts[blankNumber] ?? ''} disabled={busy} onChange={(event) => setDrafts((current) => ({ ...current, [blankNumber]: event.target.value }))} className="input mt-3 bg-white" placeholder="Masalan: Victoria Hall" /><span className="mt-2 block text-xs leading-relaxed text-slate-500">Muqobil javoblar bo‘lsa, vergul bilan ajrating.</span></label>)}</div>{error && <p className="mt-4 rounded-xl bg-error-50 px-3 py-2 text-xs font-medium leading-relaxed text-error-700">{error}</p>}<div className="mt-5 flex justify-end"><button type="button" disabled={busy} onClick={() => void save()} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : 'Javob kalitini saqlash'}</button></div></div></section>;
+  return <section className="card overflow-hidden ring-1 ring-violet-100"><div className="workspace-panel-heading bg-gradient-to-r from-violet-50 to-white"><div><p className="text-xs font-bold uppercase tracking-wider text-violet-700">CEFR · Listening Part {partPosition}</p><h2 className="mt-1 text-xl font-bold text-slate-900">Gap-fill javob kaliti</h2><p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-600">Bu javoblar faqat admin/judge uchun. Ishtirokchi matndagi bo‘sh joylarga yozadi, keyin server javobni avtomatik tekshiradi.</p></div><span className="rounded-full bg-violet-100 px-3 py-1.5 text-xs font-bold text-violet-700">{blankNumbers.length} ta bo‘sh joy</span></div><div className="p-5 sm:p-6"><div className="grid gap-3 md:grid-cols-2">{blankNumbers.map((blankNumber) => <label key={blankNumber} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><span className="text-sm font-bold text-slate-800">({blankNumber}) javob</span><input value={drafts[blankNumber] ?? ''} disabled={busy} onChange={(event) => setDrafts((current) => ({ ...current, [blankNumber]: event.target.value }))} className="input mt-3 bg-white" placeholder="Masalan: Victoria Hall" /><span className="mt-2 block text-xs leading-relaxed text-slate-500">Muqobil javoblar bo‘lsa, vergul bilan ajrating.</span></label>)}</div>{error && <p className="mt-4 rounded-xl bg-error-50 px-3 py-2 text-xs font-medium leading-relaxed text-error-700">{error}</p>}<div className="mt-5 flex justify-end"><button type="button" disabled={busy} onClick={() => void save()} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : 'Javob kalitini saqlash'}</button></div></div></section>;
 }
 
 function CefrMatchingConfigSection({ parts, configs, busy, onSave, partPosition = 3, mapMode = false }: { parts: ExamPart[]; configs: MatchingEditorConfig[]; busy: boolean; onSave: (partId: string, config: Omit<MatchingEditorConfig, 'partId'>) => Promise<boolean>; partPosition?: 3 | 4; mapMode?: boolean }) {
@@ -1205,8 +1209,8 @@ function SectionTimerField({ label, value, icon, color, disabled, onChange }: { 
 
 function CefrListeningPartNavigator({ parts, activePart, onSelect }: { parts: ExamPart[]; activePart: number | null; onSelect: (position: number | null) => void }) {
   return <section className="card overflow-hidden ring-1 ring-indigo-100">
-    <div className="bg-gradient-to-r from-indigo-50 via-white to-cyan-50 px-5 py-5 sm:px-6"><p className="text-xs font-bold uppercase tracking-wider text-indigo-700">CEFR listening · 5 qadam</p><h2 className="mt-1 text-xl font-bold text-slate-900">Qaysi Partni tayyorlaysiz?</h2><p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-600">Partni bosing: sahifada faqat o‘sha Partning kerakli maydonlari qoladi. Shuning uchun CSV, xarita, javob kaliti va oddiy savollar bir-biriga aralashmaydi.</p></div>
-    <div className="grid gap-2 border-t border-slate-100 bg-slate-50/70 p-3 sm:grid-cols-2 lg:grid-cols-5">{CEFR_LISTENING_PARTS.map((item) => {
+    <div className="bg-gradient-to-r from-indigo-50 via-white to-cyan-50 px-5 py-5 sm:px-6"><p className="text-xs font-bold uppercase tracking-wider text-indigo-700">CEFR listening · 6 qadam</p><h2 className="mt-1 text-xl font-bold text-slate-900">Qaysi Partni tayyorlaysiz?</h2><p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-600">Partni bosing: sahifada faqat o‘sha Partning kerakli maydonlari qoladi. Shuning uchun CSV, xarita, javob kaliti va oddiy savollar bir-biriga aralashmaydi.</p></div>
+    <div className="grid gap-2 border-t border-slate-100 bg-slate-50/70 p-3 sm:grid-cols-2 xl:grid-cols-6">{CEFR_LISTENING_PARTS.map((item) => {
       const part = parts.find((candidate) => candidate.section === 'listening' && candidate.position === item.position);
       const selected = activePart === item.position;
       return <button key={item.position} type="button" onClick={() => onSelect(item.position)} className={`rounded-2xl border p-3.5 text-left transition-all ${selected ? 'border-indigo-500 bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/50'}`}><div className="flex items-center justify-between gap-2"><span className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-extrabold ${selected ? 'bg-white/20 text-white' : 'bg-indigo-50 text-indigo-700'}`}>{item.position}</span><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${selected ? 'bg-white/15 text-white' : part ? 'bg-success-50 text-success-700' : 'bg-slate-100 text-slate-500'}`}>{part ? 'Yaratilgan' : 'Boshlanmagan'}</span></div><p className="mt-3 text-sm font-extrabold">Part {item.position}</p><p className={`mt-1 text-xs font-semibold ${selected ? 'text-indigo-100' : 'text-slate-600'}`}>{item.title}</p><p className={`mt-2 text-[11px] leading-relaxed ${selected ? 'text-white/75' : 'text-slate-400'}`}>{item.description}</p></button>;
@@ -1267,6 +1271,7 @@ function CefrFocusedExamPartSection({ parts, form, setForm, audioFile, setAudioF
         <Field label="Audio URL (ixtiyoriy)"><input value={form.audioUrl} onChange={(event) => update('audioUrl', event.target.value)} className="input" placeholder="https://…/audio.mp3" /></Field>
         {partPosition === 1 && <div className="md:col-span-2 rounded-2xl border border-cyan-100 bg-cyan-50/70 p-4 text-sm leading-relaxed text-cyan-900"><p className="font-bold">Keyingi qadam: A/B/C savollar</p><p className="mt-1 text-xs">Partni saqlang. Pastdagi kichik Part 1 panelidan CSV import qilasiz yoki savollarni bittalab yozasiz. Savolning o‘zi audio ichida bo‘ladi.</p></div>}
         {partPosition === 2 && <Field label="To‘liq matn va bo‘sh joylar" className="md:col-span-2"><textarea value={form.content} onChange={(event) => update('content', event.target.value)} className="input min-h-56 resize-y font-medium leading-7" placeholder={'Seminar on the Toy Industry\n9.30 – 10.00: {{9}} to the seminar by Sally Connor\n...'} /><p className="mt-2 text-xs leading-relaxed text-violet-700">Bo‘sh joylarni <code className="rounded bg-violet-50 px-1.5 py-0.5">{'{{9}}'}</code> dan <code className="rounded bg-violet-50 px-1.5 py-0.5">{'{{14}}'}</code> gacha belgilang. Saqlagandan keyin javob kaliti shu Part sahifasida chiqadi.</p></Field>}
+        {partPosition === 6 && <Field label="To‘liq matn va bo‘sh joylar" className="md:col-span-2"><textarea value={form.content} onChange={(event) => update('content', event.target.value)} className="input min-h-56 resize-y font-medium leading-7" placeholder={'Lecture notes\nThe first topic is {{30}}\n...'} /><p className="mt-2 text-xs leading-relaxed text-violet-700">Bo‘sh joylarni <code className="rounded bg-violet-50 px-1.5 py-0.5">{'{{30}}'}</code> dan <code className="rounded bg-violet-50 px-1.5 py-0.5">{'{{35}}'}</code> gacha belgilang. Saqlagandan keyin javob kaliti shu Part sahifasida chiqadi.</p></Field>}
         {partPosition === 3 && <Field label="Qo‘shimcha ko‘rsatma (ixtiyoriy)" className="md:col-span-2"><textarea value={form.content} onChange={(event) => update('content', event.target.value)} className="input min-h-28 resize-y leading-7" placeholder="15–18-savol: har bir speaker uchun mos javob harfini tanlang." /><p className="mt-2 text-xs leading-relaxed text-emerald-700">Saqlagandan keyin 15–18-savollar va umumiy A/B/C… javob banki shu Part sahifasida sozlanadi.</p></Field>}
         {partPosition === 4 && <><Field label="Tiniq xarita rasmi" className="md:col-span-2"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setMapImageFile(event.target.files?.[0] ?? null)} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-sky-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-sky-700" />{mapImageFile && <p className="mt-1.5 text-xs text-sky-700">Yuklanadi: {mapImageFile.name} · original sifati saqlanadi.</p>}<p className="mt-2 text-xs leading-relaxed text-slate-500">PNG, JPG yoki WebP; 12 MB gacha.</p></Field><Field label="Xarita URL (ixtiyoriy)" className="md:col-span-2"><input value={form.imageUrl} onChange={(event) => update('imageUrl', event.target.value)} className="input" placeholder="https://…/map.png" /></Field><Field label="Qo‘shimcha ko‘rsatma (ixtiyoriy)" className="md:col-span-2"><textarea value={form.content} onChange={(event) => update('content', event.target.value)} className="input min-h-24 resize-y" placeholder="19–23-savol: xaritadagi A–F harflaridan mos joyni tanlang." /></Field>{form.imageUrl && <div className="md:col-span-2 overflow-hidden rounded-2xl border border-sky-100 bg-sky-50/50 p-3"><img src={form.imageUrl} alt="Xarita preview" className="h-auto w-full object-contain" /></div>}</>}
         {partPosition === 5 && <Field label="Extractlar uchun ko‘rsatma (ixtiyoriy)" className="md:col-span-2"><textarea value={form.content} onChange={(event) => update('content', event.target.value)} className="input min-h-24 resize-y leading-7" placeholder="24–29-savol: 3 ta extractni tinglang. Har bir extract bo‘yicha 2 tadan savolga javob bering." /><div className="mt-3 rounded-2xl border border-fuchsia-100 bg-fuchsia-50/70 p-4 text-xs leading-relaxed text-fuchsia-900"><p className="font-bold">Part 5 formati qat’iy: 3 extract × 2 savol = 6 savol, raqamlar 24–29.</p><p className="mt-1">Partni saqlaganingizdan keyin pastda Extract 1 uchun 24–25, Extract 2 uchun 26–27 va Extract 3 uchun 28–29-savollar chiqadi.</p></div></Field>}
