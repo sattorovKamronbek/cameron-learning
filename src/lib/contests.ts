@@ -51,6 +51,8 @@ export type ContestQuestion = {
   position: number;
   prompt: string;
   options: string[];
+  answerType: 'choice' | 'text';
+  wordLimit: number;
   points: number;
 };
 
@@ -154,6 +156,7 @@ export type ContestWorkspace = {
   examTiming: ActiveExamTiming | null;
   questions: ContestQuestion[];
   answers: Record<string, number>;
+  textAnswers: Record<string, string>;
   gapFillResponses: Record<string, GapFillResponse>;
   matchingConfigs: Record<string, MatchingWorkspaceConfig>;
   matchingResponses: Record<string, MatchingResponse>;
@@ -177,6 +180,7 @@ export type ManagedContest = Contest & {
 
 export type EditorQuestion = ContestQuestion & {
   correctOption: number | null;
+  acceptedAnswers: string[];
   explanation: string | null;
 };
 
@@ -214,7 +218,10 @@ export type ContestQuestionInput = {
   position: number;
   prompt: string;
   options: string[];
+  answerType?: 'choice' | 'text';
   correctOption: number | null;
+  acceptedAnswers?: string[];
+  wordLimit?: number;
   points: number;
   explanation?: string | null;
 };
@@ -393,6 +400,10 @@ function mapExamSection(value: unknown): ExamSection {
   return 'reading';
 }
 
+function mapAnswerType(value: unknown): 'choice' | 'text' {
+  return text(value).toLowerCase() === 'text' ? 'text' : 'choice';
+}
+
 function mapExamPart(row: Row): ExamPart {
   return {
     id: text(valueAt(row, 'id')),
@@ -498,12 +509,20 @@ export async function fetchContestWorkspace(slug: string): Promise<ContestWorksp
     position: number(valueAt(row, 'position')),
     prompt: text(valueAt(row, 'prompt')),
     options: arrayOfStrings(valueAt(row, 'options')),
+    answerType: mapAnswerType(valueAt(row, 'answer_type', 'answerType')),
+    wordLimit: number(valueAt(row, 'word_limit', 'wordLimit'), 0),
     points: number(valueAt(row, 'points'), 1),
   })).sort((a, b) => a.position - b.position);
-  const answers = Object.fromEntries(asRows(payload.answers).map((row) => [
-    text(valueAt(row, 'question_id', 'questionId')),
-    number(valueAt(row, 'selected_option', 'selectedOption')),
-  ]));
+  const answers = Object.fromEntries(asRows(payload.answers).flatMap((row): Array<[string, number]> => {
+    const questionId = text(valueAt(row, 'question_id', 'questionId'));
+    const selectedOption = number(valueAt(row, 'selected_option', 'selectedOption'), -1);
+    return questionId && Number.isInteger(selectedOption) && selectedOption >= 0 ? [[questionId, selectedOption]] : [];
+  }));
+  const textAnswers = Object.fromEntries(asRows(payload.answers).flatMap((row): Array<[string, string]> => {
+    const questionId = text(valueAt(row, 'question_id', 'questionId'));
+    const selectedText = text(valueAt(row, 'selected_text', 'selectedText'));
+    return questionId && selectedText ? [[questionId, selectedText]] : [];
+  }));
   const gapFillResponses: Record<string, GapFillResponse> = Object.fromEntries(asRows(payload.gap_fill_responses).map((row): [string, GapFillResponse] => {
     const partId = text(valueAt(row, 'part_id', 'partId'));
     const blankNumber = number(valueAt(row, 'blank_number', 'blankNumber'));
@@ -549,6 +568,7 @@ export async function fetchContestWorkspace(slug: string): Promise<ContestWorksp
     examTiming: mapActiveExamTiming(payload.exam_timing),
     questions,
     answers,
+    textAnswers,
     gapFillResponses,
     matchingConfigs,
     matchingResponses,
@@ -560,6 +580,14 @@ export async function submitContestAnswer(questionId: string, selectedOption: nu
   const { error } = await supabase.rpc('submit_contest_answer', {
     p_question_id: questionId,
     p_selected_option: selectedOption,
+  });
+  rpcError(error);
+}
+
+export async function submitContestTextAnswer(questionId: string, answer: string): Promise<void> {
+  const { error } = await supabase.rpc('submit_contest_text_answer', {
+    p_question_id: questionId,
+    p_selected_text: answer.trim(),
   });
   rpcError(error);
 }
@@ -665,9 +693,12 @@ export async function fetchContestEditor(contestId: string): Promise<ContestEdit
     position: number(valueAt(row, 'position')),
     prompt: text(valueAt(row, 'prompt')),
     options: arrayOfStrings(valueAt(row, 'options')),
+    answerType: mapAnswerType(valueAt(row, 'answer_type', 'answerType')),
+    wordLimit: number(valueAt(row, 'word_limit', 'wordLimit'), 0),
     correctOption: valueAt(row, 'correct_option', 'correctOption') === null || valueAt(row, 'correct_option', 'correctOption') === undefined
       ? null
       : number(valueAt(row, 'correct_option', 'correctOption')),
+    acceptedAnswers: arrayOfStrings(valueAt(row, 'accepted_answers', 'acceptedAnswers')),
     points: number(valueAt(row, 'points'), 1),
     explanation: nullableText(valueAt(row, 'explanation')),
   })).sort((a, b) => a.position - b.position);
@@ -710,7 +741,9 @@ export async function saveCefrMatchingConfig(contestId: string, partId: string, 
 }
 
 export async function saveContestQuestion(contestId: string, input: ContestQuestionInput): Promise<string> {
-  const { data, error } = await supabase.rpc('save_contest_question', {
+  // CEFR, including Part 5, is choice-only and must continue to work with
+  // installations that have not applied the IELTS typed-answer migration yet.
+  const legacyParams = {
     p_contest_id: contestId,
     p_question_id: input.id ?? null,
     p_exam_part_id: input.partId ?? null,
@@ -720,7 +753,17 @@ export async function saveContestQuestion(contestId: string, input: ContestQuest
     p_correct_option: input.correctOption,
     p_points: input.points,
     p_explanation: input.explanation?.trim() || null,
-  });
+  };
+  const params = input.answerType === 'text'
+    ? {
+      ...legacyParams,
+      p_answer_type: 'text',
+      p_accepted_answers: (input.acceptedAnswers ?? []).map((item) => item.trim()).filter(Boolean),
+      p_word_limit: input.wordLimit ?? 0,
+    }
+    : legacyParams;
+
+  const { data, error } = await supabase.rpc('save_contest_question', params);
   rpcError(error);
   const id = text(data);
   if (!id) throw new Error('Question save returned no ID.');
@@ -747,6 +790,15 @@ export async function saveExamPart(contestId: string, input: ExamPartInput): Pro
 
 export async function saveCefrMapImage(contestId: string, partId: string, imageUrl: string | null): Promise<void> {
   const { error } = await supabase.rpc('save_cefr_map_image', {
+    p_contest_id: contestId,
+    p_exam_part_id: partId,
+    p_image_url: imageUrl?.trim() || null,
+  });
+  rpcError(error);
+}
+
+export async function saveExamPartImage(contestId: string, partId: string, imageUrl: string | null): Promise<void> {
+  const { error } = await supabase.rpc('save_exam_part_image', {
     p_contest_id: contestId,
     p_exam_part_id: partId,
     p_image_url: imageUrl?.trim() || null,
