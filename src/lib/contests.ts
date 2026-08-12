@@ -127,6 +127,7 @@ export type MatchingOption = {
 export type MatchingSpeaker = {
   speakerNumber: number;
   label: string;
+  imageUrl: string | null;
   correctOption: number | null;
 };
 
@@ -428,6 +429,7 @@ function mapMatchingEditorConfigs(value: unknown): MatchingEditorConfig[] {
     speakers: asRows(valueAt(row, 'speakers')).map((speaker) => ({
       speakerNumber: number(valueAt(speaker, 'speaker_number', 'speakerNumber')),
       label: text(valueAt(speaker, 'label')),
+      imageUrl: nullableText(valueAt(speaker, 'image_url', 'imageUrl')),
       correctOption: valueAt(speaker, 'correct_option', 'correctOption') === null || valueAt(speaker, 'correct_option', 'correctOption') === undefined
         ? null
         : number(valueAt(speaker, 'correct_option', 'correctOption')),
@@ -441,7 +443,7 @@ function mapMatchingWorkspaceConfigs(value: unknown): Record<string, MatchingWor
     return [partId, {
       partId,
       options: asRows(valueAt(row, 'options')).map((option) => ({ position: number(valueAt(option, 'position')), label: text(valueAt(option, 'label')) })).sort((left, right) => left.position - right.position),
-      speakers: asRows(valueAt(row, 'speakers')).map((speaker) => ({ speakerNumber: number(valueAt(speaker, 'speaker_number', 'speakerNumber')), label: text(valueAt(speaker, 'label')) })).sort((left, right) => left.speakerNumber - right.speakerNumber),
+      speakers: asRows(valueAt(row, 'speakers')).map((speaker) => ({ speakerNumber: number(valueAt(speaker, 'speaker_number', 'speakerNumber')), label: text(valueAt(speaker, 'label')), imageUrl: nullableText(valueAt(speaker, 'image_url', 'imageUrl')) })).sort((left, right) => left.speakerNumber - right.speakerNumber),
     }];
   }));
 }
@@ -497,9 +499,7 @@ export async function redeemPrivateContestAccess(accessCode: string): Promise<st
   return slug;
 }
 
-export async function fetchContestWorkspace(slug: string): Promise<ContestWorkspace> {
-  const { data, error } = await supabase.rpc('get_contest_workspace', { p_slug: slug });
-  rpcError(error);
+function mapContestWorkspace(data: unknown): ContestWorkspace {
   const payload = asRow(data);
   const contestRow = asRow(payload.contest);
   const subjectSlug = text(valueAt(contestRow, 'subject'), 'programming');
@@ -564,7 +564,10 @@ export async function fetchContestWorkspace(slug: string): Promise<ContestWorksp
       type: mapType(valueAt(contestRow, 'contest_type', 'type')),
       completedAt: nullableTimestamp(valueAt(contestRow, 'completed_at', 'completedAt')),
     },
-    parts: asRows(payload.parts).map(mapExamPart).sort((left, right) => left.position - right.position),
+    parts: asRows(payload.parts).map(mapExamPart).sort((left, right) => {
+      const sectionOrder: Record<ExamSection, number> = { listening: 1, reading: 2, writing: 3 };
+      return sectionOrder[left.section] - sectionOrder[right.section] || left.position - right.position;
+    }),
     examTiming: mapActiveExamTiming(payload.exam_timing),
     questions,
     answers,
@@ -576,6 +579,19 @@ export async function fetchContestWorkspace(slug: string): Promise<ContestWorksp
   };
 }
 
+export async function fetchContestWorkspace(slug: string): Promise<ContestWorkspace> {
+  const { data, error } = await supabase.rpc('get_contest_workspace', { p_slug: slug });
+  rpcError(error);
+  return mapContestWorkspace(data);
+}
+
+/** Owner-only rehearsal for a draft contest. It never publishes or registers a participant. */
+export async function fetchContestPreviewWorkspace(slug: string): Promise<ContestWorkspace> {
+  const { data, error } = await supabase.rpc('get_contest_preview_workspace', { p_slug: slug });
+  rpcError(error);
+  return mapContestWorkspace(data);
+}
+
 export async function submitContestAnswer(questionId: string, selectedOption: number): Promise<void> {
   const { error } = await supabase.rpc('submit_contest_answer', {
     p_question_id: questionId,
@@ -584,8 +600,24 @@ export async function submitContestAnswer(questionId: string, selectedOption: nu
   rpcError(error);
 }
 
+export async function submitContestPreviewAnswer(questionId: string, selectedOption: number): Promise<void> {
+  const { error } = await supabase.rpc('save_contest_preview_answer', {
+    p_question_id: questionId,
+    p_selected_option: selectedOption,
+  });
+  rpcError(error);
+}
+
 export async function submitContestTextAnswer(questionId: string, answer: string): Promise<void> {
   const { error } = await supabase.rpc('submit_contest_text_answer', {
+    p_question_id: questionId,
+    p_selected_text: answer.trim(),
+  });
+  rpcError(error);
+}
+
+export async function submitContestPreviewTextAnswer(questionId: string, answer: string): Promise<void> {
+  const { error } = await supabase.rpc('save_contest_preview_text_answer', {
     p_question_id: questionId,
     p_selected_text: answer.trim(),
   });
@@ -601,8 +633,26 @@ export async function saveCefrGapFillResponse(partId: string, blankNumber: numbe
   rpcError(error);
 }
 
+export async function saveCefrPreviewGapFillResponse(partId: string, blankNumber: number, answer: string): Promise<void> {
+  const { error } = await supabase.rpc('save_cefr_preview_gap_fill_response', {
+    p_exam_part_id: partId,
+    p_blank_number: blankNumber,
+    p_answer: answer.trim(),
+  });
+  rpcError(error);
+}
+
 export async function saveCefrMatchingResponse(partId: string, speakerNumber: number, optionPosition: number): Promise<void> {
   const { error } = await supabase.rpc('save_cefr_matching_response', {
+    p_exam_part_id: partId,
+    p_speaker_number: speakerNumber,
+    p_option_position: optionPosition,
+  });
+  rpcError(error);
+}
+
+export async function saveCefrPreviewMatchingResponse(partId: string, speakerNumber: number, optionPosition: number): Promise<void> {
+  const { error } = await supabase.rpc('save_cefr_preview_matching_response', {
     p_exam_part_id: partId,
     p_speaker_number: speakerNumber,
     p_option_position: optionPosition,
@@ -624,6 +674,27 @@ export async function saveExamWritingResponse(partId: string, content: string, s
     submittedAt: nullableTimestamp(valueAt(row, 'submitted_at', 'submittedAt')),
     updatedAt: new Date().toISOString(),
   };
+}
+
+export async function saveContestPreviewWritingResponse(partId: string, content: string, submit = false): Promise<WritingResponse> {
+  const { data, error } = await supabase.rpc('save_contest_preview_writing_response', {
+    p_exam_part_id: partId,
+    p_content: content.trim(),
+    p_submit: submit,
+  });
+  rpcError(error);
+  const row = asRow(data);
+  return {
+    partId,
+    content: content.trim(),
+    submittedAt: nullableTimestamp(valueAt(row, 'submitted_at', 'submittedAt')),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export async function clearContestPreviewResponses(contestId: string): Promise<void> {
+  const { error } = await supabase.rpc('clear_contest_preview_responses', { p_contest_id: contestId });
+  rpcError(error);
 }
 
 export async function completeEnglishExam(contestId: string): Promise<void> {
@@ -735,14 +806,14 @@ export async function saveCefrMatchingConfig(contestId: string, partId: string, 
     p_contest_id: contestId,
     p_exam_part_id: partId,
     p_options: config.options.map((option) => ({ position: option.position, label: option.label.trim() })),
-    p_speakers: config.speakers.map((speaker) => ({ speaker_number: speaker.speakerNumber, label: speaker.label.trim(), correct_option: speaker.correctOption })),
+    p_speakers: config.speakers.map((speaker) => ({ speaker_number: speaker.speakerNumber, label: speaker.label.trim(), image_url: speaker.imageUrl?.trim() || null, correct_option: speaker.correctOption })),
   });
   rpcError(error);
 }
 
 export async function saveContestQuestion(contestId: string, input: ContestQuestionInput): Promise<string> {
-  // CEFR, including Part 5, is choice-only and must continue to work with
-  // installations that have not applied the IELTS typed-answer migration yet.
+  // Choice questions retain the legacy RPC call. IELTS and CEFR Reading Part 5
+  // completion questions use the typed-answer overload.
   const legacyParams = {
     p_contest_id: contestId,
     p_question_id: input.id ?? null,

@@ -54,12 +54,12 @@ function Routes() {
   }
 
   // Workspace routes must be resolved before the generic contest-detail route.
-  const workspaceMatch = path.match(/^\/contests\/([^/]+)\/(workspace|quiz)$/);
+  const workspaceMatch = path.match(/^\/contests\/([^/]+)\/(workspace|quiz|preview)$/);
   if (workspaceMatch) {
     const [, slug, mode] = workspaceMatch;
     return mode === 'workspace'
       ? <ContestWorkspacePage slug={slug} />
-      : <QuizWorkspacePage slug={slug} />;
+      : <QuizWorkspacePage slug={slug} preview={mode === 'preview'} />;
   }
 
   let page: React.ReactNode;
