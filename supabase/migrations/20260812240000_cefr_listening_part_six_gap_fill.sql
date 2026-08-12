@@ -27,11 +27,12 @@ BEGIN
   IF NOT FOUND OR v_contest.subject <> 'cefr' THEN RAISE EXCEPTION 'CEFR contest not found'; END IF;
   IF v_contest.is_published OR v_contest.start_at <= now() THEN RAISE EXCEPTION 'Answer keys cannot be changed after publication or start'; END IF;
   SELECT * INTO v_part FROM public.contest_exam_parts WHERE id = p_exam_part_id AND contest_id = p_contest_id;
-  IF NOT FOUND OR v_part.section <> 'listening' OR v_part.position NOT IN (2, 6) THEN RAISE EXCEPTION 'Gap-fill answer keys are available only for CEFR Listening Parts 2 and 6'; END IF;
+  IF NOT FOUND OR NOT ((v_part.section = 'listening' AND v_part.position IN (2, 6)) OR (v_part.section = 'reading' AND v_part.position = 1)) THEN RAISE EXCEPTION 'Gap-fill answer keys are available only for CEFR Listening Parts 2/6 and Reading Part 1'; END IF;
   IF coalesce(jsonb_typeof(p_answer_keys), '') <> 'array' THEN RAISE EXCEPTION 'Answer keys must be an array'; END IF;
 
-  v_expected_numbers := CASE v_part.position
-    WHEN 2 THEN ARRAY[9, 10, 11, 12, 13, 14]::integer[]
+  v_expected_numbers := CASE
+    WHEN v_part.section = 'reading' THEN ARRAY[1, 2, 3, 4, 5, 6, 7, 8]::integer[]
+    WHEN v_part.position = 2 THEN ARRAY[9, 10, 11, 12, 13, 14]::integer[]
     ELSE ARRAY[30, 31, 32, 33, 34, 35]::integer[]
   END;
   SELECT array_agg(DISTINCT (marker.values)[1]::integer ORDER BY (marker.values)[1]::integer)
@@ -85,14 +86,14 @@ DECLARE
 BEGIN
   IF auth.uid() IS NULL OR NOT public.active_profile(auth.uid()) THEN RAISE EXCEPTION 'An active account is required to submit'; END IF;
   SELECT * INTO v_part FROM public.contest_exam_parts WHERE id = p_exam_part_id;
-  IF NOT FOUND OR v_part.section <> 'listening' OR v_part.position NOT IN (2, 6) THEN RAISE EXCEPTION 'CEFR Listening gap-fill part not found'; END IF;
+  IF NOT FOUND OR NOT ((v_part.section = 'listening' AND v_part.position IN (2, 6)) OR (v_part.section = 'reading' AND v_part.position = 1)) THEN RAISE EXCEPTION 'CEFR gap-fill part not found'; END IF;
   SELECT * INTO v_contest FROM public.contests WHERE id = v_part.contest_id;
   IF v_contest.subject <> 'cefr' OR NOT v_contest.is_published OR v_contest.archived_at IS NOT NULL OR now() < v_contest.start_at OR now() >= v_contest.end_at THEN RAISE EXCEPTION 'Answers are not accepted for this contest at this time'; END IF;
   IF v_contest.contest_type = 'rated' AND (v_contest.created_by = auth.uid() OR public.has_admin_access(auth.uid())) THEN RAISE EXCEPTION 'Contest managers cannot submit a rated exam'; END IF;
   IF NOT EXISTS (SELECT 1 FROM public.contest_registrations registration WHERE registration.contest_id = v_contest.id AND registration.user_id = auth.uid()) THEN RAISE EXCEPTION 'Register for this exam before submitting'; END IF;
   IF EXISTS (SELECT 1 FROM public.contest_registrations registration WHERE registration.contest_id = v_contest.id AND registration.user_id = auth.uid() AND registration.completed_at IS NOT NULL) THEN RAISE EXCEPTION 'This exam has already been submitted'; END IF;
   SELECT * INTO v_timing FROM public.contest_exam_section_timings WHERE contest_id = v_contest.id;
-  IF NOT FOUND OR now() >= v_contest.start_at + (v_timing.listening_minutes * interval '1 minute') THEN RAISE EXCEPTION 'The Listening section is closed'; END IF;
+  IF NOT FOUND OR (v_part.section = 'listening' AND (now() < v_contest.start_at OR now() >= v_contest.start_at + (v_timing.listening_minutes * interval '1 minute'))) OR (v_part.section = 'reading' AND (now() < v_contest.start_at + (v_timing.listening_minutes * interval '1 minute') OR now() >= v_contest.start_at + ((v_timing.listening_minutes + v_timing.reading_minutes) * interval '1 minute'))) THEN RAISE EXCEPTION 'This exam section is closed'; END IF;
   SELECT * INTO v_key FROM public.contest_gap_fill_answer_keys WHERE exam_part_id = p_exam_part_id AND blank_number = p_blank_number;
   IF NOT FOUND THEN RAISE EXCEPTION 'This blank is not configured'; END IF;
   IF v_answer = '' THEN
@@ -156,11 +157,11 @@ BEGIN
     FOR v_part IN SELECT * FROM public.contest_exam_parts WHERE contest_id = p_contest_id LOOP
       IF v_part.section = 'listening' AND nullif(trim(v_part.audio_url), '') IS NULL THEN RAISE EXCEPTION 'Every listening part must include an audio file'; END IF;
       IF v_part.section IN ('reading', 'writing') AND char_length(trim(v_part.content)) < 1 THEN RAISE EXCEPTION 'Every reading passage and writing topic must contain text'; END IF;
-      IF v_part.section = 'listening' AND v_part.position IN (2, 6) THEN
-        IF NOT EXISTS (SELECT 1 FROM regexp_matches(v_part.content, '\{\{([1-9][0-9]*)\}\}', 'g')) THEN RAISE EXCEPTION 'CEFR Listening Part % needs gap-fill markers in its text', v_part.position; END IF;
-        IF EXISTS (SELECT 1 FROM regexp_matches(v_part.content, '\{\{([1-9][0-9]*)\}\}', 'g') marker(values) LEFT JOIN public.contest_gap_fill_answer_keys key ON key.exam_part_id = v_part.id AND key.blank_number = (marker.values)[1]::integer WHERE key.id IS NULL) THEN RAISE EXCEPTION 'Save every CEFR Listening Part % answer key before publishing', v_part.position; END IF;
-      ELSIF v_part.section = 'listening' AND v_part.position IN (3, 4) THEN
-        IF v_part.position = 4 AND nullif(trim(v_part.image_url), '') IS NULL THEN RAISE EXCEPTION 'CEFR Listening Part 4 needs a high-resolution map or photo'; END IF;
+      IF (v_part.section = 'listening' AND v_part.position IN (2, 6)) OR (v_part.section = 'reading' AND v_part.position = 1) THEN
+        IF NOT EXISTS (SELECT 1 FROM regexp_matches(v_part.content, '\{\{([1-9][0-9]*)\}\}', 'g')) THEN RAISE EXCEPTION 'CEFR % Part % needs gap-fill markers in its text', initcap(v_part.section), v_part.position; END IF;
+        IF EXISTS (SELECT 1 FROM regexp_matches(v_part.content, '\{\{([1-9][0-9]*)\}\}', 'g') marker(values) LEFT JOIN public.contest_gap_fill_answer_keys key ON key.exam_part_id = v_part.id AND key.blank_number = (marker.values)[1]::integer WHERE key.id IS NULL) THEN RAISE EXCEPTION 'Save every CEFR % Part % answer key before publishing', initcap(v_part.section), v_part.position; END IF;
+      ELSIF (v_part.section = 'listening' AND v_part.position IN (3, 4)) OR (v_part.section = 'reading' AND v_part.position IN (2, 4)) THEN
+        IF v_part.section = 'listening' AND v_part.position = 4 AND nullif(trim(v_part.image_url), '') IS NULL THEN RAISE EXCEPTION 'CEFR Listening Part 4 needs a high-resolution map or photo'; END IF;
         IF NOT EXISTS (SELECT 1 FROM public.contest_matching_options WHERE exam_part_id = v_part.id) OR NOT EXISTS (SELECT 1 FROM public.contest_matching_speakers WHERE exam_part_id = v_part.id) THEN RAISE EXCEPTION 'Configure the CEFR Listening matching answer bank before publishing'; END IF;
         IF EXISTS (SELECT 1 FROM public.contest_matching_speakers WHERE exam_part_id = v_part.id AND correct_option_position IS NULL) THEN RAISE EXCEPTION 'Select every CEFR Listening matching answer key before publishing'; END IF;
       ELSIF v_part.section IN ('listening', 'reading') AND NOT EXISTS (SELECT 1 FROM public.contest_questions WHERE exam_part_id = v_part.id) THEN
