@@ -608,6 +608,16 @@ export async function submitContestPreviewAnswer(questionId: string, selectedOpt
   rpcError(error);
 }
 
+export async function clearContestAnswer(questionId: string): Promise<void> {
+  const { error } = await supabase.rpc('clear_contest_answer', { p_question_id: questionId });
+  rpcError(error);
+}
+
+export async function clearContestPreviewAnswer(questionId: string): Promise<void> {
+  const { error } = await supabase.rpc('clear_contest_preview_answer', { p_question_id: questionId });
+  rpcError(error);
+}
+
 export async function submitContestTextAnswer(questionId: string, answer: string): Promise<void> {
   const { error } = await supabase.rpc('submit_contest_text_answer', {
     p_question_id: questionId,
@@ -834,9 +844,10 @@ export async function saveCefrMatchingConfig(contestId: string, partId: string, 
 }
 
 export async function saveContestQuestion(contestId: string, input: ContestQuestionInput): Promise<string> {
-  // Choice questions retain the legacy RPC call. IELTS and CEFR Reading Part 5
-  // completion questions use the typed-answer overload.
-  const legacyParams = {
+  // Always use the typed-answer-capable RPC. The older choice-only overload
+  // still caps options at eight, while IELTS Passage 2 heading matching needs
+  // the full i-ix set of nine headings.
+  const params = {
     p_contest_id: contestId,
     p_question_id: input.id ?? null,
     p_exam_part_id: input.partId ?? null,
@@ -846,15 +857,12 @@ export async function saveContestQuestion(contestId: string, input: ContestQuest
     p_correct_option: input.correctOption,
     p_points: input.points,
     p_explanation: input.explanation?.trim() || null,
+    p_answer_type: input.answerType,
+    p_accepted_answers: input.answerType === 'text'
+      ? (input.acceptedAnswers ?? []).map((item) => item.trim()).filter(Boolean)
+      : [],
+    p_word_limit: input.answerType === 'text' ? input.wordLimit ?? 0 : 0,
   };
-  const params = input.answerType === 'text'
-    ? {
-      ...legacyParams,
-      p_answer_type: 'text',
-      p_accepted_answers: (input.acceptedAnswers ?? []).map((item) => item.trim()).filter(Boolean),
-      p_word_limit: input.wordLimit ?? 0,
-    }
-    : legacyParams;
 
   const { data, error } = await supabase.rpc('save_contest_question', params);
   rpcError(error);

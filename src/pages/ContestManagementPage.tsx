@@ -231,7 +231,7 @@ function questionFormFrom(question: EditorQuestion): QuestionForm {
   };
 }
 
-function questionInput(form: QuestionForm, audioOnly = false, sharedGapFillAnswerKey = false): ContestQuestionInput {
+function questionInput(form: QuestionForm, audioOnly = false, sharedGapFillAnswerKey = false, partTwoSummaryAnswerKey = false, partTwoTwoAnswerKey = false, partThreeSharedAnswerKey = false, partFourSharedGapFillAnswerKey = false, readingPassageOneSharedTextAnswerKey = false, readingPassageTwoHeadingAnswerKey = false, readingPassageTwoGapAnswerKey = false, readingPassageTwoTwoAnswerKey = false): ContestQuestionInput {
   return {
     id: form.id,
     partId: form.partId,
@@ -243,7 +243,23 @@ function questionInput(form: QuestionForm, audioOnly = false, sharedGapFillAnswe
       ? `Audio ichidagi savol ${form.position}`
       : sharedGapFillAnswerKey
         ? `Shared IELTS Listening Part 1 gap-fill answer key {{${form.position}}}`
-        : form.prompt,
+        : partTwoSummaryAnswerKey
+          ? `Shared IELTS Listening Part 2 summary answer key {{${form.position}}}`
+          : partTwoTwoAnswerKey
+            ? `Shared IELTS Listening Part 2 two-answer key {{${form.position}}}`
+            : partThreeSharedAnswerKey
+              ? `Shared IELTS Listening Part 3 shared answer key {{${form.position}}}`
+              : partFourSharedGapFillAnswerKey
+                ? `Shared IELTS Listening Part 4 gap-fill answer key {{${form.position}}}`
+                : readingPassageOneSharedTextAnswerKey
+                  ? `Shared IELTS Reading Passage 1 gap-fill answer key {{${form.position}}}`
+                  : readingPassageTwoHeadingAnswerKey
+                    ? `Shared IELTS Reading Passage 2 heading answer key {{${form.position}}}`
+                    : readingPassageTwoGapAnswerKey
+                      ? `Shared IELTS Reading Passage 2 summary answer key {{${form.position}}}`
+                      : readingPassageTwoTwoAnswerKey
+                        ? `Shared IELTS Reading Passage 2 two-answer key {{${form.position}}}`
+                        : form.prompt,
     options: form.answerType === 'text' ? [] : form.options,
     answerType: form.answerType,
     correctOption: form.answerType === 'text' ? null : form.correctOption,
@@ -305,6 +321,36 @@ const CEFR_READING_PART_FIVE_CHOICE_POSITIONS = [34, 35] as const;
 const CEFR_READING_PART_FIVE_QUESTION_POSITIONS = [...CEFR_READING_PART_FIVE_TEXT_POSITIONS, ...CEFR_READING_PART_FIVE_CHOICE_POSITIONS] as const;
 const CEFR_TRUE_FALSE_NOT_GIVEN_OPTIONS = ['True', 'False', 'Not Given'] as const;
 const IELTS_LISTENING_PART_ONE_GAP_FILL_POSITIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+const IELTS_LISTENING_PART_FOUR_GAP_FILL_POSITIONS = [31, 32, 33, 34, 35, 36, 37, 38, 39, 40] as const;
+const IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS = [48, 49, 50, 51, 52, 53] as const;
+const IELTS_READING_PASSAGE_TWO_HEADING_POSITIONS = [54, 55, 56, 57, 58, 59, 60] as const;
+const IELTS_READING_PASSAGE_TWO_GAP_FILL_POSITIONS = [61, 62, 63, 64] as const;
+const IELTS_READING_PASSAGE_TWO_TWO_ANSWER_POSITIONS = [65, 66] as const;
+const IELTS_READING_PASSAGE_TWO_STRUCTURED_PREFIX = 'IELTS_READING_PASSAGE_TWO_STRUCTURED\n';
+const IELTS_LISTENING_PART_FOUR_SHARED_GAP_FILL_FORMAT = 'IELTS_LISTENING_PART_FOUR_SHARED_GAP_FILL';
+const IELTS_LISTENING_PART_TWO_SUMMARY_POSITIONS = [13, 14] as const;
+const IELTS_LISTENING_PART_TWO_ACTIVITY_POSITIONS = [15, 16, 17, 18] as const;
+const IELTS_LISTENING_PART_TWO_TWO_ANSWER_POSITIONS = [19, 20] as const;
+const IELTS_LISTENING_PART_TWO_STRUCTURED_FORMAT = 'IELTS_LISTENING_PART_TWO_STRUCTURED';
+const IELTS_LISTENING_PART_THREE_FIRST_TWO_ANSWER_POSITIONS = [21, 22] as const;
+const IELTS_LISTENING_PART_THREE_SECOND_TWO_ANSWER_POSITIONS = [23, 24] as const;
+const IELTS_LISTENING_PART_THREE_FLOW_CHART_POSITIONS = [25, 26, 27, 28, 29, 30] as const;
+const IELTS_LISTENING_PART_THREE_STRUCTURED_FORMAT = 'IELTS_LISTENING_PART_THREE_STRUCTURED';
+const IELTS_LISTENING_PART_THREE_FLOW_CHART_TEMPLATE = `Geography lesson plan: student activities
+---
+Examine a pencil and discuss where the component materials come from
+---
+Locate the top {{25}} on a world map
+---
+Discuss the pros and cons of different {{26}}
+---
+In groups, discuss countries' possible {{27}} to the USA
+---
+Complete a {{28}} about pencil distribution within the USA
+---
+Share ideas about the {{29}} of pencils
+---
+Prepare a {{30}}`;
 const IELTS_LISTENING_PART_ONE_GAP_FILL_TEMPLATE = `Complete the form below.
 
 Write NO MORE THAN TWO WORDS AND/OR A NUMBER for each answer.
@@ -321,15 +367,66 @@ Type of room: {{7}}
 Special request: {{8}}
 Total cost: {{9}}
 Payment method: {{10}}`;
+const IELTS_LISTENING_PART_FOUR_GAP_FILL_TEMPLATE = `Discovery
+
+It was part of a ship's {{31}}, found in the sea near Antikythera, in Greece.
+
+It was wrongly thought to be a piece of {{32}}.
+
+It was later realised to be a mechanism that had broken into pieces.
+
+Equipment used for analysis of the mechanism
+
+"Dome" — produces photographs which make the {{33}} clearer
+
+"BladeRunner" — produces X-rays
+
+  • originally used to identify {{34}} in engines
+
+Description
+
+The mechanism consisted of:
+
+  • 30 or more gear wheels made of {{35}}
+  • models of the sun, moon and planets
+  • a framework made of {{36}}
+
+How the mechanism was used
+
+The operator turned a {{37}} to move the gear wheels.
+
+The sun, moon and planets could be moved into their correct positions for any date.
+
+Most surprisingly, the mechanism could calculate when an {{38}} would occur.
+
+It may have been used as a {{39}} when planning festivals.
+
+Later use of similar technology
+
+13th – 14th centuries: used for making {{40}} in Western Europe.`;
+const IELTS_READING_PASSAGE_ONE_SHARED_TEXT_TEMPLATE = `The history of the guitar
+
+Instruments similar to the guitar have been played by musicians for over {{48}} years. What we know about many of these early stringed instruments comes from {{49}} {{50}} rather than actual physical examples or music played on them. In some ways, these early stringed instruments were closer to {{51}} than the guitar as we know it today. We do have examples of six-string guitars that are 200 years old. However, the {{52}} of six-string guitars made by guitar makers (who are also known as luthiers) before the final decade of the eighteenth century is often open to question.
+
+Although the electric guitar was invented in the 1930s, it took several decades for electric guitars to develop, with the company Rickenbacker playing a major part in this development. Most {{53}} electric guitars in use today are similar in design to guitars produced by the Fender Musical Instruments Company and the Gibson Guitar Corporation in the 1950s.`;
+const IELTS_READING_PASSAGE_TWO_GAP_FILL_TEMPLATE = `A New Approach to Knowledge
+
+John Ray was a scholar and self-taught botanist, whose work reflected the {{61}} that was taking place during the 17th century in people's way of thinking about the natural world.
+
+This new approach is the basis of the modern field of {{62}}.
+
+As Ray himself explained, his interest in plants was aroused after graduating, when he had to spend time outdoors after a period of {{63}}.
+
+He taught himself, and then recorded the knowledge he acquired in the Cambridge {{64}} of English Plants, which was published in 1660.`;
 
 const IELTS_EXAM_PARTS = [
   { position: 1, section: 'listening', title: 'Listening Part 1 — Everyday conversation', instructions: 'Questions 1–10. Listen to a conversation in an everyday social context. The recording is played once only.', content: '', maxPoints: '0' },
-  { position: 2, section: 'listening', title: 'Listening Part 2 — Everyday monologue', instructions: 'Questions 11–20. Listen to one speaker in an everyday social context. The recording is played once only.', content: 'Use the questions below. Add map/plan labelling, matching or completion items as appropriate.', maxPoints: '0' },
-  { position: 3, section: 'listening', title: 'Listening Part 3 — Educational discussion', instructions: 'Questions 21–30. Listen to a discussion in an education or training context. The recording is played once only.', content: 'Use the questions below. Add multiple-choice, matching or completion items as appropriate.', maxPoints: '0' },
-  { position: 4, section: 'listening', title: 'Listening Part 4 — Academic monologue', instructions: 'Questions 31–40. Listen to an academic talk or lecture. The recording is played once only.', content: 'Use the questions below. Add note, table, flow-chart, sentence or short-answer completion items as appropriate.', maxPoints: '0' },
-  { position: 5, section: 'reading', title: 'Reading Passage 1', instructions: 'Questions 1–13. Read the passage and answer the questions. You may use multiple choice, matching, True/False/Not Given, headings, completion or short-answer items.', content: '', maxPoints: '0' },
-  { position: 6, section: 'reading', title: 'Reading Passage 2', instructions: 'Questions 14–26. Read the passage and answer the questions. Check every word limit carefully.', content: '', maxPoints: '0' },
-  { position: 7, section: 'reading', title: 'Reading Passage 3', instructions: 'Questions 27–40. Read the passage and answer the questions. This passage may include a detailed argument.', content: '', maxPoints: '0' },
+  { position: 2, section: 'listening', title: 'Listening Part 2 — Everyday monologue', instructions: 'Questions 11–20. Listen to one speaker in an everyday social context. The recording is played once only.', content: '', maxPoints: '0' },
+  { position: 3, section: 'listening', title: 'Listening Part 3 — Educational discussion', instructions: 'Questions 21–30. Listen to a discussion in an education or training context. The recording is played once only.', content: '', maxPoints: '0' },
+  { position: 4, section: 'listening', title: 'Listening Part 4 — Academic monologue', instructions: 'Questions 31–40. Listen to an academic talk or lecture. The recording is played once only.', content: '', maxPoints: '0' },
+  { position: 5, section: 'reading', title: 'Reading Passage 1', instructions: 'Questions 41–53. Read the passage and answer the questions. You may use multiple choice, matching, True/False/Not Given, headings, completion or short-answer items.', content: '', maxPoints: '0' },
+  { position: 6, section: 'reading', title: 'Reading Passage 2', instructions: 'Questions 54–66. Read the passage and answer the questions. Check every word limit carefully.', content: '', maxPoints: '0' },
+  { position: 7, section: 'reading', title: 'Reading Passage 3', instructions: 'Questions 67–80. Read the passage and answer the questions. This passage may include a detailed argument.', content: '', maxPoints: '0' },
   { position: 8, section: 'writing', title: 'Writing Task 1 — Visual information', instructions: 'Spend about 20 minutes on this task. Write at least 150 words. Describe, summarise or explain the information shown.', content: 'The chart, table, graph or diagram below shows …\n\nSummarise the information by selecting and reporting the main features, and make comparisons where relevant.', maxPoints: '1' },
   { position: 9, section: 'writing', title: 'Writing Task 2 — Essay', instructions: 'Spend about 40 minutes on this task. Write at least 250 words. Give reasons for your answer and include relevant examples.', content: 'Write about the following topic:\n\n…\n\nGive reasons for your answer and include any relevant examples from your own knowledge or experience.', maxPoints: '2' },
 ] as const satisfies ReadonlyArray<{ position: number; section: ExamSection; title: string; instructions: string; content: string; maxPoints: string }>;
@@ -406,12 +503,55 @@ function hasIeltsListeningPartOneGapFillMarkers(content: string): boolean {
     && markers.every((marker, index) => marker === IELTS_LISTENING_PART_ONE_GAP_FILL_POSITIONS[index]);
 }
 
+function hasIeltsReadingPassageOneSharedTextMarkers(content: string): boolean {
+  const markers = gapFillBlankNumbers(content);
+  const markerCount = Array.from(content.matchAll(/\{\{[1-9]\d*\}\}/g)).length;
+  return markerCount === IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS.length
+    && markers.length === IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS.length
+    && markers.every((marker, index) => marker === IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS[index]);
+}
+
 function containsGapFillMarker(content: string): boolean {
   return /\{\{[1-9]\d*\}\}/.test(content);
 }
 
 function isIeltsListeningPartOneSharedGapFill(part: ExamPart | undefined, ieltsExam: boolean): boolean {
   return Boolean(ieltsExam && part?.section === 'listening' && part.position === 1 && hasIeltsListeningPartOneGapFillMarkers(part.content));
+}
+
+function isIeltsListeningPartTwoStructured(part: ExamPart | undefined, ieltsExam: boolean): boolean {
+  return Boolean(ieltsExam && part?.section === 'listening' && part.position === 2 && part.content === IELTS_LISTENING_PART_TWO_STRUCTURED_FORMAT);
+}
+
+function isIeltsListeningPartThreeStructured(part: ExamPart | undefined, ieltsExam: boolean): boolean {
+  return Boolean(ieltsExam && part?.section === 'listening' && part.position === 3 && part.content === IELTS_LISTENING_PART_THREE_STRUCTURED_FORMAT);
+}
+
+function isIeltsListeningPartFourSharedGapFill(part: ExamPart | undefined, ieltsExam: boolean): boolean {
+  const markers = gapFillBlankNumbers(part?.content ?? '');
+  const markerCount = Array.from((part?.content ?? '').matchAll(/\{\{[1-9]\d*\}\}/g)).length;
+  return Boolean(ieltsExam && part?.section === 'listening' && part.position === 4 && part.content !== IELTS_LISTENING_PART_FOUR_SHARED_GAP_FILL_FORMAT && markerCount === 10 && markers.length === 10 && markers.every((marker, index) => marker === IELTS_LISTENING_PART_FOUR_GAP_FILL_POSITIONS[index]));
+}
+
+function isIeltsReadingPassageOneSharedText(part: ExamPart | undefined, ieltsExam: boolean): boolean {
+  return Boolean(ieltsExam && part?.section === 'reading' && part.position === 5 && hasIeltsReadingPassageOneSharedTextMarkers(part.content));
+}
+
+function isIeltsReadingPassageTwoStructured(part: ExamPart | undefined, ieltsExam: boolean): boolean {
+  return Boolean(ieltsExam && part?.section === 'reading' && part.position === 6 && part.content.startsWith(IELTS_READING_PASSAGE_TWO_STRUCTURED_PREFIX));
+}
+
+function ieltsReadingPassageContent(content: string): string {
+  return content.startsWith(IELTS_READING_PASSAGE_TWO_STRUCTURED_PREFIX)
+    ? content.slice(IELTS_READING_PASSAGE_TWO_STRUCTURED_PREFIX.length)
+    : content;
+}
+
+function ieltsReadingQuestionPositions(partPosition: number): readonly number[] {
+  if (partPosition === 5) return Array.from({ length: 13 }, (_, index) => index + 41);
+  if (partPosition === 6) return Array.from({ length: 13 }, (_, index) => index + 54);
+  if (partPosition === 7) return Array.from({ length: 14 }, (_, index) => index + 67);
+  return [];
 }
 
 function csvDelimiter(source: string): string {
@@ -707,7 +847,22 @@ export function ContestManagementPage() {
       && question.position > 30
       && question.position <= 33;
     const ieltsSharedGapFillAnswerKeyOnly = isIeltsListeningPartOneSharedGapFill(questionPart, currentContest?.subjectSlug === 'ielts');
-    if ((!cefrAudioOnly && !cefrReadingPartFiveAnswerKeyOnly && !ieltsSharedGapFillAnswerKeyOnly && !question.prompt.trim()) || (question.answerType === 'choice' && question.options.some((item) => !item.trim()))) {
+    const ieltsPartTwoStructured = isIeltsListeningPartTwoStructured(questionPart, currentContest?.subjectSlug === 'ielts');
+    const ieltsPartThreeStructured = isIeltsListeningPartThreeStructured(questionPart, currentContest?.subjectSlug === 'ielts');
+    const ieltsPartFourSharedGapFill = isIeltsListeningPartFourSharedGapFill(questionPart, currentContest?.subjectSlug === 'ielts');
+    const ieltsReadingPassageOneSharedText = isIeltsReadingPassageOneSharedText(questionPart, currentContest?.subjectSlug === 'ielts');
+    const ieltsReadingPassageTwoStructured = isIeltsReadingPassageTwoStructured(questionPart, currentContest?.subjectSlug === 'ielts');
+    const ieltsPartTwoSummaryKeyOnly = ieltsPartTwoStructured && question.position === 14;
+    const ieltsPartTwoTwoAnswerKeyOnly = ieltsPartTwoStructured && question.position === 20;
+    const ieltsPartThreeSharedAnswerKeyOnly = ieltsPartThreeStructured && (question.position === 22 || question.position === 24 || IELTS_LISTENING_PART_THREE_FLOW_CHART_POSITIONS.slice(1).includes(question.position as typeof IELTS_LISTENING_PART_THREE_FLOW_CHART_POSITIONS[number]));
+    const ieltsPartFourSharedGapFillAnswerKeyOnly = ieltsPartFourSharedGapFill && IELTS_LISTENING_PART_FOUR_GAP_FILL_POSITIONS.includes(question.position as typeof IELTS_LISTENING_PART_FOUR_GAP_FILL_POSITIONS[number]);
+    const ieltsReadingPassageOneSharedTextAnswerKeyOnly = ieltsReadingPassageOneSharedText && IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS.includes(question.position as typeof IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS[number]);
+    const ieltsReadingPassageTwoHeading = ieltsReadingPassageTwoStructured && IELTS_READING_PASSAGE_TWO_HEADING_POSITIONS.includes(question.position as typeof IELTS_READING_PASSAGE_TWO_HEADING_POSITIONS[number]);
+    const ieltsReadingPassageTwoGapFill = ieltsReadingPassageTwoStructured && IELTS_READING_PASSAGE_TWO_GAP_FILL_POSITIONS.includes(question.position as typeof IELTS_READING_PASSAGE_TWO_GAP_FILL_POSITIONS[number]);
+    const ieltsReadingPassageTwoTwoAnswer = ieltsReadingPassageTwoStructured && IELTS_READING_PASSAGE_TWO_TWO_ANSWER_POSITIONS.includes(question.position as typeof IELTS_READING_PASSAGE_TWO_TWO_ANSWER_POSITIONS[number]);
+    const ieltsReadingPassageTwoGapAnswerKeyOnly = ieltsReadingPassageTwoGapFill && question.position !== 61;
+    const ieltsReadingPassageTwoTwoAnswerKeyOnly = ieltsReadingPassageTwoTwoAnswer && question.position === 66;
+    if ((!cefrAudioOnly && !cefrReadingPartFiveAnswerKeyOnly && !ieltsSharedGapFillAnswerKeyOnly && !ieltsPartTwoSummaryKeyOnly && !ieltsPartTwoTwoAnswerKeyOnly && !ieltsPartThreeSharedAnswerKeyOnly && !ieltsPartFourSharedGapFillAnswerKeyOnly && !ieltsReadingPassageOneSharedTextAnswerKeyOnly && !ieltsReadingPassageTwoHeading && !ieltsReadingPassageTwoGapAnswerKeyOnly && !ieltsReadingPassageTwoTwoAnswerKeyOnly && !question.prompt.trim()) || (question.answerType === 'choice' && question.options.some((item) => !item.trim()))) {
       setError(question.answerType === 'text' ? 'Savol matni va kamida bitta to‘g‘ri javob kalitini to‘ldiring.' : 'Savol matni va barcha variantlarni to‘ldiring.');
       return;
     }
@@ -730,6 +885,73 @@ export function ContestManagementPage() {
     if (ieltsSharedGapFillAnswerKeyOnly && (!IELTS_LISTENING_PART_ONE_GAP_FILL_POSITIONS.includes(question.position as typeof IELTS_LISTENING_PART_ONE_GAP_FILL_POSITIONS[number]) || question.answerType !== 'text')) {
       setError('IELTS Listening Part 1 umumiy filling gap uchun 1–10-savollar yozma javob turida bo‘lishi kerak.');
       return;
+    }
+    if (ieltsPartTwoStructured) {
+      const inSummary = IELTS_LISTENING_PART_TWO_SUMMARY_POSITIONS.includes(question.position as typeof IELTS_LISTENING_PART_TWO_SUMMARY_POSITIONS[number]);
+      const inActivities = IELTS_LISTENING_PART_TWO_ACTIVITY_POSITIONS.includes(question.position as typeof IELTS_LISTENING_PART_TWO_ACTIVITY_POSITIONS[number]);
+      const inTwoAnswer = IELTS_LISTENING_PART_TWO_TWO_ANSWER_POSITIONS.includes(question.position as typeof IELTS_LISTENING_PART_TWO_TWO_ANSWER_POSITIONS[number]);
+      if ((!inSummary && !inActivities && !inTwoAnswer) && (!Number.isInteger(question.position) || question.position < 11 || question.position > 20)) {
+        setError('IELTS Listening Part 2 savollari 11 dan 20 gacha bo‘lishi kerak.');
+        return;
+      }
+      if (inSummary && (question.answerType !== 'text' || Number(question.wordLimit) !== 1 || (question.position === 13 && (!question.prompt.includes('{{13}}') || !question.prompt.includes('{{14}}'))))) {
+        setError('13–14 uchun yozma javob va 13-savolda {{13}} hamda {{14}} markerli bitta summary kerak.');
+        return;
+      }
+      if (inActivities && (question.answerType !== 'choice' || question.options.length !== 3)) {
+        setError('15–18 uchun aynan 3 ta A/B/C variant kerak.');
+        return;
+      }
+      if (inTwoAnswer && (question.answerType !== 'choice' || question.options.length !== 5)) {
+        setError('19–20 uchun aynan 5 ta A–E variant kerak.');
+        return;
+      }
+    }
+    if (ieltsPartThreeStructured) {
+      const inFirstPair = IELTS_LISTENING_PART_THREE_FIRST_TWO_ANSWER_POSITIONS.includes(question.position as typeof IELTS_LISTENING_PART_THREE_FIRST_TWO_ANSWER_POSITIONS[number]);
+      const inSecondPair = IELTS_LISTENING_PART_THREE_SECOND_TWO_ANSWER_POSITIONS.includes(question.position as typeof IELTS_LISTENING_PART_THREE_SECOND_TWO_ANSWER_POSITIONS[number]);
+      const inFlowChart = IELTS_LISTENING_PART_THREE_FLOW_CHART_POSITIONS.includes(question.position as typeof IELTS_LISTENING_PART_THREE_FLOW_CHART_POSITIONS[number]);
+      if (!inFirstPair && !inSecondPair && !inFlowChart) {
+        setError('IELTS Listening Part 3 maxsus formati faqat 21–30-savollar uchun ishlatiladi.');
+        return;
+      }
+      if ((inFirstPair || inSecondPair) && (question.answerType !== 'choice' || question.options.length !== 5)) {
+        setError('21–22 va 23–24 uchun aynan 5 ta A–E variant kerak.');
+        return;
+      }
+      if (inFlowChart && (question.answerType !== 'choice' || question.options.length !== 8 || (question.position === 25 && (IELTS_LISTENING_PART_THREE_FLOW_CHART_POSITIONS.some((position) => !question.prompt.includes(`{{${position}}}`)) || question.prompt.split(/\n---\n/).length < 8)))) {
+        setError('25–30 uchun 8 ta A–H variant va 25-savolda {{25}}–{{30}} markerli, --- bilan ajratilgan bitta flow-chart kerak.');
+        return;
+      }
+    }
+    if (ieltsPartFourSharedGapFill && (!IELTS_LISTENING_PART_FOUR_GAP_FILL_POSITIONS.includes(question.position as typeof IELTS_LISTENING_PART_FOUR_GAP_FILL_POSITIONS[number]) || question.answerType !== 'text')) {
+      setError('IELTS Listening Part 4 umumiy gap filling uchun 31–40-savollar yozma javob turida bo‘lishi kerak.');
+      return;
+    }
+    if (questionPart && currentContest?.subjectSlug === 'ielts' && questionPart.section === 'reading') {
+      const positions = ieltsReadingQuestionPositions(questionPart.position);
+      if (!positions.includes(question.position)) {
+        setError(`IELTS Reading Passage ${questionPart.position - 4} savollari ${positions[0]} dan ${positions.at(-1)} gacha bo‘lishi kerak.`);
+        return;
+      }
+      if (ieltsReadingPassageOneSharedTextAnswerKeyOnly && question.answerType !== 'text') {
+        setError('IELTS Reading Passage 1 umumiy textidagi 48–53-savollar yozma javob turida bo‘lishi kerak.');
+        return;
+      }
+      if (ieltsReadingPassageTwoStructured) {
+        if (ieltsReadingPassageTwoHeading && (question.answerType !== 'choice' || question.options.length !== 9)) {
+          setError('IELTS Reading Passage 2: 54–60 (mahalliy 14–20) uchun 9 ta i–ix heading varianti kerak.');
+          return;
+        }
+        if (ieltsReadingPassageTwoGapFill && (question.answerType !== 'text' || Number(question.wordLimit) !== 1 || (question.position === 61 && IELTS_READING_PASSAGE_TWO_GAP_FILL_POSITIONS.some((position) => !question.prompt.includes(`{{${position}}}`))))) {
+          setError('IELTS Reading Passage 2: 61–64 (mahalliy 21–24) uchun bitta so‘zli summary va {{61}}–{{64}} markerlar kerak.');
+          return;
+        }
+        if (ieltsReadingPassageTwoTwoAnswer && (question.answerType !== 'choice' || question.options.length !== 5)) {
+          setError('IELTS Reading Passage 2: 65–66 (mahalliy 25–26) uchun 5 ta A–E variant kerak.');
+          return;
+        }
+      }
     }
     if (questionPart && isCefrExtractPart(questionPart, currentContest?.subjectSlug === 'cefr') && (!Number.isInteger(question.position) || !CEFR_PART_FIVE_QUESTION_POSITIONS.includes(question.position as typeof CEFR_PART_FIVE_QUESTION_POSITIONS[number]))) {
       setError('CEFR Listening Part 5 savollari umumiy raqamlashda 24 dan 29 gacha bo‘lishi kerak.');
@@ -775,7 +997,7 @@ export function ContestManagementPage() {
     }
 
     await run('question', async () => {
-      await saveContestQuestion(editor.contest.id, questionInput(question, cefrAudioOnly, ieltsSharedGapFillAnswerKeyOnly));
+      await saveContestQuestion(editor.contest.id, questionInput(question, cefrAudioOnly, ieltsSharedGapFillAnswerKeyOnly, ieltsPartTwoSummaryKeyOnly, ieltsPartTwoTwoAnswerKeyOnly, ieltsPartThreeSharedAnswerKeyOnly, ieltsPartFourSharedGapFillAnswerKeyOnly, ieltsReadingPassageOneSharedTextAnswerKeyOnly, ieltsReadingPassageTwoHeading, ieltsReadingPassageTwoGapAnswerKeyOnly, ieltsReadingPassageTwoTwoAnswerKeyOnly));
       await refresh();
       await loadEditor(editor.contest.id, false);
     }, question.id ? 'Savol yangilandi.' : 'Savol saqlandi.');
@@ -1417,7 +1639,16 @@ function QuestionRow({ question, parts, cefrExam, ieltsExam, editable, editing, 
   const audioOnly = isCefrAudioOnlyPart(parts, question.partId, cefrExam);
   const sharedMiniTextKey = cefrExam && part?.section === 'reading' && part.position === 5 && question.answerType === 'text' && question.position >= 31 && question.position <= 33;
   const ieltsSharedGapFillKey = isIeltsListeningPartOneSharedGapFill(part, ieltsExam) && question.answerType === 'text' && IELTS_LISTENING_PART_ONE_GAP_FILL_POSITIONS.includes(question.position as typeof IELTS_LISTENING_PART_ONE_GAP_FILL_POSITIONS[number]);
-  return <div className={`flex items-start justify-between gap-4 p-5 transition-colors ${editing ? 'bg-indigo-50/45' : ''}`}><div className="min-w-0 flex-1"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">{audioOnly ? `Savol ${question.position} · audio ichida` : `Savol ${question.position}`} · {question.points} ball{part ? ` · ${part.title}` : ''}</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-slate-800">{audioOnly ? 'Savol audio yozuvda beriladi. Ishtirokchi faqat quyidagi 3 variantni ko‘radi.' : sharedMiniTextKey ? `Umumiy kichik textdagi {{${question.position}}} bo‘sh joyi uchun javob kaliti.` : ieltsSharedGapFillKey ? `Listening Part 1 umumiy filling gapdagi {{${question.position}}} bo‘sh joyi uchun javob kaliti.` : question.prompt}</p>{question.answerType === 'text' ? <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-3 text-xs leading-relaxed text-violet-900"><p className="font-bold">Yozma javob · ko‘pi bilan {question.wordLimit} so‘z yoki son</p><p className="mt-1">Qabul qilinadigan javoblar: {question.acceptedAnswers.join(' · ') || 'kiritilmagan'}</p></div> : <><div className="mt-3 grid gap-2 sm:grid-cols-3">{question.options.map((option, index) => <div key={`${question.id}-${index}`} className={`rounded-xl border px-3 py-2 text-xs leading-relaxed ${question.correctOption === index ? 'border-success-400/50 bg-success-500/10 text-success-600' : 'border-slate-200 bg-slate-50 text-slate-600'}`}><span className="mr-1.5 font-extrabold">{String.fromCharCode(65 + index)}.</span>{option}</div>)}</div><p className={`mt-2 text-xs ${question.correctOption === null ? 'font-semibold text-sun-700' : 'text-slate-500'}`}>{question.correctOption === null ? 'To‘g‘ri variant hali belgilanmagan' : `To‘g‘ri variant: ${String.fromCharCode(65 + question.correctOption)}`}</p></>}</div>{editable && <div className="flex shrink-0 gap-1"><button type="button" onClick={onEdit} className={`rounded-lg p-2 transition-colors ${editing ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-indigo-700'}`} title="Tahrirlash" aria-label={`${question.position}-savolni tahrirlash`}><Pencil className="h-4 w-4" /></button><button type="button" disabled={busy} onClick={onDelete} className="rounded-lg p-2 text-slate-500 hover:bg-error-50 hover:text-error-700 disabled:opacity-50" title="O‘chirish">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}</button></div>}</div>;
+  const ieltsPartTwoStructured = isIeltsListeningPartTwoStructured(part, ieltsExam);
+  const ieltsPartTwoSummaryKey = ieltsPartTwoStructured && question.position === 14;
+  const ieltsPartTwoTwoAnswerKey = ieltsPartTwoStructured && question.position === 20;
+  const ieltsPartThreeStructured = isIeltsListeningPartThreeStructured(part, ieltsExam);
+  const ieltsPartThreeSharedKey = ieltsPartThreeStructured && (question.position === 22 || question.position === 24 || IELTS_LISTENING_PART_THREE_FLOW_CHART_POSITIONS.slice(1).includes(question.position as typeof IELTS_LISTENING_PART_THREE_FLOW_CHART_POSITIONS[number]));
+  const ieltsPartFourSharedGapFillKey = isIeltsListeningPartFourSharedGapFill(part, ieltsExam) && question.answerType === 'text' && IELTS_LISTENING_PART_FOUR_GAP_FILL_POSITIONS.includes(question.position as typeof IELTS_LISTENING_PART_FOUR_GAP_FILL_POSITIONS[number]);
+  const ieltsReadingPassageOneSharedTextKey = isIeltsReadingPassageOneSharedText(part, ieltsExam) && question.answerType === 'text' && IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS.includes(question.position as typeof IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS[number]);
+  const ieltsReadingPassageTwoStructured = isIeltsReadingPassageTwoStructured(part, ieltsExam);
+  const ieltsReadingPassageTwoKey = ieltsReadingPassageTwoStructured && (IELTS_READING_PASSAGE_TWO_HEADING_POSITIONS.includes(question.position as typeof IELTS_READING_PASSAGE_TWO_HEADING_POSITIONS[number]) || question.position === 62 || question.position === 63 || question.position === 64 || question.position === 66);
+  return <div className={`flex items-start justify-between gap-4 p-5 transition-colors ${editing ? 'bg-indigo-50/45' : ''}`}><div className="min-w-0 flex-1"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">{audioOnly ? `Savol ${question.position} · audio ichida` : `Savol ${question.position}`} · {question.points} ball{part ? ` · ${part.title}` : ''}</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-slate-800">{audioOnly ? 'Savol audio yozuvda beriladi. Ishtirokchi faqat quyidagi 3 variantni ko‘radi.' : sharedMiniTextKey ? `Umumiy kichik textdagi {{${question.position}}} bo‘sh joyi uchun javob kaliti.` : ieltsSharedGapFillKey ? `Listening Part 1 umumiy filling gapdagi {{${question.position}}} bo‘sh joyi uchun javob kaliti.` : ieltsPartTwoSummaryKey ? '13–14 umumiy summarydagi {{14}} bo‘sh joyi uchun javob kaliti.' : ieltsPartTwoTwoAnswerKey ? '19–20 umumiy checkbox savolining ikkinchi javob kaliti.' : ieltsPartThreeSharedKey ? question.position === 22 || question.position === 24 ? `${question.position - 1}–${question.position} umumiy checkbox savolining ikkinchi javob kaliti.` : `25–30 flow-chartdagi {{${question.position}}} bo‘sh joyi uchun javob kaliti.` : ieltsPartFourSharedGapFillKey ? `Listening Part 4 umumiy gap fillingdagi {{${question.position}}} bo‘sh joyi uchun javob kaliti.` : ieltsReadingPassageOneSharedTextKey ? `Reading Passage 1 umumiy textidagi {{${question.position}}} bo‘sh joyi uchun javob kaliti.` : ieltsReadingPassageTwoKey ? IELTS_READING_PASSAGE_TWO_HEADING_POSITIONS.includes(question.position as typeof IELTS_READING_PASSAGE_TWO_HEADING_POSITIONS[number]) ? `Reading Passage 2 heading matchingdagi ${question.position} uchun javob kaliti.` : question.position === 66 ? 'Reading Passage 2 65–66 ikki harfli savolining ikkinchi javob kaliti.' : `Reading Passage 2 umumiy summarydagi {{${question.position}}} bo‘sh joyi uchun javob kaliti.` : question.prompt}</p>{question.answerType === 'text' ? <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-3 text-xs leading-relaxed text-violet-900"><p className="font-bold">Yozma javob · ko‘pi bilan {question.wordLimit} so‘z yoki son</p><p className="mt-1">Qabul qilinadigan javoblar: {question.acceptedAnswers.join(' · ') || 'kiritilmagan'}</p></div> : <><div className="mt-3 grid gap-2 sm:grid-cols-3">{question.options.map((option, index) => <div key={`${question.id}-${index}`} className={`rounded-xl border px-3 py-2 text-xs leading-relaxed ${question.correctOption === index ? 'border-success-400/50 bg-success-500/10 text-success-600' : 'border-slate-200 bg-slate-50 text-slate-600'}`}><span className="mr-1.5 font-extrabold">{String.fromCharCode(65 + index)}.</span>{option}</div>)}</div><p className={`mt-2 text-xs ${question.correctOption === null ? 'font-semibold text-sun-700' : 'text-slate-500'}`}>{question.correctOption === null ? 'To‘g‘ri variant hali belgilanmagan' : `To‘g‘ri variant: ${String.fromCharCode(65 + question.correctOption)}`}</p></>}</div>{editable && <div className="flex shrink-0 gap-1"><button type="button" onClick={onEdit} className={`rounded-lg p-2 transition-colors ${editing ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-indigo-700'}`} title="Tahrirlash" aria-label={`${question.position}-savolni tahrirlash`}><Pencil className="h-4 w-4" /></button><button type="button" disabled={busy} onClick={onDelete} className="rounded-lg p-2 text-slate-500 hover:bg-error-50 hover:text-error-700 disabled:opacity-50" title="O‘chirish">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}</button></div>}</div>;
 }
 
 function QuestionFormFields({ form, setForm, busy, onSubmit, englishExam, cefrExam, parts, fixedPart, onCancel }: { form: QuestionForm; setForm: Dispatch<SetStateAction<QuestionForm>>; busy: boolean; onSubmit: (event: FormEvent) => void; englishExam: boolean; cefrExam: boolean; parts: ExamPart[]; fixedPart?: ExamPart; onCancel?: () => void }) {
@@ -1431,11 +1662,45 @@ function QuestionFormFields({ form, setForm, busy, onSubmit, englishExam, cefrEx
     && CEFR_READING_PART_FIVE_TEXT_POSITIONS.includes(form.position as typeof CEFR_READING_PART_FIVE_TEXT_POSITIONS[number]);
   const cefrReadingPartFiveSharedText = cefrReadingPartFiveText && form.position === 30;
   const ieltsListeningPartOneSharedGapFill = isIeltsListeningPartOneSharedGapFill(selectedPart, englishExam && !cefrExam);
-  const canUseTextAnswer = (englishExam && !cefrExam && !audioOnly) || cefrReadingPartFiveText;
-  const textAnswer = form.answerType === 'text' && canUseTextAnswer;
-  const maxOptions = audioOnly ? 3 : 8;
+  const ieltsListeningPartFourSharedGapFill = isIeltsListeningPartFourSharedGapFill(selectedPart, englishExam && !cefrExam);
+  const ieltsReadingPassageOneSharedText = isIeltsReadingPassageOneSharedText(selectedPart, englishExam && !cefrExam);
+  const ieltsReadingPassageOneSharedTextAnswerKey = ieltsReadingPassageOneSharedText && IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS.includes(form.position as typeof IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS[number]);
+  const ieltsReadingPassageTwoStructured = isIeltsReadingPassageTwoStructured(selectedPart, englishExam && !cefrExam);
+  const ieltsReadingPassageTwoHeading = ieltsReadingPassageTwoStructured && IELTS_READING_PASSAGE_TWO_HEADING_POSITIONS.includes(form.position as typeof IELTS_READING_PASSAGE_TWO_HEADING_POSITIONS[number]);
+  const ieltsReadingPassageTwoHeadingOptions = ieltsReadingPassageTwoHeading && form.position === 54;
+  const ieltsReadingPassageTwoHeadingKey = ieltsReadingPassageTwoHeading && form.position !== 54;
+  const ieltsReadingPassageTwoGapFill = ieltsReadingPassageTwoStructured && IELTS_READING_PASSAGE_TWO_GAP_FILL_POSITIONS.includes(form.position as typeof IELTS_READING_PASSAGE_TWO_GAP_FILL_POSITIONS[number]);
+  const ieltsReadingPassageTwoGapText = ieltsReadingPassageTwoGapFill && form.position === 61;
+  const ieltsReadingPassageTwoGapKey = ieltsReadingPassageTwoGapFill && form.position !== 61;
+  const ieltsReadingPassageTwoTwoAnswer = ieltsReadingPassageTwoStructured && IELTS_READING_PASSAGE_TWO_TWO_ANSWER_POSITIONS.includes(form.position as typeof IELTS_READING_PASSAGE_TWO_TWO_ANSWER_POSITIONS[number]);
+  const ieltsReadingPassageTwoTwoAnswerOptions = ieltsReadingPassageTwoTwoAnswer && form.position === 65;
+  const ieltsReadingPassageTwoTwoAnswerKey = ieltsReadingPassageTwoTwoAnswer && form.position === 66;
+  const ieltsReadingPassageTwoSpecialQuestion = ieltsReadingPassageTwoHeading || ieltsReadingPassageTwoGapFill || ieltsReadingPassageTwoTwoAnswer;
+  const ieltsListeningPartTwoStructured = isIeltsListeningPartTwoStructured(selectedPart, englishExam && !cefrExam);
+  const ieltsPartTwoSummary = ieltsListeningPartTwoStructured && IELTS_LISTENING_PART_TWO_SUMMARY_POSITIONS.includes(form.position as typeof IELTS_LISTENING_PART_TWO_SUMMARY_POSITIONS[number]);
+  const ieltsPartTwoSummaryText = ieltsPartTwoSummary && form.position === 13;
+  const ieltsPartTwoSummaryKey = ieltsPartTwoSummary && form.position === 14;
+  const ieltsPartTwoActivity = ieltsListeningPartTwoStructured && IELTS_LISTENING_PART_TWO_ACTIVITY_POSITIONS.includes(form.position as typeof IELTS_LISTENING_PART_TWO_ACTIVITY_POSITIONS[number]);
+  const ieltsPartTwoTwoAnswer = ieltsListeningPartTwoStructured && IELTS_LISTENING_PART_TWO_TWO_ANSWER_POSITIONS.includes(form.position as typeof IELTS_LISTENING_PART_TWO_TWO_ANSWER_POSITIONS[number]);
+  const ieltsPartTwoTwoAnswerKey = ieltsPartTwoTwoAnswer && form.position === 20;
+  const ieltsPartTwoSpecialQuestion = ieltsPartTwoSummary || ieltsPartTwoActivity || ieltsPartTwoTwoAnswer;
+  const ieltsListeningPartThreeStructured = isIeltsListeningPartThreeStructured(selectedPart, englishExam && !cefrExam);
+  const ieltsPartThreeFirstPair = ieltsListeningPartThreeStructured && IELTS_LISTENING_PART_THREE_FIRST_TWO_ANSWER_POSITIONS.includes(form.position as typeof IELTS_LISTENING_PART_THREE_FIRST_TWO_ANSWER_POSITIONS[number]);
+  const ieltsPartThreeSecondPair = ieltsListeningPartThreeStructured && IELTS_LISTENING_PART_THREE_SECOND_TWO_ANSWER_POSITIONS.includes(form.position as typeof IELTS_LISTENING_PART_THREE_SECOND_TWO_ANSWER_POSITIONS[number]);
+  const ieltsPartThreeTwoAnswer = ieltsPartThreeFirstPair || ieltsPartThreeSecondPair;
+  const ieltsPartThreeTwoAnswerKey = form.position === 22 || form.position === 24;
+  const ieltsPartThreeFlowChart = ieltsListeningPartThreeStructured && IELTS_LISTENING_PART_THREE_FLOW_CHART_POSITIONS.includes(form.position as typeof IELTS_LISTENING_PART_THREE_FLOW_CHART_POSITIONS[number]);
+  const ieltsPartThreeFlowChartText = ieltsPartThreeFlowChart && form.position === 25;
+  const ieltsPartThreeFlowChartKey = ieltsPartThreeFlowChart && form.position !== 25;
+  const ieltsPartThreeSpecialQuestion = ieltsPartThreeTwoAnswer || ieltsPartThreeFlowChart;
+  const ieltsPartThreeInheritedOptions = (ieltsPartThreeTwoAnswer && ieltsPartThreeTwoAnswerKey) || ieltsPartThreeFlowChartKey;
+  const ieltsPartTwoInheritedOptions = (ieltsPartTwoActivity && form.position !== 15) || ieltsPartTwoTwoAnswerKey || ieltsPartThreeInheritedOptions || ieltsReadingPassageTwoHeadingKey || ieltsReadingPassageTwoTwoAnswerKey;
+  const fixedOptionCount = ieltsReadingPassageTwoHeading ? 9 : ieltsPartTwoActivity ? 3 : ieltsPartTwoTwoAnswer || ieltsPartThreeTwoAnswer || ieltsReadingPassageTwoTwoAnswer ? 5 : ieltsPartThreeFlowChart ? 8 : null;
+  const canUseTextAnswer = ((englishExam && !cefrExam && !audioOnly) || cefrReadingPartFiveText) && !ieltsPartTwoSpecialQuestion && !ieltsPartThreeSpecialQuestion && !ieltsListeningPartFourSharedGapFill && !ieltsReadingPassageOneSharedTextAnswerKey && !ieltsReadingPassageTwoSpecialQuestion;
+  const textAnswer = (form.answerType === 'text' && canUseTextAnswer) || ieltsPartTwoSummary || ieltsListeningPartFourSharedGapFill || ieltsReadingPassageOneSharedTextAnswerKey || ieltsReadingPassageTwoGapFill;
+  const maxOptions = fixedOptionCount ?? (audioOnly ? 3 : 8);
   const addOption = () => setForm((current) => {
-    const currentMax = isCefrAudioOnlyPart(parts, current.partId, cefrExam) ? 3 : 8;
+    const currentMax = fixedOptionCount ?? (isCefrAudioOnlyPart(parts, current.partId, cefrExam) ? 3 : 8);
     return current.options.length >= currentMax ? current : { ...current, options: [...current.options, ''] };
   });
   useEffect(() => {
@@ -1454,16 +1719,93 @@ function QuestionFormFields({ form, setForm, busy, onSubmit, englishExam, cefrEx
     setForm((current) => current.answerType === 'text' ? current : { ...current, answerType: 'text', options: [], correctOption: null, wordLimit: current.wordLimit || '2' });
   }, [form.answerType, ieltsListeningPartOneSharedGapFill, setForm]);
   useEffect(() => {
+    if (!ieltsListeningPartFourSharedGapFill || form.answerType === 'text') return;
+    setForm((current) => current.answerType === 'text' ? current : { ...current, answerType: 'text', options: [], correctOption: null, wordLimit: current.wordLimit || '2' });
+  }, [form.answerType, ieltsListeningPartFourSharedGapFill, setForm]);
+  useEffect(() => {
+    if (!ieltsReadingPassageOneSharedTextAnswerKey || form.answerType === 'text') return;
+    setForm((current) => current.answerType === 'text' ? current : { ...current, answerType: 'text', options: [], correctOption: null, wordLimit: current.wordLimit || '2' });
+  }, [form.answerType, ieltsReadingPassageOneSharedTextAnswerKey, setForm]);
+  useEffect(() => {
+    if (!ieltsReadingPassageTwoSpecialQuestion) return;
+    setForm((current) => {
+      const isHeading = IELTS_READING_PASSAGE_TWO_HEADING_POSITIONS.includes(current.position as typeof IELTS_READING_PASSAGE_TWO_HEADING_POSITIONS[number]);
+      const isGapFill = IELTS_READING_PASSAGE_TWO_GAP_FILL_POSITIONS.includes(current.position as typeof IELTS_READING_PASSAGE_TWO_GAP_FILL_POSITIONS[number]);
+      const isTwoAnswer = IELTS_READING_PASSAGE_TWO_TWO_ANSWER_POSITIONS.includes(current.position as typeof IELTS_READING_PASSAGE_TWO_TWO_ANSWER_POSITIONS[number]);
+      if (isHeading) {
+        const options = current.position === 54
+          ? [...current.options.slice(0, 9), ...Array(Math.max(0, 9 - current.options.length)).fill('')]
+          : ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix'];
+        return { ...current, answerType: 'choice', options, correctOption: current.correctOption ?? 0 };
+      }
+      if (isGapFill) return { ...current, answerType: 'text', options: [], correctOption: null, wordLimit: '1' };
+      if (isTwoAnswer) {
+        const options = current.position === 65
+          ? [...current.options.slice(0, 5), ...Array(Math.max(0, 5 - current.options.length)).fill('')]
+          : ['A', 'B', 'C', 'D', 'E'];
+        return { ...current, answerType: 'choice', options, correctOption: current.correctOption ?? 0 };
+      }
+      return current;
+    });
+  }, [ieltsReadingPassageTwoSpecialQuestion, form.position, setForm]);
+  useEffect(() => {
+    if (!ieltsReadingPassageTwoGapText || form.prompt.trim()) return;
+    setForm((current) => current.prompt.trim() ? current : { ...current, prompt: IELTS_READING_PASSAGE_TWO_GAP_FILL_TEMPLATE });
+  }, [form.prompt, ieltsReadingPassageTwoGapText, setForm]);
+  useEffect(() => {
+    if (!ieltsListeningPartFourSharedGapFill || form.prompt.trim()) return;
+    setForm((current) => current.prompt.trim() ? current : { ...current, prompt: `Shared IELTS Listening Part 4 gap-fill answer key {{${current.position}}}` });
+  }, [form.prompt, ieltsListeningPartFourSharedGapFill, setForm]);
+  useEffect(() => {
+    if (!ieltsPartTwoSpecialQuestion && !ieltsPartThreeSpecialQuestion) return;
+    setForm((current) => {
+      const isSummary = IELTS_LISTENING_PART_TWO_SUMMARY_POSITIONS.includes(current.position as typeof IELTS_LISTENING_PART_TWO_SUMMARY_POSITIONS[number]);
+      const isActivity = IELTS_LISTENING_PART_TWO_ACTIVITY_POSITIONS.includes(current.position as typeof IELTS_LISTENING_PART_TWO_ACTIVITY_POSITIONS[number]);
+      const isTwoAnswer = IELTS_LISTENING_PART_TWO_TWO_ANSWER_POSITIONS.includes(current.position as typeof IELTS_LISTENING_PART_TWO_TWO_ANSWER_POSITIONS[number]);
+      if (isSummary) return { ...current, answerType: 'text', options: [], correctOption: null, wordLimit: '1' };
+      if (isActivity) {
+        const options = current.position === 15
+          ? [...current.options.slice(0, 3), ...Array(Math.max(0, 3 - current.options.length)).fill('')]
+          : ['A', 'B', 'C'];
+        return { ...current, answerType: 'choice', options, correctOption: current.correctOption ?? 0 };
+      }
+      if (isTwoAnswer) {
+        const options = current.position === 19
+          ? [...current.options.slice(0, 5), ...Array(Math.max(0, 5 - current.options.length)).fill('')]
+          : ['A', 'B', 'C', 'D', 'E'];
+        return { ...current, answerType: 'choice', options, correctOption: current.correctOption ?? 0 };
+      }
+      const isPartThreePair = IELTS_LISTENING_PART_THREE_FIRST_TWO_ANSWER_POSITIONS.includes(current.position as typeof IELTS_LISTENING_PART_THREE_FIRST_TWO_ANSWER_POSITIONS[number]) || IELTS_LISTENING_PART_THREE_SECOND_TWO_ANSWER_POSITIONS.includes(current.position as typeof IELTS_LISTENING_PART_THREE_SECOND_TWO_ANSWER_POSITIONS[number]);
+      if (isPartThreePair) {
+        const options = current.position === 21 || current.position === 23
+          ? [...current.options.slice(0, 5), ...Array(Math.max(0, 5 - current.options.length)).fill('')]
+          : ['A', 'B', 'C', 'D', 'E'];
+        return { ...current, answerType: 'choice', options, correctOption: current.correctOption ?? 0 };
+      }
+      if (IELTS_LISTENING_PART_THREE_FLOW_CHART_POSITIONS.includes(current.position as typeof IELTS_LISTENING_PART_THREE_FLOW_CHART_POSITIONS[number])) {
+        const options = current.position === 25
+          ? [...current.options.slice(0, 8), ...Array(Math.max(0, 8 - current.options.length)).fill('')]
+          : ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+        return { ...current, answerType: 'choice', options, correctOption: current.correctOption ?? 0 };
+      }
+      return current;
+    });
+  }, [ieltsPartThreeSpecialQuestion, ieltsPartTwoSpecialQuestion, form.position, setForm]);
+  useEffect(() => {
+    if (!ieltsPartThreeFlowChartText || form.prompt.trim()) return;
+    setForm((current) => current.prompt.trim() ? current : { ...current, prompt: IELTS_LISTENING_PART_THREE_FLOW_CHART_TEMPLATE });
+  }, [form.prompt, ieltsPartThreeFlowChartText, setForm]);
+  useEffect(() => {
     const answerKeyPrompt = `Shared mini-text answer key {{${form.position}}}`;
     if (!cefrReadingPartFiveText || cefrReadingPartFiveSharedText || form.prompt === answerKeyPrompt) return;
     setForm((current) => current.prompt === answerKeyPrompt ? current : { ...current, prompt: answerKeyPrompt });
   }, [cefrReadingPartFiveSharedText, cefrReadingPartFiveText, form.position, form.prompt, setForm]);
   useEffect(() => {
-    if (canUseTextAnswer || form.answerType === 'choice') return;
+    if (canUseTextAnswer || ieltsListeningPartFourSharedGapFill || ieltsReadingPassageOneSharedTextAnswerKey || ieltsReadingPassageTwoSpecialQuestion || ieltsPartTwoSpecialQuestion || ieltsPartThreeSpecialQuestion || form.answerType === 'choice') return;
     setForm((current) => current.answerType === 'choice' ? current : { ...current, answerType: 'choice', correctOption: current.correctOption ?? 0 });
-  }, [canUseTextAnswer, form.answerType, setForm]);
+  }, [canUseTextAnswer, form.answerType, ieltsListeningPartFourSharedGapFill, ieltsPartThreeSpecialQuestion, ieltsPartTwoSpecialQuestion, ieltsReadingPassageOneSharedTextAnswerKey, ieltsReadingPassageTwoSpecialQuestion, setForm]);
   const removeOption = (index: number) => setForm((current) => {
-    if (current.options.length <= (audioOnly ? 3 : 2)) return current;
+    if (current.options.length <= (fixedOptionCount ?? (audioOnly ? 3 : 2))) return current;
     const options = current.options.filter((_, itemIndex) => itemIndex !== index);
     const correctOption = current.correctOption === null
       ? null
@@ -1483,11 +1825,11 @@ function QuestionFormFields({ form, setForm, busy, onSubmit, englishExam, cefrEx
   return <form onSubmit={onSubmit} className="border-t border-indigo-100 bg-indigo-50/35 p-5 sm:p-6">
     <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-bold text-slate-900">{form.id ? `Savol ${form.position} ni shu yerda tahrirlash` : 'Yangi savol'}</p><p className="mt-1 text-xs text-slate-500">Javoblar va to‘g‘ri variant serverda himoyalangan tarzda saqlanadi.</p></div>{form.id && <button type="button" onClick={onCancel ?? (() => setForm(emptyQuestion(form.position, englishExam ? objectiveParts[0]?.id ?? null : null)))} className="btn-ghost px-3 py-2 text-xs">Yopish</button>}</div>
     <div className="mt-5 grid gap-4">
-      {fixedPart ? <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm text-indigo-900"><p className="font-bold">Part {fixedPart.position} ga biriktiriladi</p><p className="mt-1 text-xs text-indigo-700">{fixedPart.title}</p>{isCefrAudioOnlyPart(parts, fixedPart.id, cefrExam) && <p className="mt-2 text-xs leading-relaxed text-cyan-800">Savol audio ichida bo‘ladi; ishtirokchiga faqat 3 ta variant ko‘rsatiladi.</p>}{cefrReadingPartFiveSharedText && <p className="mt-2 text-xs leading-relaxed text-violet-800">Bu bitta umumiy kichik text. Uning ichida <code>{'{{30}}'}</code>, <code>{'{{31}}'}</code>, <code>{'{{32}}'}</code> va <code>{'{{33}}'}</code> bo‘sh joylarining barchasini yozing.</p>}{cefrReadingPartFiveText && !cefrReadingPartFiveSharedText && <p className="mt-2 text-xs leading-relaxed text-violet-800">Kichik text 30-savolda yoziladi. Bu yerda faqat uning ichidagi <code>{`{{${form.position}}}`}</code> bo‘sh joyi uchun bitta so‘zli javob kalitini kiriting.</p>}</div> : englishExam && <Field label="Exam parti"><AppSelect value={form.partId ?? ''} onChange={(value) => setForm((current) => ({ ...current, partId: value || null }))} options={[{ value: '', label: 'Listening yoki Reading partini tanlang' }, ...objectiveParts.map((part) => ({ value: part.id, label: `${part.position}. ${part.section === 'listening' ? 'Listening' : 'Reading'} — ${part.title}` }))]} ariaLabel="Exam parti" />{audioOnly && <p className="mt-1.5 rounded-xl bg-cyan-50 px-3 py-2 text-xs leading-relaxed text-cyan-800">CEFR Listening Part 1: savol audio ichida bo‘ladi. Ishtirokchiga faqat 3 ta variant ko‘rsatiladi.</p>}{objectiveParts.length === 0 && <p className="mt-1.5 text-xs text-error-700">Avval Listening yoki Reading partini yarating.</p>}</Field>}
+      {fixedPart ? <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm text-indigo-900"><p className="font-bold">Part {fixedPart.position} ga biriktiriladi</p><p className="mt-1 text-xs text-indigo-700">{fixedPart.title}</p>{isCefrAudioOnlyPart(parts, fixedPart.id, cefrExam) && <p className="mt-2 text-xs leading-relaxed text-cyan-800">Savol audio ichida bo‘ladi; ishtirokchiga faqat 3 ta variant ko‘rsatiladi.</p>}{cefrReadingPartFiveSharedText && <p className="mt-2 text-xs leading-relaxed text-violet-800">Bu bitta umumiy kichik text. Uning ichida <code>{'{{30}}'}</code>, <code>{'{{31}}'}</code>, <code>{'{{32}}'}</code> va <code>{'{{33}}'}</code> bo‘sh joylarining barchasini yozing.</p>}{cefrReadingPartFiveText && !cefrReadingPartFiveSharedText && <p className="mt-2 text-xs leading-relaxed text-violet-800">Kichik text 30-savolda yoziladi. Bu yerda faqat uning ichidagi <code>{`{{${form.position}}}`}</code> bo‘sh joyi uchun bitta so‘zli javob kalitini kiriting.</p>}{ieltsReadingPassageOneSharedTextAnswerKey && <p className="mt-2 text-xs leading-relaxed text-violet-800">48–53 uchun bitta umumiy text Passage 1 sahifasida yozilgan. Bu yerda faqat <code>{`{{${form.position}}}`}</code> bo‘sh joyining javob kalitini kiriting.</p>}{ieltsListeningPartTwoStructured && <p className="mt-2 text-xs leading-relaxed text-violet-800">11–12 odatiy savollar. 13: summary ichida <code>{'{{13}}'}</code> va <code>{'{{14}}'}</code>; 15–18: activitylar va umumiy A/B/C bank; 19: umumiy savol hamda A–E variantlar; 20: ikkinchi to‘g‘ri variant kaliti.</p>}{ieltsListeningPartThreeStructured && <p className="mt-2 text-xs leading-relaxed text-violet-800">21 va 23: umumiy checkbox savollari hamda A–E variantlar; 22 va 24: juftliklarning ikkinchi javob kaliti; 25: <code>{'{{25}}'}</code>–<code>{'{{30}}'}</code> markerli flow-chart va A–H bank; 26–30: flow-chart javob kalitlari.</p>}</div> : englishExam && <Field label="Exam parti"><AppSelect value={form.partId ?? ''} onChange={(value) => setForm((current) => ({ ...current, partId: value || null }))} options={[{ value: '', label: 'Listening yoki Reading partini tanlang' }, ...objectiveParts.map((part) => ({ value: part.id, label: `${part.position}. ${part.section === 'listening' ? 'Listening' : 'Reading'} — ${part.title}` }))]} ariaLabel="Exam parti" />{audioOnly && <p className="mt-1.5 rounded-xl bg-cyan-50 px-3 py-2 text-xs leading-relaxed text-cyan-800">CEFR Listening Part 1: savol audio ichida bo‘ladi. Ishtirokchiga faqat 3 ta variant ko‘rsatiladi.</p>}{objectiveParts.length === 0 && <p className="mt-1.5 text-xs text-error-700">Avval Listening yoki Reading partini yarating.</p>}</Field>}
       <Field label="Savol raqami"><input required min="1" type="number" value={form.position} onChange={(event) => setForm((current) => ({ ...current, position: Number(event.target.value) }))} className="input max-w-36" /></Field>
-      {audioOnly ? <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4 text-sm leading-relaxed text-cyan-900"><p className="font-bold">Savol matni audio ichida</p><p className="mt-1 text-xs">Bu formatda alohida prompt yozilmaydi: audio berilgan savolga mos 3 ta variantni kiriting.</p></div> : cefrReadingPartFiveText && !cefrReadingPartFiveSharedText ? <div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">Umumiy kichik text 30-savolda</p><p className="mt-1 text-xs">Bu karta faqat <code>{`{{${form.position}}}`}</code> bo‘sh joyining javob kalitini saqlaydi; matn ishtirokchiga faqat 30-savoldagi umumiy blokda ko‘rinadi.</p></div> : ieltsListeningPartOneSharedGapFill ? <div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">1–10 uchun bitta umumiy filling gap</p><p className="mt-1 text-xs">Savol matni Part 1 dagi umumiy textda turadi. Bu yerda faqat <code>{`{{${form.position}}}`}</code> bo‘sh joyi uchun javob kaliti va so‘z limitini kiriting.</p></div> : <Field label={cefrReadingPartFiveSharedText ? 'Bitta kichik text — {{30}}–{{33}} bo‘sh joylari' : 'Savol matni'}><textarea required value={form.prompt} onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))} className="input min-h-24 resize-y" placeholder={cefrReadingPartFiveSharedText ? 'Masalan: The city has a {{30}} population, and its {{31}} is growing. ... {{32}} ... {{33}} ...' : 'Savolni aniq va to‘liq yozing'} /></Field>}
+      {audioOnly ? <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4 text-sm leading-relaxed text-cyan-900"><p className="font-bold">Savol matni audio ichida</p><p className="mt-1 text-xs">Bu formatda alohida prompt yozilmaydi: audio berilgan savolga mos 3 ta variantni kiriting.</p></div> : cefrReadingPartFiveText && !cefrReadingPartFiveSharedText ? <div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">Umumiy kichik text 30-savolda</p><p className="mt-1 text-xs">Bu karta faqat <code>{`{{${form.position}}}`}</code> bo‘sh joyining javob kalitini saqlaydi; matn ishtirokchiga faqat 30-savoldagi umumiy blokda ko‘rinadi.</p></div> : ieltsListeningPartOneSharedGapFill ? <div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">1–10 uchun bitta umumiy filling gap</p><p className="mt-1 text-xs">Savol matni Part 1 dagi umumiy textda turadi. Bu yerda faqat <code>{`{{${form.position}}}`}</code> bo‘sh joyi uchun javob kaliti va so‘z limitini kiriting.</p></div> : ieltsReadingPassageOneSharedTextAnswerKey ? <div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">48–53 uchun bitta umumiy reading text</p><p className="mt-1 text-xs">Matn Reading Passage 1 sahifasida turadi. Bu yerda faqat <code>{`{{${form.position}}}`}</code> bo‘sh joyi uchun javob kaliti va so‘z limitini kiriting.</p></div> : ieltsReadingPassageTwoHeading ? <div className="rounded-2xl border border-cyan-100 bg-cyan-50/50 p-4 text-sm leading-relaxed text-cyan-900"><p className="font-bold">54–60 uchun heading matching</p><p className="mt-1 text-xs">54-savolda i–ix headinglarni yozing. 55–60 savollarda faqat to‘g‘ri headingni belgilang.</p></div> : ieltsReadingPassageTwoGapKey ? <div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">61–64 summary uchun javob kaliti</p><p className="mt-1 text-xs">Summary matni 61-savolda yoziladi. Bu yerda faqat <code>{`{{${form.position}}}`}</code> uchun bitta so‘zli javobni kiriting.</p></div> : ieltsReadingPassageTwoTwoAnswerKey ? <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 text-sm leading-relaxed text-indigo-900"><p className="font-bold">65–66 uchun ikkinchi harf</p><p className="mt-1 text-xs">Savol va A–E variantlari 65-savolda yoziladi. Bu yerda faqat ikkinchi to‘g‘ri harfni belgilang.</p></div> : ieltsPartTwoSummaryKey ? <div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">13–14 summary uchun javob kaliti</p><p className="mt-1 text-xs">Summary matni 13-savolda yoziladi. Bu yerda faqat <code>{'{{14}}'}</code> bo‘sh joyining javobini kiriting.</p></div> : ieltsPartTwoTwoAnswerKey ? <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 text-sm leading-relaxed text-indigo-900"><p className="font-bold">19–20 uchun ikkinchi javob kaliti</p><p className="mt-1 text-xs">Umumiy savol va A–E variantlar 19-savolda yoziladi. Bu yerda faqat ikkinchi to‘g‘ri harfni belgilang.</p></div> : ieltsPartThreeTwoAnswerKey ? <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 text-sm leading-relaxed text-indigo-900"><p className="font-bold">21–22 yoki 23–24 uchun ikkinchi javob kaliti</p><p className="mt-1 text-xs">Umumiy savol va A–E variantlar oldingi savolda yoziladi. Bu yerda faqat ikkinchi to‘g‘ri harfni belgilang.</p></div> : ieltsPartThreeFlowChartKey ? <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 text-sm leading-relaxed text-emerald-900"><p className="font-bold">25–30 flow-chart javob kaliti</p><p className="mt-1 text-xs">Flow-chart va A–H javob banki 25-savolda yoziladi. Bu yerda faqat <code>{`{{${form.position}}}`}</code> uchun to‘g‘ri harfni belgilang.</p></div> : <Field label={cefrReadingPartFiveSharedText ? 'Bitta kichik text — {{30}}–{{33}} bo‘sh joylari' : ieltsReadingPassageTwoGapText ? 'Questions 61–64 summary — {{61}}–{{64}} bo‘sh joylari' : ieltsReadingPassageTwoTwoAnswerOptions ? 'Questions 65–66 uchun umumiy savol' : ieltsPartTwoSummaryText ? 'Questions 13–14 summary — {{13}} va {{14}} bo‘sh joylari' : ieltsPartTwoActivity ? 'Activity nomi' : ieltsPartTwoTwoAnswer ? 'Questions 19–20 uchun umumiy savol' : ieltsPartThreeTwoAnswer ? `Questions ${form.position}–${form.position + 1} uchun umumiy savol` : ieltsPartThreeFlowChartText ? 'Questions 25–30 flow-chart — {{25}}–{{30}} bo‘sh joylari' : 'Savol matni'}><textarea required value={form.prompt} onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))} className={`input resize-y ${ieltsPartThreeFlowChartText || ieltsReadingPassageTwoGapText ? 'min-h-72 font-medium leading-7' : 'min-h-24'}`} placeholder={cefrReadingPartFiveSharedText ? 'Masalan: The city has a {{30}} population, and its {{31}} is growing. ... {{32}} ... {{33}} ...' : ieltsReadingPassageTwoGapText ? IELTS_READING_PASSAGE_TWO_GAP_FILL_TEMPLATE : ieltsReadingPassageTwoTwoAnswerOptions ? "Which TWO of the following statements are true of Ray's early life?" : ieltsPartTwoSummaryText ? "Joan's official title is {{13}}. {{14}} come regularly." : ieltsPartTwoActivity ? 'masalan: correspondence' : ieltsPartTwoTwoAnswer ? 'Joan says the TWO ways the RDA needs to improve are by' : ieltsPartThreeTwoAnswer ? 'Which TWO topics were discussed?' : ieltsPartThreeFlowChartText ? IELTS_LISTENING_PART_THREE_FLOW_CHART_TEMPLATE : 'Savolni aniq va to‘liq yozing'} /></Field>}
       {canUseTextAnswer && !cefrReadingPartFiveText && !ieltsListeningPartOneSharedGapFill && <Field label="Javob formati"><AppSelect value={form.answerType} onChange={(value) => setAnswerType(value as 'choice' | 'text')} options={[{ value: 'choice', label: 'Tanlovli javob', description: 'MCQ, matching, headings yoki True/False/Not Given uchun' }, { value: 'text', label: 'Yozma javob', description: 'Gap, note, table, diagram yoki short answer uchun' }]} ariaLabel="Javob formati" /><p className="mt-1.5 text-xs leading-relaxed text-slate-500">IELTS’da A/B/C bilan cheklanib qolmang: tanlovli savol uchun kerakli variantlarni, yozma savol uchun esa to‘g‘ri so‘z/son javoblarini kiriting.</p></Field>}
-      {textAnswer ? <div className="grid gap-4 rounded-2xl border border-violet-100 bg-violet-50/50 p-4 md:grid-cols-[minmax(0,1fr)_180px]"><Field label="Qabul qilinadigan javoblar"><textarea required value={form.acceptedAnswersText} onChange={(event) => setForm((current) => ({ ...current, acceptedAnswersText: event.target.value }))} className="input min-h-24 resize-y bg-white" placeholder={'Har qatorda bitta variant\nmasalan: solar panels\nsolar panel'} /><p className="mt-1.5 text-xs leading-relaxed text-violet-800">Katta-kichik harf va ortiqcha bo‘sh joylar hisobga olinmaydi. Bir nechta imlo shaklini alohida qatorda yozing.</p></Field><Field label="So‘z limiti"><input required min="1" max="20" type="number" value={form.wordLimit} onChange={(event) => setForm((current) => ({ ...current, wordLimit: event.target.value }))} className="input bg-white" /><p className="mt-1.5 text-xs leading-relaxed text-violet-800">Masalan, “NO MORE THAN TWO WORDS AND/OR A NUMBER” uchun 2 yozing.</p></Field></div> : <div><div className="mb-2 flex items-center justify-between"><label className="text-sm font-semibold text-slate-700">{audioOnly ? 'Audio uchun 3 ta variant' : 'Variantlar'}</label>{form.options.length < maxOptions && <button type="button" onClick={addOption} className="text-xs font-bold text-indigo-700 hover:text-indigo-800">+ Variant qo‘shish</button>}</div><div className="space-y-2">{form.options.map((option, index) => <div key={index} className="flex items-center gap-2"><label className="flex cursor-pointer items-center"><input type="radio" name="correct-option" checked={form.correctOption === index} onChange={() => setForm((current) => ({ ...current, correctOption: index }))} className="h-4 w-4 accent-indigo-600" /><span className="ml-2 w-5 text-xs font-bold text-slate-500">{String.fromCharCode(65 + index)}</span></label><input required value={option} onChange={(event) => updateOption(index, event.target.value)} className="input flex-1" placeholder={`${String.fromCharCode(65 + index)} variant`} />{form.options.length > (audioOnly ? 3 : 2) && <button type="button" onClick={() => removeOption(index)} className="rounded-lg p-2 text-slate-400 hover:bg-error-50 hover:text-error-700" aria-label={`Variant ${index + 1} ni o‘chirish`}><Trash2 className="h-4 w-4" /></button>}</div>)}</div><p className={`mt-2 text-xs ${form.correctOption === null ? 'font-semibold text-sun-700' : 'text-slate-500'}`}>{form.correctOption === null ? 'To‘g‘ri variantni A, B yoki C orqali belgilang.' : 'Radio tugmasi to‘g‘ri variantni belgilaydi; foydalanuvchiga u ko‘rsatilmaydi.'}</p></div>}
+      {textAnswer || ieltsPartTwoSummary ? <div className="grid gap-4 rounded-2xl border border-violet-100 bg-violet-50/50 p-4 md:grid-cols-[minmax(0,1fr)_180px]"><Field label="Qabul qilinadigan javoblar"><textarea required value={form.acceptedAnswersText} onChange={(event) => setForm((current) => ({ ...current, acceptedAnswersText: event.target.value }))} className="input min-h-24 resize-y bg-white" placeholder={'Har qatorda bitta variant\nmasalan: solar panels\nsolar panel'} /><p className="mt-1.5 text-xs leading-relaxed text-violet-800">Katta-kichik harf va ortiqcha bo‘sh joylar hisobga olinmaydi. Bir nechta imlo shaklini alohida qatorda yozing.</p></Field><Field label="So‘z limiti"><input required min="1" max="20" type="number" value={form.wordLimit} onChange={(event) => setForm((current) => ({ ...current, wordLimit: event.target.value }))} className="input bg-white" /><p className="mt-1.5 text-xs leading-relaxed text-violet-800">Summary gap-fill uchun limit 1 qilib belgilanadi.</p></Field></div> : <div><div className="mb-2 flex items-center justify-between"><label className="text-sm font-semibold text-slate-700">{audioOnly ? 'Audio uchun 3 ta variant' : ieltsPartTwoInheritedOptions ? 'Oldingi savoldan olinadigan variantlar' : ieltsReadingPassageTwoHeadingOptions ? 'List of Headings · i–ix' : ieltsReadingPassageTwoTwoAnswerOptions ? 'Umumiy A–E statementlar' : ieltsPartTwoActivity ? 'Umumiy A/B/C javob banki' : ieltsPartTwoTwoAnswer ? 'Umumiy A–E variantlar' : 'Variantlar'}</label>{form.options.length < maxOptions && <button type="button" onClick={addOption} className="text-xs font-bold text-indigo-700 hover:text-indigo-800">+ Variant qo‘shish</button>}</div><div className="space-y-2">{form.options.map((option, index) => <div key={index} className="flex items-center gap-2"><label className="flex cursor-pointer items-center"><input type="radio" name="correct-option" checked={form.correctOption === index} onChange={() => setForm((current) => ({ ...current, correctOption: index }))} className="h-4 w-4 accent-indigo-600" /><span className="ml-2 w-5 text-xs font-bold text-slate-500">{ieltsReadingPassageTwoHeading ? ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix'][index] : String.fromCharCode(65 + index)}</span></label><input required disabled={ieltsPartTwoInheritedOptions} value={option} onChange={(event) => updateOption(index, event.target.value)} className="input flex-1 disabled:bg-slate-100" placeholder={`${ieltsReadingPassageTwoHeading ? ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix'][index] : String.fromCharCode(65 + index)} variant`} />{form.options.length > (fixedOptionCount ?? (audioOnly ? 3 : 2)) && <button type="button" onClick={() => removeOption(index)} className="rounded-lg p-2 text-slate-400 hover:bg-error-50 hover:text-error-700" aria-label={`Variant ${index + 1} ni o‘chirish`}><Trash2 className="h-4 w-4" /></button>}</div>)}</div><p className={`mt-2 text-xs ${form.correctOption === null ? 'font-semibold text-sun-700' : 'text-slate-500'}`}>{form.correctOption === null ? 'To‘g‘ri variantni belgilang.' : ieltsPartTwoInheritedOptions ? 'Variant matni umumiy birinchi savolda yoziladi; bu yerda faqat to‘g‘ri harfni belgilang.' : 'Radio tugmasi to‘g‘ri variantni belgilaydi; foydalanuvchiga u ko‘rsatilmaydi.'}</p></div>}
       <div className="grid gap-4 md:grid-cols-3"><Field label="Ball"><input required min="1" max="1000" type="number" value={form.points} onChange={(event) => setForm((current) => ({ ...current, points: event.target.value }))} className="input" /></Field><Field label="Izoh (ixtiyoriy)" className="md:col-span-2"><input value={form.explanation} onChange={(event) => setForm((current) => ({ ...current, explanation: event.target.value }))} className="input" placeholder="Natija chiqqandan keyingi tushuntirish" /></Field></div>
     </div>
     <div className="mt-5 flex justify-end"><button type="submit" disabled={busy || (!fixedPart && englishExam && objectiveParts.length === 0)} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : form.id ? 'Savolni saqlash' : 'Savol qo‘shish'}</button></div>
@@ -1564,7 +1906,12 @@ function ExamPartsSection({ parts, form, setForm, audioFile, setAudioFile, mapIm
         <Field label="Ko‘rsatmalar" className="md:col-span-2"><textarea value={form.instructions} onChange={(event) => update('instructions', event.target.value)} className="input min-h-20 resize-y" placeholder="Ishtirokchi ko‘radigan yo‘riqnoma" /></Field>
         {ieltsExam && form.section === 'listening' && form.position !== 1 && <div className="md:col-span-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 text-sm leading-relaxed text-indigo-900"><p className="font-bold">Umumiy Listening audio Part 1’da</p><p className="mt-1 text-xs">Bu Part alohida audio ishlatmaydi. Ishtirokchi Part 1–4 uchun bitta audio yozuvni faqat bir marta tinglaydi.</p></div>}
         {form.section === 'listening' && (!ieltsExam || form.position === 1) && <><Field label={ieltsExam ? 'Full Listening audio fayli' : 'Audio fayl'}><input type="file" accept="audio/*" onChange={(event) => setAudioFile(event.target.files?.[0] ?? null)} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700" />{audioFile && <p className="mt-1.5 text-xs text-indigo-700">Yuklanadi: {audioFile.name}</p>}</Field><Field label={ieltsExam ? 'Full Listening audio URL (ixtiyoriy)' : 'Audio URL (ixtiyoriy)'}><input value={form.audioUrl} onChange={(event) => update('audioUrl', event.target.value)} className="input" placeholder="https://…/audio.mp3" /></Field>{ieltsExam && form.position === 1 && <Field label="Part 1 topshiriq formati" className="md:col-span-2"><AppSelect value={containsGapFillMarker(form.content) ? 'shared-gap-fill' : 'individual'} onChange={(value) => update('content', value === 'shared-gap-fill' ? (containsGapFillMarker(form.content) ? form.content : IELTS_LISTENING_PART_ONE_GAP_FILL_TEMPLATE) : '')} options={[{ value: 'individual', label: 'Alohida savollar', description: 'Har savol o‘zining matni bilan ko‘rsatiladi.' }, { value: 'shared-gap-fill', label: '1–10 bitta filling gap text', description: 'Barcha 10 ta javob umumiy form, note yoki jadval ichida bo‘ladi.' }]} ariaLabel="Listening Part 1 topshiriq formati" />{containsGapFillMarker(form.content) && <><textarea value={form.content} onChange={(event) => update('content', event.target.value)} className="input mt-3 min-h-64 resize-y font-medium leading-7" /><p className="mt-2 text-xs leading-relaxed text-violet-700">Bitta umumiy matnda <code className="rounded bg-violet-50 px-1.5 py-0.5">{'{{1}}'}</code> dan <code className="rounded bg-violet-50 px-1.5 py-0.5">{'{{10}}'}</code> gacha bo‘lgan markerlarning barchasi bo‘lishi shart. Keyin pastdagi savollar bo‘limida har marker uchun yozma javob kalitini kiriting.</p></>}</Field>}{cefrExam && form.position === 2 && <Field label="Part 2 to‘liq matni (gap-fill)" className="md:col-span-2"><textarea value={form.content} onChange={(event) => update('content', event.target.value)} className="input min-h-56 resize-y font-medium leading-7" placeholder={'Seminar on the Toy Industry\n9.30 – 10.00: {{9}} to the seminar by Sally Connor\n...'} /><p className="mt-2 text-xs leading-relaxed text-violet-700">Ishtirokchi to‘ldiradigan har joyni <code className="rounded bg-violet-50 px-1.5 py-0.5">{'{{9}}'}</code> dan <code className="rounded bg-violet-50 px-1.5 py-0.5">{'{{14}}'}</code> gacha belgilang. Javoblar keyingi “Gap-fill javob kaliti” kartasida alohida yoziladi.</p></Field>}{cefrExam && form.position === 3 && <Field label="Part 3 ko‘rsatmasi (ixtiyoriy)" className="md:col-span-2"><textarea value={form.content} onChange={(event) => update('content', event.target.value)} className="input min-h-28 resize-y leading-7" placeholder="15–18-savol: har bir speaker uchun mos javob harfini tanlang." /><p className="mt-2 text-xs leading-relaxed text-emerald-700">Speakerlar 15–18 raqamlari bilan umumiy javob bankiga moslanadi.</p></Field>}{cefrExam && form.position === 4 && <><Field label="Tiniq xarita rasmi" className="md:col-span-2"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setMapImageFile(event.target.files?.[0] ?? null)} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-sky-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-sky-700" />{mapImageFile && <p className="mt-1.5 text-xs text-sky-700">Yuklanadi: {mapImageFile.name} · rasm original sifatida saqlanadi.</p>}<p className="mt-2 text-xs leading-relaxed text-slate-500">PNG, JPG yoki WebP; 12 MB gacha. Xarita natural o‘lchamida ko‘rsatiladi.</p></Field><Field label="Xarita URL (ixtiyoriy)" className="md:col-span-2"><input value={form.imageUrl} onChange={(event) => update('imageUrl', event.target.value)} className="input" placeholder="https://…/map.png" /></Field><Field label="Part 4 ko‘rsatmasi (ixtiyoriy)" className="md:col-span-2"><textarea value={form.content} onChange={(event) => update('content', event.target.value)} className="input min-h-28 resize-y leading-7" placeholder="19–23-savol: xaritadagi A–F harflaridan mos joyni tanlang." /></Field>{form.imageUrl && <div className="md:col-span-2 overflow-hidden rounded-2xl border border-sky-100 bg-sky-50/50 p-3"><img src={form.imageUrl} alt="Xarita preview" className="h-auto w-full object-contain" /></div>}</>}{form.audioUrl && <div className="md:col-span-2 rounded-xl bg-white p-3 ring-1 ring-slate-200"><audio controls className="w-full" src={form.audioUrl}>Audio preview</audio></div>}</>}
-        {form.section === 'reading' && <Field label="Reading passage" className="md:col-span-2"><textarea required value={form.content} onChange={(event) => update('content', event.target.value)} className="input min-h-44 resize-y" placeholder="Passage matnini shu yerga yozing" /></Field>}
+        {ieltsExam && form.section === 'listening' && form.position === 2 && <Field label="Part 2 topshiriq formati" className="md:col-span-2"><AppSelect value={form.content === IELTS_LISTENING_PART_TWO_STRUCTURED_FORMAT ? 'structured' : 'ordinary'} onChange={(value) => update('content', value === 'structured' ? IELTS_LISTENING_PART_TWO_STRUCTURED_FORMAT : '')} options={[{ value: 'ordinary', label: 'Oddiy savollar', description: 'Savollar alohida kartalar sifatida ko‘rsatiladi.' }, { value: 'structured', label: '13–20 uchta umumiy blok', description: '13–14 summary, 15–18 A/B/C matching va 19–20 uchun 2 ta checkbox.' }]} ariaLabel="Listening Part 2 topshiriq formati" />{form.content === IELTS_LISTENING_PART_TWO_STRUCTURED_FORMAT && <p className="mt-2 text-xs leading-relaxed text-violet-700">Savollar panelida 13–14 uchun bitta summary, 15–18 uchun A/B/C javob banki, 19–20 uchun 5 variantdan aynan 2 ta javobni tayyorlang.</p>}</Field>}
+        {ieltsExam && form.section === 'listening' && form.position === 3 && <Field label="Part 3 topshiriq formati" className="md:col-span-2"><AppSelect value={form.content === IELTS_LISTENING_PART_THREE_STRUCTURED_FORMAT ? 'structured' : 'ordinary'} onChange={(value) => update('content', value === 'structured' ? IELTS_LISTENING_PART_THREE_STRUCTURED_FORMAT : '')} options={[{ value: 'ordinary', label: 'Oddiy savollar', description: 'Savollar alohida kartalar sifatida ko‘rsatiladi.' }, { value: 'structured', label: '21–30 umumiy bloklar', description: 'Ikki ikki-javobli savol va 25–30 uchun bitta flow-chart.' }]} ariaLabel="Listening Part 3 topshiriq formati" />{form.content === IELTS_LISTENING_PART_THREE_STRUCTURED_FORMAT && <p className="mt-2 text-xs leading-relaxed text-violet-700">21–22 va 23–24 uchun A–E dan ikkita checkbox, 25–30 uchun esa A–H javob banki va bitta flow-chart yarating.</p>}</Field>}
+        {ieltsExam && form.section === 'listening' && form.position === 4 && <Field label="Part 4 topshiriq formati" className="md:col-span-2"><AppSelect value={isIeltsListeningPartFourSharedGapFill({ ...form, id: form.id ?? '', audioUrl: form.audioUrl || null, imageUrl: form.imageUrl || null, maxPoints: Number(form.maxPoints) } as ExamPart, true) ? 'shared-gap-fill' : 'ordinary'} onChange={(value) => update('content', value === 'shared-gap-fill' ? (gapFillBlankNumbers(form.content).some((marker) => IELTS_LISTENING_PART_FOUR_GAP_FILL_POSITIONS.includes(marker as typeof IELTS_LISTENING_PART_FOUR_GAP_FILL_POSITIONS[number])) ? form.content : IELTS_LISTENING_PART_FOUR_GAP_FILL_TEMPLATE) : '')} options={[{ value: 'ordinary', label: 'Oddiy savollar', description: 'Savollar alohida kartalar sifatida ko‘rsatiladi.' }, { value: 'shared-gap-fill', label: '31–40 bitta gap filling', description: 'Barcha 10 ta javob umumiy note-completion matnida bo‘ladi.' }]} ariaLabel="Listening Part 4 topshiriq formati" />{gapFillBlankNumbers(form.content).some((marker) => IELTS_LISTENING_PART_FOUR_GAP_FILL_POSITIONS.includes(marker as typeof IELTS_LISTENING_PART_FOUR_GAP_FILL_POSITIONS[number])) && <><textarea value={form.content} onChange={(event) => update('content', event.target.value)} className="input mt-3 min-h-96 resize-y font-medium leading-7" /><p className="mt-2 text-xs leading-relaxed text-violet-700">Matnda <code className="rounded bg-violet-50 px-1.5 py-0.5">{'{{31}}'}</code> dan <code className="rounded bg-violet-50 px-1.5 py-0.5">{'{{40}}'}</code> gacha bo‘lgan markerlarning barchasi bo‘lishi shart. Javob kalitlarini pastdagi savollar panelida kiriting.</p></>}</Field>}
+        {ieltsExam && form.section === 'reading' && form.position === 5 && <Field label="Passage 1 topshiriq formati" className="md:col-span-2"><AppSelect value={hasIeltsReadingPassageOneSharedTextMarkers(form.content) ? 'shared-gap-fill' : 'ordinary'} onChange={(value) => update('content', value === 'shared-gap-fill' ? (gapFillBlankNumbers(form.content).some((marker) => IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS.includes(marker as typeof IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS[number])) ? form.content : IELTS_READING_PASSAGE_ONE_SHARED_TEXT_TEMPLATE) : '')} options={[{ value: 'ordinary', label: 'Oddiy Reading savollari', description: 'Har savol alohida karta sifatida ko‘rsatiladi.' }, { value: 'shared-gap-fill', label: '48–53 bitta umumiy text', description: '6 ta javob Passage 1 ichidagi bitta inline gap-fill matnida bo‘ladi.' }]} ariaLabel="Reading Passage 1 topshiriq formati" />{hasIeltsReadingPassageOneSharedTextMarkers(form.content) && <p className="mt-2 text-xs leading-relaxed text-violet-700">Passage ichida <code className="rounded bg-violet-50 px-1.5 py-0.5">{'{{48}}'}</code> dan <code className="rounded bg-violet-50 px-1.5 py-0.5">{'{{53}}'}</code> gacha markerlarning har biri bir martadan bo‘lishi shart. Javob kalitlari savollar panelida yoziladi.</p>}</Field>}
+        {ieltsExam && form.section === 'reading' && form.position === 6 && <Field label="Passage 2 topshiriq formati" className="md:col-span-2"><AppSelect value={form.content.startsWith(IELTS_READING_PASSAGE_TWO_STRUCTURED_PREFIX) ? 'structured' : 'ordinary'} onChange={(value) => update('content', value === 'structured' ? (form.content.startsWith(IELTS_READING_PASSAGE_TWO_STRUCTURED_PREFIX) ? form.content : `${IELTS_READING_PASSAGE_TWO_STRUCTURED_PREFIX}${form.content}`) : ieltsReadingPassageContent(form.content))} options={[{ value: 'ordinary', label: 'Oddiy Reading savollari', description: 'Har savol alohida karta sifatida ko‘rsatiladi.' }, { value: 'structured', label: '14–26 umumiy bloklar', description: '14–20 headings, 21–24 bitta summary va 25–26 ikki harf.' }]} ariaLabel="Reading Passage 2 topshiriq formati" />{form.content.startsWith(IELTS_READING_PASSAGE_TWO_STRUCTURED_PREFIX) && <p className="mt-2 text-xs leading-relaxed text-violet-700">Umumiy IELTS raqamlashda bu 54–66: 54–60 heading matching, 61–64 bitta gap filling va 65–66 uchun ikki harf.</p>}</Field>}
+        {form.section === 'reading' && <Field label={ieltsExam && form.position === 5 && hasIeltsReadingPassageOneSharedTextMarkers(form.content) ? 'Passage 1 — 48–53 uchun umumiy text' : ieltsExam && form.position === 6 && form.content.startsWith(IELTS_READING_PASSAGE_TWO_STRUCTURED_PREFIX) ? 'Passage 2 matni' : 'Reading passage'} className="md:col-span-2"><textarea required value={ieltsExam && form.position === 6 ? ieltsReadingPassageContent(form.content) : form.content} onChange={(event) => update('content', ieltsExam && form.position === 6 && form.content.startsWith(IELTS_READING_PASSAGE_TWO_STRUCTURED_PREFIX) ? `${IELTS_READING_PASSAGE_TWO_STRUCTURED_PREFIX}${event.target.value}` : event.target.value)} className={`input resize-y ${ieltsExam && form.position === 5 && hasIeltsReadingPassageOneSharedTextMarkers(form.content) ? 'min-h-96 font-medium leading-7' : 'min-h-44'}`} placeholder="Passage matnini shu yerga yozing" /></Field>}
         {form.section === 'writing' && <><Field label="Writing topic" className="md:col-span-2"><textarea required value={form.content} onChange={(event) => update('content', event.target.value)} className="input min-h-32 resize-y" placeholder="Task 1 yoki Task 2 topicini yozing" /></Field>{ieltsExam && form.position === 8 && <><Field label="Task 1 visual (grafik, jadval yoki diagram)" className="md:col-span-2"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setMapImageFile(event.target.files?.[0] ?? null)} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-violet-700" />{mapImageFile && <p className="mt-1.5 text-xs text-violet-700">Yuklanadi: {mapImageFile.name}</p>}<p className="mt-2 text-xs leading-relaxed text-slate-500">PNG, JPG yoki WebP; 12 MB gacha. Ishtirokchi Task 1 matni bilan birga ko‘radi.</p></Field><Field label="Visual URL (ixtiyoriy)" className="md:col-span-2"><input value={form.imageUrl} onChange={(event) => update('imageUrl', event.target.value)} className="input" placeholder="https://…/chart.png" /></Field>{form.imageUrl && <div className="md:col-span-2 overflow-hidden rounded-2xl border border-violet-100 bg-violet-50/50 p-3"><img src={form.imageUrl} alt="Writing Task 1 visual preview" className="h-auto w-full object-contain" /></div>}</>}<Field label="Maksimal ball"><input required min="1" max="1000" type="number" value={form.maxPoints} onChange={(event) => update('maxPoints', event.target.value)} className="input" /></Field></>}
       </div>
       <div className="mt-5 flex justify-end"><button type="submit" disabled={busy !== null} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-60">{busy === 'exam-part' ? <Loader2 className="h-4 w-4 animate-spin" /> : form.section === 'listening' ? <FileAudio className="h-4 w-4" /> : form.section === 'reading' ? <Headphones className="h-4 w-4" /> : <PenLine className="h-4 w-4" />}{busy === 'exam-part' ? 'Saqlanmoqda…' : form.id ? 'Partni saqlash' : 'Part qo‘shish'}</button></div>
