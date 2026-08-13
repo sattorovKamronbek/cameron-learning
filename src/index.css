@@ -413,7 +413,16 @@
     width: 100%;
     height: 100vh;
     min-height: 100vh;
+    height: 100dvh;
+    min-height: 100dvh;
     background: #f8fafc;
+  }
+  /* A workspace owns the viewport: its inner panels scroll, not the page.
+     `dvh` tracks mobile browser chrome while the preceding `vh` values remain
+     a fallback for older browsers. */
+  .workspace-viewport {
+    height: 100vh;
+    height: 100dvh;
   }
   .loading-state-card { min-height: 11rem; }
   .loading-state-inline { min-height: auto; }
