@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   BookOpen,
   CheckCircle2,
@@ -10,17 +11,21 @@ import {
   Clock,
   ListChecks,
   Loader2,
+  Maximize2,
   Mic2,
   PanelRightClose,
   PanelRightOpen,
   PenLine,
   Save,
   Send,
+  ShieldAlert,
 } from 'lucide-react';
 import { Link } from '@/router';
 import { LoadingState } from '@/components/LoadingState';
 import {
   completeEnglishExam,
+  completeListeningSection,
+  endContestAttempt,
   fetchContestPreviewWorkspace,
   fetchContestWorkspace,
   formatContestDuration,
@@ -36,13 +41,16 @@ import {
   submitContestTextAnswer,
   fetchContestEditor,
   type ExamPart,
+  type ExamSection,
   type ExamSectionTimings,
+  type ActiveExamTiming,
   type ContestWorkspace,
   type GapFillResponse,
   type MatchingResponse,
   type MatchingWorkspaceConfig,
   type WritingResponse,
 } from '@/lib/contests';
+import { requestContestFullscreen } from '@/lib/contest-integrity';
 
 function formatRemaining(milliseconds: number): string {
   const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
@@ -80,11 +88,11 @@ function previewSessionStartedAt(contestId: string): number {
   return now;
 }
 
-function previewExamTiming(timings: ExamSectionTimings, startedAt: number, now: number) {
+function previewExamTiming(timings: ExamSectionTimings, startedAt: number, now: number): ActiveExamTiming {
   const listeningStartsAt = startedAt;
   const readingStartsAt = listeningStartsAt + timings.listeningMinutes * 60_000;
   const writingStartsAt = readingStartsAt + timings.readingMinutes * 60_000;
-  const activeSection = now < readingStartsAt ? 'listening' : now < writingStartsAt ? 'reading' : 'writing';
+  const activeSection: ExamSection = now < readingStartsAt ? 'listening' : now < writingStartsAt ? 'reading' : 'writing';
   const sectionStartsAt = activeSection === 'listening' ? listeningStartsAt : activeSection === 'reading' ? readingStartsAt : writingStartsAt;
   const sectionEndsAt = activeSection === 'listening'
     ? readingStartsAt
@@ -112,6 +120,7 @@ export function QuizWorkspacePage({ slug, preview = false }: { slug: string; pre
   const [savingQuestionId, setSavingQuestionId] = useState<string | null>(null);
   const [previewTiming, setPreviewTiming] = useState<ExamSectionTimings | null>(null);
   const [previewStartedAt, setPreviewStartedAt] = useState<number | null>(null);
+  const [attemptEnded, setAttemptEnded] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -130,6 +139,7 @@ export function QuizWorkspacePage({ slug, preview = false }: { slug: string; pre
       setWorkspace(next);
       setAnswers(next.answers);
       setCurrentIndex(0);
+      setAttemptEnded(Boolean(next.contest.completedAt));
       setPreviewTiming(nextPreviewTiming);
       setPreviewStartedAt(nextPreviewTiming ? previewSessionStartedAt(next.contest.id) : null);
     } catch (reason) {
@@ -149,7 +159,7 @@ export function QuizWorkspacePage({ slug, preview = false }: { slug: string; pre
 
   const question = workspace?.questions[currentIndex] ?? null;
   const remaining = !preview && workspace ? Math.max(0, new Date(workspace.contest.endTime).getTime() - now) : 0;
-  const hasEnded = !preview && Boolean(workspace) && remaining <= 0;
+  const hasEnded = !preview && Boolean(workspace) && (remaining <= 0 || attemptEnded);
   const answeredCount = useMemo(
     () => workspace?.questions.filter((item) => answers[item.id] !== undefined).length ?? 0,
     [answers, workspace],
@@ -213,6 +223,11 @@ export function QuizWorkspacePage({ slug, preview = false }: { slug: string; pre
 
   return (
     <div className="workspace-viewport flex flex-col overflow-hidden bg-slate-100">
+      <ContestIntegrityGuard
+        active={!preview && !hasEnded}
+        contestId={workspace.contest.id}
+        onAttemptEnded={() => setAttemptEnded(true)}
+      />
       <header className="relative z-20 flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-950 px-4 py-2.5 text-white">
         <div className="flex min-w-0 items-center gap-3">
           <Link to={preview ? '/contest-management' : `/contests/${workspace.contest.slug}`} className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-400 transition-colors hover:text-white">
@@ -227,7 +242,7 @@ export function QuizWorkspacePage({ slug, preview = false }: { slug: string; pre
         </div>
         <div className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-bold ${preview ? 'bg-sun-400/20 text-sun-100' : urgent || hasEnded ? 'bg-error-500/20 text-error-200' : 'bg-slate-800 text-slate-200'}`}>
           {preview ? <ClipboardList className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
-          {preview ? 'Sinov rejimi' : hasEnded ? 'Vaqt tugadi' : formatRemaining(remaining)}
+          {preview ? 'Sinov rejimi' : hasEnded ? (attemptEnded ? 'Contest yakunlandi' : 'Vaqt tugadi') : formatRemaining(remaining)}
         </div>
         <button type="button" onClick={() => setShowNavigator((current) => !current)} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700">
           {showNavigator ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}
@@ -253,7 +268,7 @@ export function QuizWorkspacePage({ slug, preview = false }: { slug: string; pre
             </div>
 
             {preview && <div role="status" className="mb-5 flex items-start gap-3 rounded-2xl border border-sun-200 bg-sun-50 p-4 text-sm text-sun-900"><ClipboardList className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-bold">Sinov rejimi</p><p className="mt-1">Bu faqat sizning draft tekshiruvingiz. Contest e’lon qilinmaydi va ratingga ta’sir qilmaydi.</p></div></div>}
-            {hasEnded && <div role="alert" className="mb-5 flex items-start gap-3 rounded-2xl border border-error-200 bg-error-50 p-4 text-sm text-error-800"><Clock className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-bold">Contest vaqti tugadi</p><p className="mt-1">Yangi javob qabul qilinmaydi. Saqlangan javoblar organizer tomonidan yakunlangach hisoblanadi.</p></div></div>}
+            {hasEnded && <div role="alert" className="mb-5 flex items-start gap-3 rounded-2xl border border-error-200 bg-error-50 p-4 text-sm text-error-800"><Clock className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-bold">{attemptEnded ? 'Contest yakunlandi' : 'Contest vaqti tugadi'}</p><p className="mt-1">Yangi javob qabul qilinmaydi. Saqlangan javoblar organizer tomonidan yakunlangach hisoblanadi.</p></div></div>}
             {saveError && <div role="alert" className="mb-5 flex items-start gap-3 rounded-2xl border border-error-200 bg-error-50 p-4 text-sm text-error-800"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0" /><div className="min-w-0"><p className="font-bold">Javob saqlanmadi</p><p className="mt-1">{saveError}</p></div></div>}
 
             <section className="card p-6 sm:p-8">
@@ -376,6 +391,7 @@ function EnglishExamWorkspace({ workspace, now, onRefresh, preview = false, prev
   const progress = visibleParts.length ? Math.round((completedPartCount / visibleParts.length) * 100) : 0;
   const urgent = sectionRemaining > 0 && sectionRemaining < 5 * 60 * 1000;
   const isWritingSection = sectionTiming?.activeSection === 'writing' || part?.section === 'writing';
+  const isListeningSection = sectionTiming?.activeSection === 'listening' || part?.section === 'listening';
 
   useEffect(() => {
     if (preview || !sectionTiming || !sectionEnded || contestEnded || completed) return;
@@ -522,31 +538,57 @@ function EnglishExamWorkspace({ workspace, now, onRefresh, preview = false, prev
     }
   };
 
+  const completeListening = async () => {
+    if (preview || locked || completing || !isListeningSection) return;
+    if (!window.confirm('Listening bo‘limini hozir yakunlaysizmi? Reading ochiladi va Listeningga qaytib bo‘lmaydi.')) return;
+    setCompleting(true);
+    setError(null);
+    try {
+      await completeListeningSection(workspace.contest.id);
+      await onRefresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Listening bo‘limini yakunlab bo‘lmadi.');
+    } finally {
+      setCompleting(false);
+    }
+  };
+
   if (!part) {
     return <div className="flex min-h-screen items-center justify-center bg-slate-100 p-6"><div className="card max-w-lg p-8 text-center"><AlertCircle className="mx-auto h-10 w-10 text-error-500" /><h1 className="mt-4 text-xl font-bold text-slate-900">Exam partlari topilmadi</h1><Link to={preview ? '/contest-management' : `/contests/${workspace.contest.slug}`} className="btn-primary mt-6">{preview ? 'Contest boshqaruviga qaytish' : 'Contest sahifasiga qaytish'}</Link></div></div>;
   }
 
   return (
     <div className="workspace-viewport flex flex-col overflow-hidden bg-slate-100">
+      <ContestIntegrityGuard
+        active={!preview && !contestEnded && !completed}
+        contestId={workspace.contest.id}
+        onAttemptEnded={() => setCompleted(true)}
+      />
       <header className="relative z-20 flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-950 px-4 py-2.5 text-white">
         <div className="flex min-w-0 items-center gap-3"><Link to={preview ? '/contest-management' : `/contests/${workspace.contest.slug}`} className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-400 transition-colors hover:text-white"><ArrowLeft className="h-4 w-4" /><span className="hidden sm:inline">Chiqish</span></Link><div className="hidden h-5 w-px bg-slate-700 sm:block" /><div className="min-w-0"><p className="truncate text-sm font-bold">{workspace.contest.title}</p><p className="truncate text-[10px] text-slate-400">{workspace.contest.subject} · {visibleParts.length} ta part</p></div></div>
         <div className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-bold ${preview ? 'bg-sun-400/20 text-sun-100' : urgent || sectionEnded ? 'bg-error-500/20 text-error-200' : 'bg-slate-800 text-slate-200'}`}>{preview ? <ClipboardList className="h-4 w-4" /> : <Clock className="h-4 w-4" />}{preview ? <>Sinov · {sectionTiming ? `${examSectionLabel(sectionTiming.activeSection)} · ` : ''}{sectionEnded ? 'Vaqt tugadi' : formatRemaining(sectionRemaining)}</> : <>{sectionTiming ? `${examSectionLabel(sectionTiming.activeSection)} · ` : ''}{sectionEnded ? 'Vaqt tugadi' : formatRemaining(sectionRemaining)}</>}</div>
         <button type="button" onClick={() => setShowNavigator((current) => !current)} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700">{showNavigator ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}<span className="hidden lg:inline">Partlar</span></button>
       </header>
 
-      <div className="flex min-h-0 flex-1"><main className="min-w-0 flex-1 overflow-y-auto bg-white"><div className="mx-auto max-w-4xl p-5 sm:p-8"><div className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{preview ? 'Sinov rejimi' : 'Hozirgi bo‘lim'}</p><p className="mt-1 text-sm font-bold text-slate-900">{sectionTiming ? `${examSectionLabel(sectionTiming.activeSection)} uchun ${sectionMinutes(sectionTiming)} minut` : `${examSectionLabel(part.section)} bo‘limi`}</p></div><p className="text-xs leading-relaxed text-slate-600">{preview ? 'Bu test faqat sizning akkauntingizda saqlanadi. Bo‘limlar va vaqt limiti haqiqiy imtihon oqimidek ishlaydi, lekin contest e’lon qilinmaydi va ratingga kirmaydi.' : 'Bo‘lim vaqti tugashi bilan keyingi bo‘lim avtomatik ochiladi. Oldingi bo‘limga qaytib bo‘lmaydi.'}</p></div></div><div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-sm font-bold text-white">{part.position}</span><div><p className="text-sm font-bold text-slate-900">{examSectionLabel(part.section)} · Part {ieltsPartNumber(workspace.contest.subjectSlug, part)} / {visibleParts.length}</p><p className="text-xs text-slate-400">{answeredCount} ta test javobi · {submittedWritingCount} ta writing yuborilgan</p></div></div><div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><div className="h-2 w-28 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${progress}%` }} /></div>{progress}%</div></div>
+      <div className="flex min-h-0 flex-1"><main className="min-w-0 flex-1 overflow-y-auto bg-white"><div className="mx-auto max-w-4xl p-5 sm:p-8"><div className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{preview ? 'Sinov rejimi' : 'Hozirgi bo‘lim'}</p><p className="mt-1 text-sm font-bold text-slate-900">{sectionTiming ? `${examSectionLabel(sectionTiming.activeSection)} uchun ${sectionMinutes(sectionTiming)} minut` : `${examSectionLabel(part.section)} bo‘limi`}</p></div><p className="text-xs leading-relaxed text-slate-600">{preview ? 'Bu test faqat sizning akkauntingizda saqlanadi. Bo‘limlar va vaqt limiti haqiqiy imtihon oqimidek ishlaydi, lekin contest e’lon qilinmaydi va ratingga kirmaydi.' : isListeningSection ? 'Listeningni vaqt tugashini kutmasdan yakunlashingiz mumkin. Yakunlangandan keyin u qayta ochilmaydi.' : 'Bo‘lim vaqti tugashi bilan keyingi bo‘lim avtomatik ochiladi. Oldingi bo‘limga qaytib bo‘lmaydi.'}</p></div></div><div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-sm font-bold text-white">{part.position}</span><div><p className="text-sm font-bold text-slate-900">{examSectionLabel(part.section)} · Part {ieltsPartNumber(workspace.contest.subjectSlug, part)} / {visibleParts.length}</p><p className="text-xs text-slate-400">{answeredCount} ta test javobi · {submittedWritingCount} ta writing yuborilgan</p></div></div><div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><div className="h-2 w-28 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${progress}%` }} /></div>{progress}%</div></div>
 
         {preview && <ExamNotice kind="success" title="Sinov rejimi faol">Bu test faqat sizning akkauntingizda saqlanadi. Contest e’lon qilinmaydi va ratingga kirmaydi.</ExamNotice>}
         {contestEnded && <ExamNotice kind="error" title="Imtihon vaqti tugadi">Yangi javob qabul qilinmaydi. Saqlangan javoblar organizer tomonidan yakunlanadi.</ExamNotice>}
         {sectionEnded && !contestEnded && <ExamNotice kind="success" title={`${examSectionLabel(part.section)} vaqti tugadi`}>Keyingi bo‘lim ochilmoqda. Bu bo‘limga endi qaytib bo‘lmaydi.</ExamNotice>}
-        {completed && <ExamNotice kind="success" title="Imtihon yuborildi">Barcha bo‘limlar yakunlandi. Writing javoblari tekshirilgach, organizer natija va reytingni e’lon qiladi.</ExamNotice>}
+        {completed && <ExamNotice kind="success" title="Contest yakunlandi">Javoblar endi o‘zgarmaydi. Writing javoblari tekshirilgach, organizer natija va reytingni e’lon qiladi.</ExamNotice>}
         {error && <ExamNotice kind="error" title="Amal bajarilmadi">{error}</ExamNotice>}
 
         <section className="card overflow-hidden"><div className="border-b border-slate-100 p-6 sm:p-8"><div className="flex items-start gap-4"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-700">{part.section === 'listening' ? <Mic2 className="h-5 w-5" /> : part.section === 'reading' ? <BookOpen className="h-5 w-5" /> : <PenLine className="h-5 w-5" />}</span><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{examSectionLabel(part.section)}</p><h1 className="mt-1 text-xl font-bold text-slate-900">{part.title}</h1>{part.instructions && <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{part.instructions}</p>}</div></div></div>
           <div className="p-6 sm:p-8">{part.section === 'listening' ? <ListeningPart part={part} questions={partQuestions} answers={answers} textAnswers={textAnswers} gapFillResponses={gapFillResponses} matchingConfig={workspace.matchingConfigs[part.id]} matchingResponses={matchingResponses} locked={locked} savingKey={savingKey} audioOnly={workspace.contest.subjectSlug === 'cefr' && part.position === 1} gapFill={workspace.contest.subjectSlug === 'cefr' && (part.position === 2 || part.position === 6)} matching={workspace.contest.subjectSlug === 'cefr' && (part.position === 3 || part.position === 4)} mapMatching={workspace.contest.subjectSlug === 'cefr' && part.position === 4} extractQuestions={workspace.contest.subjectSlug === 'cefr' && part.position === 5} onAnswer={saveAnswer} onTextSave={saveTextAnswer} onGapFillSave={saveGapFill} onMatchingSave={saveMatching} /> : part.section === 'reading' ? <ReadingPart part={part} questions={partQuestions} answers={answers} textAnswers={textAnswers} gapFillResponses={gapFillResponses} matchingConfig={workspace.matchingConfigs[part.id]} matchingResponses={matchingResponses} cefrExam={workspace.contest.subjectSlug === 'cefr'} locked={locked} savingKey={savingKey} onAnswer={saveAnswer} onTextSave={saveTextAnswer} onGapFillSave={saveGapFill} onMatchingSave={saveMatching} /> : <WritingPart part={part} draft={drafts[part.id] ?? ''} response={writingResponses[part.id]} locked={locked} saving={savingKey === `writing:${part.id}`} ieltsTask={workspace.contest.subjectSlug === 'ielts' ? (part.position === 8 ? 1 : 2) : null} onChange={(value) => setDrafts((current) => ({ ...current, [part.id]: value }))} onSave={() => void saveWriting(part, false)} onSubmit={() => void saveWriting(part, true)} />}</div>
         </section>
 
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-3"><button type="button" disabled={currentPartIndex === 0 || sectionEnded} onClick={() => setCurrentPartIndex((index) => Math.max(0, index - 1))} className="btn-ghost px-4 py-2.5 text-sm disabled:opacity-40"><ChevronLeft className="h-4 w-4" />Oldingi part</button>{currentPartIndex < visibleParts.length - 1 ? <button type="button" disabled={sectionEnded} onClick={() => setCurrentPartIndex((index) => Math.min(visibleParts.length - 1, index + 1))} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">Keyingi part<ChevronRight className="h-4 w-4" /></button> : preview ? <Link to="/contest-management" className="btn-primary px-5 py-2.5 text-sm"><CheckCircle2 className="h-4 w-4" />Sinovni yakunlash</Link> : isWritingSection ? <button type="button" disabled={locked || !allComplete || completing} onClick={() => void completeExam()} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">{completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{completed ? 'Yuborilgan' : 'Imtihonni yakunlash'}</button> : <div className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-500">Keyingi bo‘lim vaqt tugaganda ochiladi</div>}</div>
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+          <button type="button" disabled={currentPartIndex === 0 || sectionEnded} onClick={() => setCurrentPartIndex((index) => Math.max(0, index - 1))} className="btn-ghost px-4 py-2.5 text-sm disabled:opacity-40"><ChevronLeft className="h-4 w-4" />Oldingi part</button>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {isListeningSection && !preview && <button type="button" disabled={locked || Boolean(savingKey) || completing} onClick={() => void completeListening()} className="btn-ghost border border-indigo-200 px-5 py-2.5 text-sm text-indigo-700 hover:bg-indigo-50 disabled:opacity-50">{completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Listeningni yakunlash</button>}
+            {currentPartIndex < visibleParts.length - 1 ? <button type="button" disabled={sectionEnded} onClick={() => setCurrentPartIndex((index) => Math.min(visibleParts.length - 1, index + 1))} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">Keyingi part<ChevronRight className="h-4 w-4" /></button> : preview ? <Link to="/contest-management" className="btn-primary px-5 py-2.5 text-sm"><CheckCircle2 className="h-4 w-4" />Sinovni yakunlash</Link> : isWritingSection ? <button type="button" disabled={locked || !allComplete || completing} onClick={() => void completeExam()} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">{completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{completed ? 'Yuborilgan' : 'Imtihonni yakunlash'}</button> : !isListeningSection && <div className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-500">Keyingi bo‘lim vaqt tugaganda ochiladi</div>}
+          </div>
+        </div>
       </div></main>
         {showNavigator && <aside className="hidden w-72 shrink-0 border-l border-slate-200 bg-white lg:block"><div className="flex h-full min-h-0 flex-col p-5"><div className="border-b border-slate-100 pb-5"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">{sectionTiming ? `${examSectionLabel(sectionTiming.activeSection)} navigatsiyasi` : 'Exam navigatsiyasi'}</p><p className="mt-2 text-sm font-semibold text-slate-700">{completedPartCount} / {visibleParts.length} part tayyor</p></div><div className="mt-5 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">{visibleParts.map((item, index) => { const selected = index === currentPartIndex; const done = isPartComplete(item, workspace.questions, answers, textAnswers, gapFillResponses, workspace.matchingConfigs[item.id], matchingResponses, writingResponses); return <button key={item.id} type="button" disabled={sectionEnded} onClick={() => setCurrentPartIndex(index)} className={`flex w-full items-center gap-3 rounded-xl p-3 text-left text-sm transition-colors disabled:cursor-not-allowed ${selected ? 'bg-indigo-600 text-white' : done ? 'bg-success-50 text-success-800 hover:bg-success-100' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${selected ? 'bg-white/20 text-white' : done ? 'bg-success-100 text-success-700' : 'bg-white text-slate-500 ring-1 ring-slate-200'}`}>{ieltsPartNumber(workspace.contest.subjectSlug, item)}</span><span className="min-w-0"><span className="block truncate font-bold">{examSectionLabel(item.section)} · Part {ieltsPartNumber(workspace.contest.subjectSlug, item)}</span><span className={`block truncate text-[11px] ${selected ? 'text-white/70' : 'text-slate-400'}`}>{item.title}</span></span></button>; })}</div><div className="mt-5 rounded-2xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-500"><p className="font-bold text-slate-700">Natijalar haqida</p><p className="mt-1">Listening va Reading avtomatik hisoblanadi. Writing esa tekshiruvdan keyin qo‘shiladi; shundan keyingina final natija va rating yangilanadi.</p></div></div></aside>}
       </div>
@@ -583,6 +625,124 @@ function sectionMinutes(timing: NonNullable<ContestWorkspace['examTiming']>): nu
 function ExamNotice({ kind, title, children }: { kind: 'error' | 'success'; title: string; children: string }) {
   const Icon = kind === 'error' ? AlertCircle : CheckCircle2;
   return <div role={kind === 'error' ? 'alert' : 'status'} className={`mb-5 flex items-start gap-3 rounded-2xl border p-4 text-sm ${kind === 'error' ? 'border-error-200 bg-error-50 text-error-800' : 'border-success-200 bg-success-50 text-success-800'}`}><Icon className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-bold">{title}</p><p className="mt-1">{children}</p></div></div>;
+}
+
+/**
+ * Browser APIs cannot prevent an OS-level app switch, but this guard detects
+ * it as soon as the contest tab is hidden or focused again.  The server-side
+ * end-contest RPC then makes the resulting lock durable across refreshes.
+ */
+function ContestIntegrityGuard({ active, contestId, onAttemptEnded }: { active: boolean; contestId: string; onAttemptEnded: () => void }) {
+  const [notice, setNotice] = useState<'fullscreen' | 'away' | null>(null);
+  const [ending, setEnding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const activeRef = useRef(active);
+  const leftWindowRef = useRef(false);
+
+  useEffect(() => { activeRef.current = active; }, [active]);
+
+  const enterFullscreen = useCallback(async () => {
+    setError(null);
+    const entered = await requestContestFullscreen();
+    if (!activeRef.current) return;
+    if (entered) {
+      leftWindowRef.current = false;
+      setNotice(null);
+    }
+    else {
+      setNotice('fullscreen');
+      setError('Brauzer to‘liq ekran rejimini yoqmadi. Davom etish uchun quyidagi tugmani bosing.');
+    }
+  }, []);
+
+  const endAttempt = async () => {
+    if (ending) return;
+    setEnding(true);
+    setError(null);
+    try {
+      await endContestAttempt(contestId);
+      activeRef.current = false;
+      setNotice(null);
+      onAttemptEnded();
+      if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Contestni yakunlab bo‘lmadi. Qayta urinib ko‘ring.');
+    } finally {
+      setEnding(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!active) {
+      setNotice(null);
+      return;
+    }
+
+    void enterFullscreen();
+    const onFullscreenChange = () => {
+      if (activeRef.current && !document.fullscreenElement) setNotice('fullscreen');
+    };
+    const markWindowLeft = () => {
+      if (activeRef.current) leftWindowRef.current = true;
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') markWindowLeft();
+      else if (leftWindowRef.current && activeRef.current) {
+        leftWindowRef.current = false;
+        setNotice('away');
+      }
+    };
+    const onFocus = () => {
+      if (leftWindowRef.current && activeRef.current) {
+        leftWindowRef.current = false;
+        setNotice('away');
+      }
+    };
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('blur', markWindowLeft);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', markWindowLeft);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, [active, enterFullscreen]);
+
+  if (!active || !notice) return null;
+  const leftContestWindow = notice === 'away';
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 p-5 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="contest-integrity-title">
+      <div className="w-full max-w-md rounded-3xl border border-white/15 bg-white p-6 shadow-2xl sm:p-7">
+        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${leftContestWindow ? 'bg-error-50 text-error-600' : 'bg-indigo-50 text-indigo-600'}`}>
+          {leftContestWindow ? <ShieldAlert className="h-6 w-6" /> : <Maximize2 className="h-6 w-6" />}
+        </div>
+        <h2 id="contest-integrity-title" className="mt-5 text-xl font-bold text-slate-900">
+          {leftContestWindow ? 'Contest oynasidan chiqdingiz' : 'To‘liq ekran rejimi kerak'}
+        </h2>
+        <p className="mt-3 text-sm leading-relaxed text-slate-600">
+          {leftContestWindow
+            ? 'Contestni yakunlashni hohlaysizmi? Davom etsangiz, to‘liq ekran rejimida qolishingiz kerak bo‘ladi.'
+            : 'Contest faqat to‘liq ekran rejimida davom etadi. Esc tugmasi bilan chiqsangiz ham shu tasdiqlash oynasi ochiladi.'}
+        </p>
+        {error && <div role="alert" className="mt-4 flex items-start gap-2 rounded-xl bg-error-50 p-3 text-xs leading-relaxed text-error-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div>}
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button type="button" disabled={ending} onClick={() => void endAttempt()} className="btn-ghost border border-error-200 px-4 py-2.5 text-sm text-error-700 hover:bg-error-50 disabled:opacity-50">
+            {ending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldAlert className="h-4 w-4" />}Contestni yakunlash
+          </button>
+          <button type="button" disabled={ending} onClick={() => void enterFullscreen()} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"><Maximize2 className="h-4 w-4" />To‘liq ekranda davom etish</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ObjectiveQuestionRows({ questions, answers, textAnswers, locked, savingKey, onAnswer, onTextSave, audioOnly, useStoredPosition = false }: { questions: ContestWorkspace['questions']; answers: Record<string, number>; textAnswers: Record<string, string>; locked: boolean; savingKey: string | null; onAnswer: (questionId: string, option: number) => void; onTextSave: (questionId: string, value: string) => void; audioOnly: boolean; useStoredPosition?: boolean }) {

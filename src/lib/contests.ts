@@ -702,6 +702,18 @@ export async function completeEnglishExam(contestId: string): Promise<void> {
   rpcError(error);
 }
 
+/** Ends the participant's attempt without requiring every answer to be filled. */
+export async function endContestAttempt(contestId: string): Promise<void> {
+  const { error } = await supabase.rpc('end_contest_attempt', { p_contest_id: contestId });
+  rpcError(error);
+}
+
+/** Locks Listening for this participant and opens Reading before the shared timer expires. */
+export async function completeListeningSection(contestId: string): Promise<void> {
+  const { error } = await supabase.rpc('complete_listening_section', { p_contest_id: contestId });
+  rpcError(error);
+}
+
 export async function fetchContestLeaderboard(slug: string): Promise<ContestLeaderboardEntry[]> {
   const { data, error } = await supabase.rpc('get_contest_leaderboard', { p_slug: slug });
   rpcError(error);
