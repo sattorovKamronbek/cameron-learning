@@ -198,7 +198,11 @@ function contestDate(value: string): string {
   return `${date.date} · ${date.time}`;
 }
 
-function isEditable(contest: ManagedContest | null): boolean {
+function isContestSettingsEditable(contest: ManagedContest | null): boolean {
+  return Boolean(contest && !contest.archivedAt && new Date(contest.startTime).getTime() > Date.now());
+}
+
+function isProblemSetEditable(contest: ManagedContest | null): boolean {
   return Boolean(contest && !contest.isPublished && !contest.archivedAt && new Date(contest.startTime).getTime() > Date.now());
 }
 
@@ -225,7 +229,10 @@ export function ProgrammingManagementPage() {
     [contests, selectedContestId],
   );
   const editingContest = selectedContest !== null;
-  const canEdit = isEditable(selectedContest);
+  // A published contest may still need a schedule or description correction
+  // before it begins. Its problem set remains locked after publication.
+  const canEditSettings = isContestSettingsEditable(selectedContest);
+  const canEditProblemSet = isProblemSetEditable(selectedContest);
   const isJudge = profile?.role === 'judge';
 
   const refresh = useCallback(async () => {
@@ -344,7 +351,7 @@ export function ProgrammingManagementPage() {
       && problemForm.publicationScope === 'contest'
       && selectedContest
       && contestEditor
-      && canEdit,
+      && canEditProblemSet,
     );
     await run('problem', async () => {
       const savedId = await saveProgrammingProblem(problemInput(problemForm), selectedProblemId ?? undefined);
@@ -387,7 +394,7 @@ export function ProgrammingManagementPage() {
   };
 
   const publish = async () => {
-    if (!selectedContest || !contestEditor || !window.confirm('Contestni e’lon qilasizmi? E’lon qilingach jadval va masalalarni tahrirlab bo‘lmaydi.')) return;
+    if (!selectedContest || !contestEditor || !window.confirm('Contestni e’lon qilasizmi? Boshlanishidan oldin jadval va tavsifni yangilash mumkin, problem set esa yopiladi.')) return;
     if (!contestEditor.problems.length) return setError('E’lon qilishdan oldin kamida bitta programming masala biriktiring.');
     await run('publish', async () => {
       await publishContest(selectedContest.id);
@@ -476,7 +483,7 @@ export function ProgrammingManagementPage() {
                   <div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{editingContest ? 'Contest settings' : 'New programming contest'}</p><h2 className="mt-1 text-xl font-bold text-slate-900">{editingContest ? selectedContest?.title : 'Programming contest yaratish'}</h2><p className="mt-1 text-sm text-slate-500">Bu panel faqat contest jadvali, qoidalari va nashri uchun. Masalalar quyidagi alohida problem-set kartasida boshqariladi.</p></div>
                   {selectedContest && <ContestPill contest={selectedContest} />}
                 </div>
-                <ContestSettingsForm form={contestForm} setForm={setContestForm} onSubmit={saveContest} busy={busy === 'contest'} disabled={editingContest && !canEdit} canCreateRated={adminAccess} isJudge={isJudge} isNew={!editingContest} />
+                <ContestSettingsForm form={contestForm} setForm={setContestForm} onSubmit={saveContest} busy={busy === 'contest'} disabled={editingContest && !canEditSettings} canCreateRated={adminAccess} isJudge={isJudge} isNew={!editingContest} />
               </section>
 
               {selectedContest && (
@@ -484,14 +491,14 @@ export function ProgrammingManagementPage() {
                   <section className="card overflow-hidden ring-indigo-100">
                     <div className="workspace-panel-heading bg-gradient-to-r from-indigo-50/70 to-white">
                       <div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Problem set</p><h2 className="mt-1 text-xl font-bold text-slate-900">Contest masalalari</h2><p className="mt-1 text-sm text-slate-500">Masalalar A, B, C… tartibida chiqadi. Contest scope bilan yaratilganlari tugash vaqtida Practice’ga avtomatik nashr qilinadi.</p></div>
-                      {canEdit && <button type="button" onClick={() => newProblem('contest')} className="btn-ghost px-3 py-2 text-sm"><FileCode2 className="h-4 w-4" />Contest uchun yangi masala</button>}
+                      {canEditProblemSet && <button type="button" onClick={() => newProblem('contest')} className="btn-ghost px-3 py-2 text-sm"><FileCode2 className="h-4 w-4" />Contest uchun yangi masala</button>}
                     </div>
-                    {editorLoading ? <LoadingState className="min-h-48" message="Problem set yuklanmoqda" /> : contestEditor?.problems.length ? <div className="divide-y divide-slate-100">{contestEditor.problems.map((problem) => <ContestProblemRow key={problem.id} problem={problem} editable={canEdit} busy={busy === `detach:${problem.id}`} onRemove={() => void detach(problem.id)} />)}</div> : <EmptyProblemSet editable={canEdit} onCreate={() => newProblem('contest')} />}
+                    {editorLoading ? <LoadingState className="min-h-48" message="Problem set yuklanmoqda" /> : contestEditor?.problems.length ? <div className="divide-y divide-slate-100">{contestEditor.problems.map((problem) => <ContestProblemRow key={problem.id} problem={problem} editable={canEditProblemSet} busy={busy === `detach:${problem.id}`} onRemove={() => void detach(problem.id)} />)}</div> : <EmptyProblemSet editable={canEditProblemSet} onCreate={() => newProblem('contest')} />}
                   </section>
 
-                  {canEdit && <section className="card overflow-hidden"><div className="workspace-panel-heading"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Reusable library</p><h2 className="mt-1 text-lg font-bold text-slate-900">Masalalar bankidan qo‘shish</h2><p className="mt-1 text-sm text-slate-500">Bu yer faqat tayyor masalani contestga biriktirish uchun. Yangi masala yaratish “Masalalar banki” ish maydonida amalga oshadi.</p></div><input value={problemSearch} onChange={(event) => setProblemSearch(event.target.value)} className="input w-full sm:w-64" placeholder="Masalani qidiring" /></div><div className="divide-y divide-slate-100">{filteredProblems.filter((problem) => !linkedIds.has(problem.id)).slice(0, 12).map((problem) => <div key={problem.id} className="flex flex-wrap items-center justify-between gap-3 p-4"><div className="min-w-0"><p className="font-semibold text-slate-800">{problem.title}</p><p className="mt-1 text-xs text-slate-500">{problem.difficulty} · {formatProblemLimit(problem.timeLimitMs, problem.memoryLimitMb)} · {problem.publicationScope === 'contest' ? 'Contest → Practice' : 'Site masalasi'}</p></div><button type="button" onClick={() => void attach(problem.id)} disabled={busy !== null} className="btn-ghost px-3 py-2 text-xs disabled:opacity-50"><Plus className="h-3.5 w-3.5" />Qo‘shish</button></div>)}{!filteredProblems.filter((problem) => !linkedIds.has(problem.id)).length && <p className="p-6 text-sm text-slate-500">Qo‘shiladigan masala topilmadi. Yangi contest masalasini yarating.</p>}</div></section>}
+                  {canEditProblemSet && <section className="card overflow-hidden"><div className="workspace-panel-heading"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Reusable library</p><h2 className="mt-1 text-lg font-bold text-slate-900">Masalalar bankidan qo‘shish</h2><p className="mt-1 text-sm text-slate-500">Bu yer faqat tayyor masalani contestga biriktirish uchun. Yangi masala yaratish “Masalalar banki” ish maydonida amalga oshadi.</p></div><input value={problemSearch} onChange={(event) => setProblemSearch(event.target.value)} className="input w-full sm:w-64" placeholder="Masalani qidiring" /></div><div className="divide-y divide-slate-100">{filteredProblems.filter((problem) => !linkedIds.has(problem.id)).slice(0, 12).map((problem) => <div key={problem.id} className="flex flex-wrap items-center justify-between gap-3 p-4"><div className="min-w-0"><p className="font-semibold text-slate-800">{problem.title}</p><p className="mt-1 text-xs text-slate-500">{problem.difficulty} · {formatProblemLimit(problem.timeLimitMs, problem.memoryLimitMb)} · {problem.publicationScope === 'contest' ? 'Contest → Practice' : 'Site masalasi'}</p></div><button type="button" onClick={() => void attach(problem.id)} disabled={busy !== null} className="btn-ghost px-3 py-2 text-xs disabled:opacity-50"><Plus className="h-3.5 w-3.5" />Qo‘shish</button></div>)}{!filteredProblems.filter((problem) => !linkedIds.has(problem.id)).length && <p className="p-6 text-sm text-slate-500">Qo‘shiladigan masala topilmadi. Yangi contest masalasini yarating.</p>}</div></section>}
 
-                  <section className="card p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-5"><div><h2 className="text-lg font-bold text-slate-900">Nashr holati</h2><p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-500">E’lon qilingan contest va problem set o‘zgarmaydi. Tugash vaqti yetishi bilan contest-scope masalalar Practice katalogida avtomatik ochiladi.</p></div><div className="flex flex-wrap gap-2">{adminAccess && selectedContest.mode === 'Gym' && selectedContest.visibility === 'Private' && !selectedContest.isPublished && <button type="button" onClick={() => void promotePrivateGym()} disabled={busy !== null} className="btn-ghost px-4 py-2.5 text-sm text-violet-700 disabled:opacity-50"><Trophy className="h-4 w-4" />Ratedga o‘tkazish</button>}{canEdit && <button type="button" onClick={() => void publish()} disabled={!contestEditor?.problems.length || busy !== null} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"><Send className="h-4 w-4" />E’lon qilish</button>}{canEdit && !selectedContest.isPublished && <button type="button" onClick={() => void removeContest()} disabled={busy !== null} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Trash2 className="h-4 w-4" />O‘chirish</button>}{!selectedContest.archivedAt && <button type="button" onClick={() => void archive()} disabled={busy !== null} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Archive className="h-4 w-4" />Arxivlash</button>}</div></div></section>
+                  <section className="card p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-5"><div><h2 className="text-lg font-bold text-slate-900">Nashr holati</h2><p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-500">E’lon qilingach problem set yopiladi, lekin contest boshlanishidan oldin jadvali va tavsifini yangilash mumkin. Tugash vaqti yetishi bilan contest-scope masalalar Practice katalogida avtomatik ochiladi.</p></div><div className="flex flex-wrap gap-2">{adminAccess && selectedContest.mode === 'Gym' && selectedContest.visibility === 'Private' && !selectedContest.isPublished && <button type="button" onClick={() => void promotePrivateGym()} disabled={busy !== null} className="btn-ghost px-4 py-2.5 text-sm text-violet-700 disabled:opacity-50"><Trophy className="h-4 w-4" />Ratedga o‘tkazish</button>}{canEditProblemSet && <button type="button" onClick={() => void publish()} disabled={!contestEditor?.problems.length || busy !== null} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"><Send className="h-4 w-4" />E’lon qilish</button>}{canEditProblemSet && !selectedContest.isPublished && <button type="button" onClick={() => void removeContest()} disabled={busy !== null} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Trash2 className="h-4 w-4" />O‘chirish</button>}{!selectedContest.archivedAt && <button type="button" onClick={() => void archive()} disabled={busy !== null} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Archive className="h-4 w-4" />Arxivlash</button>}</div></div></section>
                 </>
               )}
             </div>
@@ -534,7 +541,7 @@ function ContestSettingsForm({ form, setForm, onSubmit, busy, disabled, canCreat
       : current.privateAccessCode,
   }));
   return <form onSubmit={onSubmit} className="p-5 sm:p-6">
-    {disabled && <div className="mb-5 rounded-xl bg-slate-50 p-3 text-xs text-slate-500">E’lon qilingan yoki boshlangan contest sozlamalari o‘zgarmaydi.</div>}
+    {disabled && <div className="mb-5 rounded-xl bg-slate-50 p-3 text-xs text-slate-500">Boshlangan, yakunlangan yoki arxivlangan contest sozlamalari o‘zgarmaydi.</div>}
     {isJudge && <div className="mb-5 rounded-2xl border border-cyan-100 bg-cyan-50 p-4 text-sm text-cyan-900"><p className="font-bold">Judge uchun Gym rejimi</p><p className="mt-1 text-xs leading-relaxed">Judge faqat unrated Gym yaratadi. Private Gym’ni keyinchalik tasdiqlangan admin Rated contestga o‘tkaza oladi.</p></div>}
     <div className="grid gap-5 md:grid-cols-2">
       <Field label="Contest nomi" className="md:col-span-2"><input required disabled={disabled} value={form.title} onChange={(event) => set('title', event.target.value)} className="input" placeholder="Masalan: UzAlgo Round #12" /></Field>
