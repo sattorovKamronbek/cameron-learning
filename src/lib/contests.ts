@@ -708,6 +708,16 @@ export async function endContestAttempt(contestId: string): Promise<void> {
   rpcError(error);
 }
 
+/** Clears an admin creator's own unrated test run and schedules it again. */
+export async function reopenContestAfterTesting(contestId: string, startTime: string, endTime: string): Promise<void> {
+  const { error } = await supabase.rpc('reopen_contest_after_testing', {
+    p_contest_id: contestId,
+    p_start_at: startTime,
+    p_end_at: endTime,
+  });
+  rpcError(error);
+}
+
 /** Locks Listening for this participant and opens Reading before the shared timer expires. */
 export async function completeListeningSection(contestId: string): Promise<void> {
   const { error } = await supabase.rpc('complete_listening_section', { p_contest_id: contestId });

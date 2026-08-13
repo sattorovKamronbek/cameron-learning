@@ -201,9 +201,9 @@ BEGIN
   SELECT jsonb_build_object(
     'contest', jsonb_build_object('id', contest.id, 'slug', contest.slug, 'title', contest.title, 'subject', contest.subject, 'start_at', contest.start_at, 'end_at', contest.end_at, 'contest_type', contest.contest_type, 'completed_at', registration.completed_at),
     'exam_timing', CASE WHEN contest.subject IN ('ielts', 'cefr') THEN (
-      SELECT jsonb_build_object('listening_minutes', timing.listening_minutes, 'reading_minutes', timing.reading_minutes, 'writing_minutes', timing.writing_minutes, 'active_section', window.active_section, 'section_starts_at', window.section_starts_at, 'section_ends_at', window.section_ends_at)
+      SELECT jsonb_build_object('listening_minutes', timing.listening_minutes, 'reading_minutes', timing.reading_minutes, 'writing_minutes', timing.writing_minutes, 'active_section', section_window.active_section, 'section_starts_at', section_window.section_starts_at, 'section_ends_at', section_window.section_ends_at)
       FROM public.contest_exam_section_timings timing
-      CROSS JOIN LATERAL public.exam_section_window(contest.id, auth.uid()) window
+      CROSS JOIN LATERAL public.exam_section_window(contest.id, auth.uid()) section_window
       WHERE timing.contest_id = contest.id
     ) ELSE NULL END,
     'parts', coalesce((SELECT jsonb_agg(jsonb_build_object('id', part.id, 'position', part.position, 'section', part.section, 'title', part.title, 'instructions', part.instructions, 'content', part.content, 'audio_url', part.audio_url, 'image_url', part.image_url, 'max_points', part.max_points) ORDER BY part.position) FROM public.contest_exam_parts part WHERE part.contest_id = contest.id AND (contest.subject NOT IN ('ielts', 'cefr') OR part.section = public.current_exam_section(contest.id))), '[]'::jsonb),

@@ -13,6 +13,7 @@ import {
   PenLine,
   Plus,
   RefreshCw,
+  RotateCcw,
   Save,
   Send,
   ShieldCheck,
@@ -42,6 +43,7 @@ import {
   generatePrivateAccessCode,
   gradeWritingSubmission,
   publishContest,
+  reopenContestAfterTesting,
   saveExamPart,
   saveExamPartImage,
   saveContestQuestion,
@@ -141,6 +143,16 @@ function isEnglishExam(contest: Pick<ManagedContest, 'subjectSlug'> | null | und
 function localDateTime(value: Date): string {
   const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
   return local.toISOString().slice(0, 16);
+}
+
+function tomorrowAtOriginalTime(startTime: string, endTime: string): { startTime: string; endTime: string } {
+  const previousStart = new Date(startTime);
+  const previousEnd = new Date(endTime);
+  const duration = Math.max(60_000, previousEnd.getTime() - previousStart.getTime());
+  const nextStart = new Date();
+  nextStart.setDate(nextStart.getDate() + 1);
+  nextStart.setHours(previousStart.getHours(), previousStart.getMinutes(), 0, 0);
+  return { startTime: nextStart.toISOString(), endTime: new Date(nextStart.getTime() + duration).toISOString() };
 }
 
 function defaultContestForm(): ContestForm {
@@ -869,6 +881,13 @@ export function ContestManagementPage() {
       && (currentContest.type === 'Unrated' || adminAccess)
       && (!englishExam || ungradedWritingCount === 0),
   );
+  const canReopenAfterTesting = Boolean(
+    adminAccess
+      && currentContest
+      && !currentContest.archivedAt
+      && currentContest.type === 'Unrated'
+      && currentContest.status !== 'Upcoming',
+  );
   const questionCount = editor?.questions.length ?? 0;
   const isBusy = busy !== null;
   const focusedCefrPart = currentContest?.subjectSlug === 'cefr' && activeCefrListeningPart !== null
@@ -965,6 +984,17 @@ export function ContestManagementPage() {
       await refresh();
       await loadEditor(currentContest.id);
     }, 'Contest natijalari serverda yakunlandi.');
+  };
+
+  const reopenAfterTesting = async () => {
+    if (!currentContest) return;
+    const nextSchedule = tomorrowAtOriginalTime(currentContest.startTime, currentContest.endTime);
+    if (!window.confirm('Contestni testdan keyin qayta tayyorlaysizmi? Faqat sizning test urinishlaringiz va test natijalari o‘chiriladi. Contest ertaga avvalgi soatda qayta qo‘yiladi.')) return;
+    await run('reopen-test', async () => {
+      await reopenContestAfterTesting(currentContest.id, nextSchedule.startTime, nextSchedule.endTime);
+      await refresh();
+      await loadEditor(currentContest.id);
+    }, 'Test urinishlari tozalandi. Contest ertaga qayta rejalashtirildi. Kerak bo‘lsa jadvalini yana tahrirlang.');
   };
 
   const archive = async () => {
@@ -1084,7 +1114,7 @@ export function ContestManagementPage() {
 
                 {englishExam && currentContest.status === 'Finished' && <WritingReviewSection submissions={writingSubmissions} grades={writingGrades} setGrades={setWritingGrades} busy={busy} finalized={currentContest.isFinalized} onGrade={saveWritingGrade} />}
 
-                <section className="card p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-5"><div><h2 className="text-lg font-bold text-slate-900">Contest holati</h2><p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-500">Draft paytida <strong>Sinov rejimi</strong> faqat sizga ochiladi: e’lon qilinmaydi, qatnashuvchi yaratmaydi va ratingga ta’sir qilmaydi. E’lon qilingan contestning jadvali va tafsilotlarini ham boshlanishidan oldin yangilash mumkin.</p>{englishExam && currentContest.status === 'Finished' && ungradedWritingCount > 0 && <p className="mt-2 text-xs font-semibold text-sun-700">{ungradedWritingCount} ta writing hali baholanmagan. Reyting va yakuniy natijalar shu baholar kiritilguncha kutadi.</p>}{currentContest.type === 'Rated' && !adminAccess && <p className="mt-2 text-xs font-medium text-slate-500">Rated contest natijasini yakunlash admin tasdiqlovini talab qiladi.</p>}</div><div className="flex flex-wrap gap-2">{!currentContest.isPublished && !currentContest.archivedAt && <Link to={`/contests/${currentContest.slug}/preview`} className="btn-ghost px-4 py-2.5 text-sm"><ClipboardList className="h-4 w-4" />Sinov rejimida ochish</Link>}{!currentContest.isPublished && !currentContest.archivedAt && <button type="button" onClick={() => void clearPreviewResponses()} disabled={isBusy} className="btn-ghost px-4 py-2.5 text-sm disabled:opacity-50"><RefreshCw className="h-4 w-4" />Sinov javoblarini tozalash</button>}{editable && !currentContest.isPublished && <button type="button" onClick={() => void publish()} disabled={questionCount === 0 || isBusy} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"><Send className="h-4 w-4" />E’lon qilish</button>}{canFinalize && <button type="button" onClick={() => void finalize()} disabled={isBusy} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"><Trophy className="h-4 w-4" />Natijani yakunlash</button>}{editable && !currentContest.isPublished && <button type="button" onClick={() => void removeContest()} disabled={isBusy} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Trash2 className="h-4 w-4" />O‘chirish</button>}{!currentContest.archivedAt && <button type="button" onClick={() => void archive()} disabled={isBusy} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Archive className="h-4 w-4" />Arxivlash</button>}</div></div></section>
+                <section className="card p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-5"><div><h2 className="text-lg font-bold text-slate-900">Contest holati</h2><p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-500">Draft paytida <strong>Sinov rejimi</strong> faqat sizga ochiladi: e’lon qilinmaydi, qatnashuvchi yaratmaydi va ratingga ta’sir qilmaydi. E’lon qilingan contestning jadvali va tafsilotlarini ham boshlanishidan oldin yangilash mumkin.</p>{englishExam && currentContest.status === 'Finished' && ungradedWritingCount > 0 && <p className="mt-2 text-xs font-semibold text-sun-700">{ungradedWritingCount} ta writing hali baholanmagan. Reyting va yakuniy natijalar shu baholar kiritilguncha kutadi.</p>}{currentContest.type === 'Rated' && !adminAccess && <p className="mt-2 text-xs font-medium text-slate-500">Rated contest natijasini yakunlash admin tasdiqlovini talab qiladi.</p>}</div><div className="flex flex-wrap gap-2">{!currentContest.isPublished && !currentContest.archivedAt && <Link to={`/contests/${currentContest.slug}/preview`} className="btn-ghost px-4 py-2.5 text-sm"><ClipboardList className="h-4 w-4" />Sinov rejimida ochish</Link>}{!currentContest.isPublished && !currentContest.archivedAt && <button type="button" onClick={() => void clearPreviewResponses()} disabled={isBusy} className="btn-ghost px-4 py-2.5 text-sm disabled:opacity-50"><RefreshCw className="h-4 w-4" />Sinov javoblarini tozalash</button>}{editable && !currentContest.isPublished && <button type="button" onClick={() => void publish()} disabled={questionCount === 0 || isBusy} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"><Send className="h-4 w-4" />E’lon qilish</button>}{canFinalize && <button type="button" onClick={() => void finalize()} disabled={isBusy} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"><Trophy className="h-4 w-4" />Natijani yakunlash</button>}{canReopenAfterTesting && <button type="button" onClick={() => void reopenAfterTesting()} disabled={isBusy} className="btn-ghost px-4 py-2.5 text-sm text-indigo-700 disabled:opacity-50"><RotateCcw className="h-4 w-4" />Ertaga qayta tayyorlash</button>}{editable && !currentContest.isPublished && <button type="button" onClick={() => void removeContest()} disabled={isBusy} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Trash2 className="h-4 w-4" />O‘chirish</button>}{!currentContest.archivedAt && <button type="button" onClick={() => void archive()} disabled={isBusy} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Archive className="h-4 w-4" />Arxivlash</button>}</div></div></section>
               </>
             )}
           </div>
