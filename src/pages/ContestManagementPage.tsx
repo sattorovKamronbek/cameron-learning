@@ -857,7 +857,9 @@ export function ContestManagementPage() {
   const englishExam = isEnglishExam(currentContest);
   const languageExamCount = academicContests.filter((contest) => isEnglishExam(contest)).length;
   const draftCount = academicContests.filter((contest) => !contest.isPublished && !contest.archivedAt).length;
-  const editable = Boolean(currentContest && !currentContest.isPublished && currentContest.status === 'Upcoming');
+  // A future contest can still be refined after it has been published. Once it
+  // starts, its content and schedule become immutable for participants.
+  const editable = Boolean(currentContest && !currentContest.archivedAt && currentContest.status === 'Upcoming');
   const ungradedWritingCount = writingSubmissions.filter((submission) => submission.score === null).length;
   const canFinalize = Boolean(
     currentContest
