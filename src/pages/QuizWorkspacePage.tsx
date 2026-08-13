@@ -648,11 +648,11 @@ function ListeningAudio({ source, locked }: { source: string | null; locked: boo
 
 function GapFillListeningText({ part, responses, locked, savingKey, onSave }: { part: ExamPart; responses: Record<string, GapFillResponse>; locked: boolean; savingKey: string | null; onSave: (part: ExamPart, blankNumber: number, answer: string) => void }) {
   const [drafts, setDrafts] = useState<Record<number, string>>(() => Object.fromEntries(gapFillBlankNumbers(part.content).map((blankNumber) => [blankNumber, responses[gapFillResponseKey(part.id, blankNumber)]?.answer ?? ''])));
-  const blankNumbers = gapFillBlankNumbers(part.content);
+  const blankNumbers = useMemo(() => gapFillBlankNumbers(part.content), [part.content]);
 
   useEffect(() => {
     setDrafts(Object.fromEntries(blankNumbers.map((blankNumber) => [blankNumber, responses[gapFillResponseKey(part.id, blankNumber)]?.answer ?? ''])));
-  }, [part.id, part.content, responses]);
+  }, [blankNumbers, part.id, responses]);
 
   const chunks = part.content.split(/(\{\{[1-9]\d*\}\})/g);
   return <div className="mt-6"><div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">Bo‘sh joylarni to‘ldiring</p><p className="mt-1 text-xs">Har javob bitta so‘z yoki son bo‘lishi kerak. Maydonni tark etganingizda javob avtomatik saqlanadi.</p></div><article className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 text-[15px] leading-8 text-slate-800 shadow-sm sm:p-7">{chunks.map((chunk, index) => {

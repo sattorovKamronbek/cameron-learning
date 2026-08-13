@@ -1135,7 +1135,7 @@ function ContestFormFields({ form, setForm, disabled, onSubjectChange, onSubmit,
 function CefrGapFillAnswerKeySection({ parts, answerKeys, busy, onSave, partPosition, section }: { parts: ExamPart[]; answerKeys: GapFillAnswerKey[]; busy: boolean; onSave: (partId: string, keys: GapFillAnswerKey[]) => Promise<boolean>; partPosition: 1 | 2 | 6; section: 'listening' | 'reading' }) {
   const expectedNumbers = section === 'reading' ? CEFR_READING_PART_ONE_QUESTION_POSITIONS : partPosition === 2 ? CEFR_PART_TWO_QUESTION_POSITIONS : CEFR_PART_SIX_QUESTION_POSITIONS;
   const part = parts.find((item) => item.section === section && item.position === partPosition);
-  const blankNumbers = gapFillBlankNumbers(part?.content ?? '');
+  const blankNumbers = useMemo(() => gapFillBlankNumbers(part?.content ?? ''), [part?.content]);
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -1145,7 +1145,7 @@ function CefrGapFillAnswerKeySection({ parts, answerKeys, busy, onSave, partPosi
       return [blankNumber, key?.acceptedAnswers.join(', ') ?? ''];
     })));
     setError(null);
-  }, [answerKeys, part?.id, part?.content, partPosition]); // Reset only when saved server data or the template changes.
+  }, [answerKeys, blankNumbers, part?.id, partPosition]); // Reset only when saved server data or the template changes.
 
   if (!part) return null;
   if (blankNumbers.length === 0) return <section className="card border border-dashed border-sun-300 bg-sun-50/70 p-5 sm:p-6"><p className="text-xs font-bold uppercase tracking-wider text-sun-700">CEFR · {section === 'reading' ? 'Reading' : 'Listening'} Part {partPosition}</p><h2 className="mt-1 text-lg font-bold text-slate-900">Gap-fill javob kaliti</h2><p className="mt-2 text-sm leading-relaxed text-sun-900">Part {partPosition} matniga {expectedNumbers[0]}–{expectedNumbers[expectedNumbers.length - 1]} savol raqamlarini qo‘ying: <code className="rounded bg-white px-1.5 py-0.5">{`{{${expectedNumbers[0]}}}`}</code> dan <code className="rounded bg-white px-1.5 py-0.5">{`{{${expectedNumbers[expectedNumbers.length - 1]}}}`}</code> gacha. Saqlangandan keyin shu yerda javoblarni alohida yozasiz.</p></section>;

@@ -6,7 +6,7 @@ import { checkAdminAccess } from '@/lib/security';
 import { LoadingDots } from '@/components/LoadingState';
 
 export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, resendConfirmation } = useAuth();
   const { navigate } = useRouter();
   const isSignup = mode === 'signup';
 
@@ -15,25 +15,35 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmationRequired, setConfirmationRequired] = useState(false);
+  const [confirmationNotice, setConfirmationNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resendingConfirmation, setResendingConfirmation] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setConfirmationRequired(false);
+    setConfirmationNotice(null);
     setLoading(true);
 
     if (isSignup) {
-      const { error } = await signUp(email, password, fullName || undefined);
+      const result = await signUp(email, password, fullName || undefined);
       setLoading(false);
-      if (error) {
-        setError(error);
+      if (result.error) {
+        setError(result.error);
+        setConfirmationRequired(Boolean(result.requiresEmailConfirmation));
+      } else if (result.requiresEmailConfirmation) {
+        setConfirmationRequired(true);
+        setConfirmationNotice(result.message ?? 'Hisob yaratildi. Emailingizdagi tasdiqlash xatini oching.');
       } else {
         navigate('/profile');
       }
     } else {
-      const { error } = await signIn(email, password);
-      if (error) {
-        setError(error);
+      const result = await signIn(email, password);
+      if (result.error) {
+        setError(result.error);
+        setConfirmationRequired(Boolean(result.requiresEmailConfirmation));
       } else {
         // The protected RPC remains the source of truth. A valid admin
         // credential lands directly in the console; every other active
@@ -43,6 +53,18 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
       }
       setLoading(false);
     }
+  };
+
+  const handleResendConfirmation = async () => {
+    setConfirmationNotice(null);
+    setResendingConfirmation(true);
+    const { error: resendError } = await resendConfirmation(email);
+    setResendingConfirmation(false);
+    if (resendError) {
+      setError(resendError);
+      return;
+    }
+    setConfirmationNotice('Tasdiqlash xati yuborildi. Emailning Spam papkasini ham tekshiring.');
   };
 
   return (
@@ -80,6 +102,26 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
               </div>
             )}
 
+            {confirmationRequired && (
+              <div className="mb-5 rounded-xl bg-indigo-50 p-4 ring-1 ring-indigo-200">
+                <p className="text-sm text-indigo-900">Tasdiqlash xati kelmagan bo‘lsa, uni qayta yuborishingiz mumkin.</p>
+                <button
+                  type="button"
+                  onClick={() => void handleResendConfirmation()}
+                  disabled={resendingConfirmation || !email.trim()}
+                  className="mt-3 text-sm font-semibold text-indigo-700 hover:text-indigo-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {resendingConfirmation ? 'Xat yuborilmoqda...' : 'Tasdiqlash xatini qayta yuborish'}
+                </button>
+              </div>
+            )}
+
+            {confirmationNotice && (
+              <div className="mb-5 rounded-xl bg-success-500/10 p-4 text-sm text-success-700 ring-1 ring-success-500/20">
+                {confirmationNotice}
+              </div>
+            )}
+
             {isSignup && (
               <div className="mb-4">
                 <label htmlFor="name" className="mb-1.5 block text-sm font-semibold text-slate-700">
@@ -109,6 +151,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
                   id="email"
                   type="email"
                   required
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
@@ -128,6 +171,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
                   type={showPassword ? 'text' : 'password'}
                   required
                   minLength={6}
+                  autoComplete={isSignup ? 'new-password' : 'current-password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder={isSignup ? 'At least 6 characters' : 'Your password'}
