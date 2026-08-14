@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ClipboardList,
   Clock,
+  Highlighter,
   ListChecks,
   Loader2,
   Maximize2,
@@ -19,17 +20,20 @@ import {
   Save,
   Send,
   ShieldAlert,
+  StickyNote,
+  X,
 } from 'lucide-react';
 import { Link } from '@/router';
 import { LoadingState } from '@/components/LoadingState';
 import {
   completeEnglishExam,
-  completeListeningSection,
+  completeExamSection,
   clearContestAnswer,
   clearContestPreviewAnswer,
   endContestAttempt,
   fetchContestPreviewWorkspace,
   fetchContestWorkspace,
+  fetchReadingAnnotations,
   formatContestDuration,
   saveCefrPreviewGapFillResponse,
   saveCefrPreviewMatchingResponse,
@@ -37,6 +41,7 @@ import {
   saveCefrMatchingResponse,
   saveContestPreviewWritingResponse,
   saveExamWritingResponse,
+  saveReadingAnnotation,
   submitContestPreviewAnswer,
   submitContestPreviewTextAnswer,
   submitContestAnswer,
@@ -50,6 +55,8 @@ import {
   type GapFillResponse,
   type MatchingResponse,
   type MatchingWorkspaceConfig,
+  type ReadingAnnotation,
+  type ReadingHighlight,
   type WritingResponse,
 } from '@/lib/contests';
 import { requestContestFullscreen } from '@/lib/contest-integrity';
@@ -73,11 +80,21 @@ function gapFillBlankNumbers(content: string): number[] {
 
 const IELTS_LISTENING_PART_ONE_GAP_FILL_POSITIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 const IELTS_LISTENING_PART_FOUR_GAP_FILL_POSITIONS = [31, 32, 33, 34, 35, 36, 37, 38, 39, 40] as const;
-const IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS = [48, 49, 50, 51, 52, 53] as const;
-const IELTS_READING_PASSAGE_TWO_HEADING_POSITIONS = [54, 55, 56, 57, 58, 59, 60] as const;
-const IELTS_READING_PASSAGE_TWO_GAP_FILL_POSITIONS = [61, 62, 63, 64] as const;
-const IELTS_READING_PASSAGE_TWO_TWO_ANSWER_POSITIONS = [65, 66] as const;
+// Reading restarts at 1 independently from Listening. Each question is
+// attached to a part, so matching 1–40 sequences cannot collide.
+const IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS = [8, 9, 10, 11, 12, 13] as const;
+const IELTS_READING_PASSAGE_TWO_HEADING_POSITIONS = [14, 15, 16, 17, 18, 19, 20] as const;
+const IELTS_READING_PASSAGE_TWO_GAP_FILL_POSITIONS = [21, 22, 23, 24] as const;
+const IELTS_READING_PASSAGE_TWO_TWO_ANSWER_POSITIONS = [25, 26] as const;
 const IELTS_READING_PASSAGE_TWO_STRUCTURED_PREFIX = 'IELTS_READING_PASSAGE_TWO_STRUCTURED\n';
+const IELTS_READING_PASSAGE_THREE_TFNG_POSITIONS = [27, 28, 29, 30, 31] as const;
+const IELTS_READING_PASSAGE_THREE_SUMMARY_POSITIONS = [32, 33, 34] as const;
+const IELTS_READING_PASSAGE_THREE_A_TO_F_POSITIONS = [35, 36, 37] as const;
+const IELTS_READING_PASSAGE_THREE_PARAGRAPH_POSITIONS = [38, 39, 40] as const;
+const IELTS_READING_PASSAGE_THREE_STRUCTURED_PREFIX = 'IELTS_READING_PASSAGE_THREE_STRUCTURED\n';
+const IELTS_ROMAN_HEADINGS = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix'] as const;
+const IELTS_READING_PASSAGE_THREE_OPTION_LABELS = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
+const IELTS_READING_PASSAGE_THREE_PARAGRAPH_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] as const;
 const IELTS_LISTENING_PART_TWO_SUMMARY_POSITIONS = [13, 14] as const;
 const IELTS_LISTENING_PART_TWO_ACTIVITY_POSITIONS = [15, 16, 17, 18] as const;
 const IELTS_LISTENING_PART_TWO_TWO_ANSWER_POSITIONS = [19, 20] as const;
@@ -115,10 +132,14 @@ function isIeltsReadingPassageTwoStructured(content: string): boolean {
   return content.startsWith(IELTS_READING_PASSAGE_TWO_STRUCTURED_PREFIX);
 }
 
+function isIeltsReadingPassageThreeStructured(content: string): boolean {
+  return content.startsWith(IELTS_READING_PASSAGE_THREE_STRUCTURED_PREFIX);
+}
+
 function ieltsReadingPassageContent(content: string): string {
-  return isIeltsReadingPassageTwoStructured(content)
-    ? content.slice(IELTS_READING_PASSAGE_TWO_STRUCTURED_PREFIX.length)
-    : content;
+  if (isIeltsReadingPassageTwoStructured(content)) return content.slice(IELTS_READING_PASSAGE_TWO_STRUCTURED_PREFIX.length);
+  if (isIeltsReadingPassageThreeStructured(content)) return content.slice(IELTS_READING_PASSAGE_THREE_STRUCTURED_PREFIX.length);
+  return content;
 }
 
 function matchingResponseKey(partId: string, speakerNumber: number): string {
@@ -126,6 +147,9 @@ function matchingResponseKey(partId: string, speakerNumber: number): string {
 }
 
 const PREVIEW_SESSION_KEY_PREFIX = 'exam-preview-session:';
+const PREVIEW_SECTION_COMPLETIONS_KEY_PREFIX = 'exam-preview-section-completions:';
+
+type PreviewSectionCompletions = Partial<Record<ExamSection, number>>;
 
 function previewSessionStartedAt(contestId: string): number {
   const now = Date.now();
@@ -140,16 +164,33 @@ function previewSessionStartedAt(contestId: string): number {
   return now;
 }
 
-function previewExamTiming(timings: ExamSectionTimings, startedAt: number, now: number): ActiveExamTiming {
+function previewSectionCompletions(contestId: string): PreviewSectionCompletions {
+  try {
+    const raw = window.sessionStorage.getItem(`${PREVIEW_SECTION_COMPLETIONS_KEY_PREFIX}${contestId}`);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return Object.fromEntries(
+      (['listening', 'reading', 'writing'] as const)
+        .filter((section) => typeof parsed[section] === 'number' && Number.isFinite(parsed[section]))
+        .map((section) => [section, parsed[section] as number]),
+    ) as PreviewSectionCompletions;
+  } catch {
+    return {};
+  }
+}
+
+function previewExamTiming(timings: ExamSectionTimings, startedAt: number, now: number, completions: PreviewSectionCompletions = {}): ActiveExamTiming {
   const listeningStartsAt = startedAt;
-  const readingStartsAt = listeningStartsAt + timings.listeningMinutes * 60_000;
-  const writingStartsAt = readingStartsAt + timings.readingMinutes * 60_000;
+  const listeningEndsAt = completions.listening ?? listeningStartsAt + timings.listeningMinutes * 60_000;
+  const readingStartsAt = listeningEndsAt;
+  const readingEndsAt = completions.reading ?? readingStartsAt + timings.readingMinutes * 60_000;
+  const writingStartsAt = readingEndsAt;
   const activeSection: ExamSection = now < readingStartsAt ? 'listening' : now < writingStartsAt ? 'reading' : 'writing';
   const sectionStartsAt = activeSection === 'listening' ? listeningStartsAt : activeSection === 'reading' ? readingStartsAt : writingStartsAt;
   const sectionEndsAt = activeSection === 'listening'
-    ? readingStartsAt
+    ? listeningEndsAt
     : activeSection === 'reading'
-      ? writingStartsAt
+      ? readingEndsAt
       : writingStartsAt + timings.writingMinutes * 60_000;
 
   return {
@@ -241,6 +282,9 @@ export function QuizWorkspacePage({ slug, preview = false }: { slug: string; pre
 
   if (loading) return <LoadingState className="min-h-screen" message="Contest yuklanmoqda" />;
   if (!workspace) {
+    if (!preview && /contest has finished/i.test(error ?? '')) {
+      return <ContestFinishedScreen contestTitle={slug} />;
+    }
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
         <div className="card max-w-lg p-8 text-center">
@@ -258,12 +302,20 @@ export function QuizWorkspacePage({ slug, preview = false }: { slug: string; pre
   }
 
   if (!question) {
+    const contestHasNotStarted = Boolean(workspace) && new Date(workspace.contest.startTime).getTime() > now;
+    const contestHasNoQuestions = Boolean(workspace) && workspace.questions.length === 0;
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
         <div className="card max-w-lg p-8 text-center">
           <ListChecks className="mx-auto h-10 w-10 text-slate-400" />
-          <h1 className="mt-4 text-xl font-bold text-slate-900">Savollar mavjud emas</h1>
-          <p className="mt-2 text-sm text-slate-500">Bu contest uchun savollar e’lon qilinmagan.</p>
+          <h1 className="mt-4 text-xl font-bold text-slate-900">{contestHasNotStarted ? 'Contest hali boshlanmagan' : 'Savollar mavjud emas'}</h1>
+          <p className="mt-2 text-sm leading-relaxed text-slate-500">
+            {contestHasNotStarted
+              ? 'Bu contestning boshlanish vaqti kelmagan. Savollar vaqt kelganda paydo bo‘ladi.'
+              : contestHasNoQuestions
+                ? 'Bu contest uchun savollar saqlanmagan yoki ma’lumotlar to‘liq kelmagan. Adminga murojaat qiling.'
+                : 'Bu contest uchun savollar e’lon qilinmagan.'}
+          </p>
           <Link to={preview ? '/contest-management' : `/contests/${slug}`} className="btn-primary mt-6">{preview ? 'Contest boshqaruviga qaytish' : 'Contest sahifasiga qaytish'}</Link>
         </div>
       </div>
@@ -394,15 +446,19 @@ function EnglishExamWorkspace({ workspace, now, onRefresh, preview = false, prev
   const [matchingResponses, setMatchingResponses] = useState<Record<string, MatchingResponse>>(workspace.matchingResponses);
   const [writingResponses, setWritingResponses] = useState<Record<string, WritingResponse>>(workspace.writingResponses);
   const [drafts, setDrafts] = useState<Record<string, string>>(() => Object.fromEntries(workspace.parts.filter((part) => part.section === 'writing').map((part) => [part.id, workspace.writingResponses[part.id]?.content ?? ''])));
+  const [readingAnnotations, setReadingAnnotations] = useState<Record<string, ReadingAnnotation>>({});
+  const [readingAnnotationsLoading, setReadingAnnotationsLoading] = useState(false);
+  const [savingReadingAnnotationPartId, setSavingReadingAnnotationPartId] = useState<string | null>(null);
   const [currentPartIndex, setCurrentPartIndex] = useState(0);
   const [showNavigator, setShowNavigator] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [completed, setCompleted] = useState(Boolean(workspace.contest.completedAt));
+  const [previewCompletions, setPreviewCompletions] = useState<PreviewSectionCompletions>(() => preview ? previewSectionCompletions(workspace.contest.id) : {});
+  const [completed, setCompleted] = useState(() => Boolean(workspace.contest.completedAt) || Boolean(preview && previewCompletions.writing));
   const [completing, setCompleting] = useState(false);
 
   const sectionTiming = preview
-    ? previewTiming && previewStartedAt ? previewExamTiming(previewTiming, previewStartedAt, now) : null
+    ? previewTiming && previewStartedAt ? previewExamTiming(previewTiming, previewStartedAt, now, previewCompletions) : null
     : workspace.examTiming;
   const activeSection = sectionTiming?.activeSection;
   const visibleParts = useMemo(
@@ -410,6 +466,17 @@ function EnglishExamWorkspace({ workspace, now, onRefresh, preview = false, prev
     [activeSection, workspace.parts],
   );
   const visiblePartSignature = visibleParts.map((item) => item.id).join(':');
+  useEffect(() => {
+    if (!preview) return;
+    try {
+      window.sessionStorage.setItem(
+        `${PREVIEW_SECTION_COMPLETIONS_KEY_PREFIX}${workspace.contest.id}`,
+        JSON.stringify(previewCompletions),
+      );
+    } catch {
+      // A preview remains functional when session storage is unavailable.
+    }
+  }, [preview, previewCompletions, workspace.contest.id]);
   useEffect(() => {
     // The server deliberately reveals one IELTS section at a time. Reset the
     // part navigator when its data changes so Part 4 of Listening cannot point
@@ -424,6 +491,13 @@ function EnglishExamWorkspace({ workspace, now, onRefresh, preview = false, prev
   }, [visiblePartSignature, visibleParts, workspace.answers, workspace.gapFillResponses, workspace.matchingResponses, workspace.textAnswers, workspace.writingResponses]);
 
   const part = visibleParts[currentPartIndex] ?? null;
+  const sharedIeltsListeningAudio = useMemo(() => {
+    if (workspace.contest.subjectSlug !== 'ielts') return null;
+    return workspace.parts
+      .filter((item) => item.section === 'listening')
+      .sort((left, right) => left.position - right.position)
+      .find((item) => Boolean(item.audioUrl?.trim()))?.audioUrl ?? null;
+  }, [workspace.contest.subjectSlug, workspace.parts]);
   const previewEndsAt = preview && previewTiming && previewStartedAt
     ? previewStartedAt + (previewTiming.listeningMinutes + previewTiming.readingMinutes + previewTiming.writingMinutes) * 60_000
     : null;
@@ -444,16 +518,30 @@ function EnglishExamWorkspace({ workspace, now, onRefresh, preview = false, prev
   const urgent = sectionRemaining > 0 && sectionRemaining < 5 * 60 * 1000;
   const isWritingSection = sectionTiming?.activeSection === 'writing' || part?.section === 'writing';
   const isListeningSection = sectionTiming?.activeSection === 'listening' || part?.section === 'listening';
-  const hasIeltsFullListeningAudio = workspace.contest.subjectSlug === 'ielts' && isListeningSection;
-  const ieltsFullListeningAudio = hasIeltsFullListeningAudio
-    ? visibleParts.find((item) => item.section === 'listening' && item.position === 1)?.audioUrl ?? null
-    : null;
+  const isReadingSection = sectionTiming?.activeSection === 'reading' || part?.section === 'reading';
 
   useEffect(() => {
     if (preview || !sectionTiming || !sectionEnded || contestEnded || completed) return;
     const timeout = window.setTimeout(() => { void onRefresh(); }, 800);
     return () => window.clearTimeout(timeout);
   }, [completed, contestEnded, onRefresh, preview, sectionEnded, sectionTiming]);
+
+  useEffect(() => {
+    if (!isReadingSection || sectionEnded || contestEnded || completed) return;
+    let cancelled = false;
+    setReadingAnnotationsLoading(true);
+    void fetchReadingAnnotations(workspace.contest.id)
+      .then((next) => {
+        if (!cancelled) setReadingAnnotations(next);
+      })
+      .catch((reason) => {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : 'Reading eslatmalari yuklanmadi.');
+      })
+      .finally(() => {
+        if (!cancelled) setReadingAnnotationsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [completed, contestEnded, isReadingSection, sectionEnded, workspace.contest.id]);
 
   const saveAnswer = async (questionId: string, selectedOption: number) => {
     if (locked || savingKey) return;
@@ -596,8 +684,41 @@ function EnglishExamWorkspace({ workspace, now, onRefresh, preview = false, prev
     }
   };
 
-  const completeExam = async () => {
-    if (preview || locked || completing) return;
+  const persistReadingAnnotation = async (examPart: ExamPart, note: string, highlights: ReadingHighlight[]) => {
+    if (locked || savingReadingAnnotationPartId) return;
+    const previous = readingAnnotations[examPart.id];
+    const next: ReadingAnnotation = {
+      partId: examPart.id,
+      note,
+      highlights,
+      updatedAt: new Date().toISOString(),
+    };
+    setReadingAnnotations((current) => ({ ...current, [examPart.id]: next }));
+    setSavingReadingAnnotationPartId(examPart.id);
+    setError(null);
+    try {
+      const saved = await saveReadingAnnotation(examPart.id, note, highlights);
+      setReadingAnnotations((current) => {
+        const updated = { ...current };
+        if (!saved.note && saved.highlights.length === 0) delete updated[examPart.id];
+        else updated[examPart.id] = saved.partId ? saved : next;
+        return updated;
+      });
+    } catch (reason) {
+      setReadingAnnotations((current) => {
+        const restored = { ...current };
+        if (previous) restored[examPart.id] = previous;
+        else delete restored[examPart.id];
+        return restored;
+      });
+      setError(reason instanceof Error ? reason.message : 'Reading eslatmasi saqlanmadi.');
+    } finally {
+      setSavingReadingAnnotationPartId(null);
+    }
+  };
+
+  const completeWriting = async () => {
+    if (locked || completing) return;
     if (!isWritingSection || !allComplete) {
       setError('Writing bo‘limidagi barcha javoblarni yuboring. Oldingi bo‘limlardagi javoblar ham serverda saqlangan bo‘lishi kerak.');
       return;
@@ -606,7 +727,11 @@ function EnglishExamWorkspace({ workspace, now, onRefresh, preview = false, prev
     setCompleting(true);
     setError(null);
     try {
-      await completeEnglishExam(workspace.contest.id);
+      if (preview) {
+        setPreviewCompletions((current) => ({ ...current, writing: Date.now() }));
+      } else {
+        await completeEnglishExam(workspace.contest.id);
+      }
       setCompleted(true);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Imtihonni yakunlab bo‘lmadi.');
@@ -615,20 +740,33 @@ function EnglishExamWorkspace({ workspace, now, onRefresh, preview = false, prev
     }
   };
 
-  const completeListening = async () => {
-    if (preview || locked || completing || !isListeningSection) return;
-    if (!window.confirm('Listening bo‘limini hozir yakunlaysizmi? Reading ochiladi va Listeningga qaytib bo‘lmaydi.')) return;
+  const completeSection = async (section: 'listening' | 'reading') => {
+    if (locked || completing || (section === 'listening' ? !isListeningSection : !isReadingSection)) return;
+    const nextSection = section === 'listening' ? 'Reading' : 'Writing';
+    if (!window.confirm(`${section === 'listening' ? 'Listening' : 'Reading'} bo‘limini hozir yakunlaysizmi? ${nextSection} ochiladi va bu bo‘limga qaytib bo‘lmaydi.`)) return;
     setCompleting(true);
     setError(null);
     try {
-      await completeListeningSection(workspace.contest.id);
-      await onRefresh();
+      if (preview) {
+        setPreviewCompletions((current) => ({ ...current, [section]: Date.now() }));
+      } else {
+        await completeExamSection(workspace.contest.id, section);
+        await onRefresh();
+      }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Listening bo‘limini yakunlab bo‘lmadi.');
+      setError(reason instanceof Error ? reason.message : `${section === 'listening' ? 'Listening' : 'Reading'} bo‘limini yakunlab bo‘lmadi.`);
     } finally {
       setCompleting(false);
     }
   };
+
+  if (completed || contestEnded) {
+    return <EnglishExamFinishedScreen
+      preview={preview}
+      contestTitle={workspace.contest.title}
+      completed={completed}
+    />;
+  }
 
   if (!part) {
     return <div className="flex min-h-screen items-center justify-center bg-slate-100 p-6"><div className="card max-w-lg p-8 text-center"><AlertCircle className="mx-auto h-10 w-10 text-error-500" /><h1 className="mt-4 text-xl font-bold text-slate-900">Exam partlari topilmadi</h1><Link to={preview ? '/contest-management' : `/contests/${workspace.contest.slug}`} className="btn-primary mt-6">{preview ? 'Contest boshqaruviga qaytish' : 'Contest sahifasiga qaytish'}</Link></div></div>;
@@ -647,7 +785,7 @@ function EnglishExamWorkspace({ workspace, now, onRefresh, preview = false, prev
         <button type="button" onClick={() => setShowNavigator((current) => !current)} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700">{showNavigator ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}<span className="hidden lg:inline">Partlar</span></button>
       </header>
 
-      <div className="flex min-h-0 flex-1"><main className="min-w-0 flex-1 overflow-y-auto bg-white"><div className="mx-auto max-w-4xl p-5 sm:p-8"><div className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{preview ? 'Sinov rejimi' : 'Hozirgi bo‘lim'}</p><p className="mt-1 text-sm font-bold text-slate-900">{sectionTiming ? `${examSectionLabel(sectionTiming.activeSection)} uchun ${sectionMinutes(sectionTiming)} minut` : `${examSectionLabel(part.section)} bo‘limi`}</p></div><p className="text-xs leading-relaxed text-slate-600">{preview ? 'Bu test faqat sizning akkauntingizda saqlanadi. Bo‘limlar va vaqt limiti haqiqiy imtihon oqimidek ishlaydi, lekin contest e’lon qilinmaydi va ratingga kirmaydi.' : isListeningSection ? 'Listeningni vaqt tugashini kutmasdan yakunlashingiz mumkin. Yakunlangandan keyin u qayta ochilmaydi.' : 'Bo‘lim vaqti tugashi bilan keyingi bo‘lim avtomatik ochiladi. Oldingi bo‘limga qaytib bo‘lmaydi.'}</p></div></div><div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-sm font-bold text-white">{part.position}</span><div><p className="text-sm font-bold text-slate-900">{examSectionLabel(part.section)} · Part {ieltsPartNumber(workspace.contest.subjectSlug, part)} / {visibleParts.length}</p><p className="text-xs text-slate-400">{answeredCount} ta test javobi · {submittedWritingCount} ta writing yuborilgan</p></div></div><div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><div className="h-2 w-28 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${progress}%` }} /></div>{progress}%</div></div>
+      <div className="flex min-h-0 flex-1"><main className="min-w-0 flex-1 overflow-y-auto bg-white"><div className="mx-auto max-w-4xl p-5 sm:p-8"><div className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{preview ? 'Sinov rejimi' : 'Hozirgi bo‘lim'}</p><p className="mt-1 text-sm font-bold text-slate-900">{sectionTiming ? `${examSectionLabel(sectionTiming.activeSection)} uchun ${sectionMinutes(sectionTiming)} minut` : `${examSectionLabel(part.section)} bo‘limi`}</p></div><p className="text-xs leading-relaxed text-slate-600">{preview ? 'Listening tugagach Reading, Reading tugagach Writing avtomatik ochiladi. Writing vaqti yakunlanganda sinov ham yakunlanadi.' : isListeningSection ? 'Listeningni vaqt tugashini kutmasdan yakunlashingiz mumkin. Yakunlangandan keyin Reading ochiladi va Listening qayta ochilmaydi.' : isReadingSection ? 'Reading vaqti tugashi bilan Writing avtomatik ochiladi. Oldingi bo‘limga qaytib bo‘lmaydi.' : 'Writing vaqti tugashi bilan imtihon yopiladi. Saqlangan javoblarni faqat organizer tekshiradi.'}</p></div></div><div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-sm font-bold text-white">{part.position}</span><div><p className="text-sm font-bold text-slate-900">{examSectionLabel(part.section)} · Part {ieltsPartNumber(workspace.contest.subjectSlug, part)} / {visibleParts.length}</p><p className="text-xs text-slate-400">{answeredCount} ta test javobi · {submittedWritingCount} ta writing yuborilgan</p></div></div><div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><div className="h-2 w-28 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${progress}%` }} /></div>{progress}%</div></div>
 
         {preview && <ExamNotice kind="success" title="Sinov rejimi faol">Bu test faqat sizning akkauntingizda saqlanadi. Contest e’lon qilinmaydi va ratingga kirmaydi.</ExamNotice>}
         {contestEnded && <ExamNotice kind="error" title="Imtihon vaqti tugadi">Yangi javob qabul qilinmaydi. Saqlangan javoblar organizer tomonidan yakunlanadi.</ExamNotice>}
@@ -656,14 +794,18 @@ function EnglishExamWorkspace({ workspace, now, onRefresh, preview = false, prev
         {error && <ExamNotice kind="error" title="Amal bajarilmadi">{error}</ExamNotice>}
 
         <section className="card overflow-hidden"><div className="border-b border-slate-100 p-6 sm:p-8"><div className="flex items-start gap-4"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-700">{part.section === 'listening' ? <Mic2 className="h-5 w-5" /> : part.section === 'reading' ? <BookOpen className="h-5 w-5" /> : <PenLine className="h-5 w-5" />}</span><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{examSectionLabel(part.section)}</p><h1 className="mt-1 text-xl font-bold text-slate-900">{part.title}</h1>{part.instructions && <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{part.instructions}</p>}</div></div></div>
-          <div className="p-6 sm:p-8">{hasIeltsFullListeningAudio && <ListeningAudio source={ieltsFullListeningAudio} locked={locked} fullListening />}{part.section === 'listening' ? <ListeningPart part={part} questions={partQuestions} answers={answers} textAnswers={textAnswers} gapFillResponses={gapFillResponses} matchingConfig={workspace.matchingConfigs[part.id]} matchingResponses={matchingResponses} locked={locked} savingKey={savingKey} audioOnly={workspace.contest.subjectSlug === 'cefr' && part.position === 1} gapFill={workspace.contest.subjectSlug === 'cefr' && (part.position === 2 || part.position === 6)} matching={workspace.contest.subjectSlug === 'cefr' && (part.position === 3 || part.position === 4)} mapMatching={workspace.contest.subjectSlug === 'cefr' && part.position === 4} extractQuestions={workspace.contest.subjectSlug === 'cefr' && part.position === 5} ieltsSharedGapFill={workspace.contest.subjectSlug === 'ielts' && part.position === 1} ieltsSharedGapFillPartFour={workspace.contest.subjectSlug === 'ielts' && part.position === 4} ieltsStructuredPartTwo={workspace.contest.subjectSlug === 'ielts' && part.position === 2} ieltsStructuredPartThree={workspace.contest.subjectSlug === 'ielts' && part.position === 3} showAudio={workspace.contest.subjectSlug !== 'ielts'} onAnswer={saveAnswer} onClearAnswer={clearAnswer} onTextSave={saveTextAnswer} onGapFillSave={saveGapFill} onMatchingSave={saveMatching} /> : part.section === 'reading' ? <ReadingPart part={part} questions={partQuestions} answers={answers} textAnswers={textAnswers} gapFillResponses={gapFillResponses} matchingConfig={workspace.matchingConfigs[part.id]} matchingResponses={matchingResponses} cefrExam={workspace.contest.subjectSlug === 'cefr'} locked={locked} savingKey={savingKey} onAnswer={saveAnswer} onClearAnswer={clearAnswer} onTextSave={saveTextAnswer} onGapFillSave={saveGapFill} onMatchingSave={saveMatching} /> : <WritingPart part={part} draft={drafts[part.id] ?? ''} response={writingResponses[part.id]} locked={locked} saving={savingKey === `writing:${part.id}`} ieltsTask={workspace.contest.subjectSlug === 'ielts' ? (part.position === 8 ? 1 : 2) : null} onChange={(value) => setDrafts((current) => ({ ...current, [part.id]: value }))} onSave={() => void saveWriting(part, false)} onSubmit={() => void saveWriting(part, true)} />}</div>
+          <div className="p-6 sm:p-8">{part.section === 'listening' ? <ListeningPart part={part} audioSource={workspace.contest.subjectSlug === 'ielts' ? sharedIeltsListeningAudio : part.audioUrl} questions={partQuestions} answers={answers} textAnswers={textAnswers} gapFillResponses={gapFillResponses} matchingConfig={workspace.matchingConfigs[part.id]} matchingResponses={matchingResponses} locked={locked} savingKey={savingKey} audioOnly={workspace.contest.subjectSlug === 'cefr' && part.position === 1} gapFill={workspace.contest.subjectSlug === 'cefr' && (part.position === 2 || part.position === 6)} matching={workspace.contest.subjectSlug === 'cefr' && (part.position === 3 || part.position === 4)} mapMatching={workspace.contest.subjectSlug === 'cefr' && part.position === 4} extractQuestions={workspace.contest.subjectSlug === 'cefr' && part.position === 5} ieltsExam={workspace.contest.subjectSlug === 'ielts'} ieltsSharedGapFill={workspace.contest.subjectSlug === 'ielts' && part.position === 1} ieltsSharedGapFillPartFour={workspace.contest.subjectSlug === 'ielts' && part.position === 4} ieltsStructuredPartTwo={workspace.contest.subjectSlug === 'ielts' && part.position === 2} ieltsStructuredPartThree={workspace.contest.subjectSlug === 'ielts' && part.position === 3} showAudio onAnswer={saveAnswer} onClearAnswer={clearAnswer} onTextSave={saveTextAnswer} onGapFillSave={saveGapFill} onMatchingSave={saveMatching} /> : part.section === 'reading' ? <ReadingPart part={part} questions={partQuestions} answers={answers} textAnswers={textAnswers} gapFillResponses={gapFillResponses} matchingConfig={workspace.matchingConfigs[part.id]} matchingResponses={matchingResponses} annotation={readingAnnotations[part.id]} annotationsLoading={readingAnnotationsLoading} annotationSaving={savingReadingAnnotationPartId === part.id} cefrExam={workspace.contest.subjectSlug === 'cefr'} locked={locked} savingKey={savingKey} onAnswer={saveAnswer} onClearAnswer={clearAnswer} onTextSave={saveTextAnswer} onGapFillSave={saveGapFill} onMatchingSave={saveMatching} onSaveAnnotation={persistReadingAnnotation} /> : <WritingPart part={part} draft={drafts[part.id] ?? ''} response={writingResponses[part.id]} locked={locked} saving={savingKey === `writing:${part.id}`} ieltsTask={workspace.contest.subjectSlug === 'ielts' ? (part.position === 8 ? 1 : 2) : null} onChange={(value) => setDrafts((current) => ({ ...current, [part.id]: value }))} onSave={() => void saveWriting(part, false)} onSubmit={() => void saveWriting(part, true)} />}</div>
         </section>
 
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
           <button type="button" disabled={currentPartIndex === 0 || sectionEnded} onClick={() => setCurrentPartIndex((index) => Math.max(0, index - 1))} className="btn-ghost px-4 py-2.5 text-sm disabled:opacity-40"><ChevronLeft className="h-4 w-4" />Oldingi part</button>
           <div className="flex flex-wrap items-center justify-end gap-3">
-            {isListeningSection && !preview && <button type="button" disabled={locked || Boolean(savingKey) || completing} onClick={() => void completeListening()} className="btn-ghost border border-indigo-200 px-5 py-2.5 text-sm text-indigo-700 hover:bg-indigo-50 disabled:opacity-50">{completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Listeningni yakunlash</button>}
-            {currentPartIndex < visibleParts.length - 1 ? <button type="button" disabled={sectionEnded} onClick={() => setCurrentPartIndex((index) => Math.min(visibleParts.length - 1, index + 1))} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">Keyingi part<ChevronRight className="h-4 w-4" /></button> : preview ? <Link to="/contest-management" className="btn-primary px-5 py-2.5 text-sm"><CheckCircle2 className="h-4 w-4" />Sinovni yakunlash</Link> : isWritingSection ? <button type="button" disabled={locked || !allComplete || completing} onClick={() => void completeExam()} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">{completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{completed ? 'Yuborilgan' : 'Imtihonni yakunlash'}</button> : !isListeningSection && <div className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-500">Keyingi bo‘lim vaqt tugaganda ochiladi</div>}
+            {(isListeningSection || isReadingSection) && <button type="button" disabled={locked || !allComplete || Boolean(savingKey) || completing} onClick={() => void completeSection(isListeningSection ? 'listening' : 'reading')} className="btn-ghost border border-indigo-200 px-5 py-2.5 text-sm text-indigo-700 hover:bg-indigo-50 disabled:opacity-50">{completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{isListeningSection ? 'Listeningni yakunlash' : 'Readingni yakunlash'}</button>}
+            {currentPartIndex < visibleParts.length - 1
+              ? <button type="button" disabled={sectionEnded} onClick={() => setCurrentPartIndex((index) => Math.min(visibleParts.length - 1, index + 1))} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">Keyingi part<ChevronRight className="h-4 w-4" /></button>
+              : isWritingSection
+                ? <button type="button" disabled={locked || !allComplete || completing} onClick={() => void completeWriting()} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">{completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{preview ? 'Writingni yakunlash' : completed ? 'Yuborilgan' : 'Writingni yakunlash'}</button>
+                : <div className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-500">Bo‘limni yakunlasangiz, keyingisi ochiladi</div>}
           </div>
         </div>
       </div></main>
@@ -704,10 +846,43 @@ function ExamNotice({ kind, title, children }: { kind: 'error' | 'success'; titl
   return <div role={kind === 'error' ? 'alert' : 'status'} className={`mb-5 flex items-start gap-3 rounded-2xl border p-4 text-sm ${kind === 'error' ? 'border-error-200 bg-error-50 text-error-800' : 'border-success-200 bg-success-50 text-success-800'}`}><Icon className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-bold">{title}</p><p className="mt-1">{children}</p></div></div>;
 }
 
+function EnglishExamFinishedScreen({ preview, contestTitle, completed }: { preview: boolean; contestTitle?: string; completed: boolean }) {
+  const title = preview ? 'Sinov yakunlandi' : completed ? 'Imtihon topshirildi' : 'Imtihon vaqti tugadi';
+  const description = preview
+    ? 'Listening → Reading → Writing oqimi yakunlandi. Bu sinovdagi javoblar faqat preview uchun saqlanadi; contest e’lon qilinmaydi va ratingga ta’sir qilmaydi.'
+    : completed
+      ? 'Javoblaringiz qabul qilindi va endi o‘zgarmaydi. Sizga ball yoki to‘g‘ri javoblar ko‘rsatilmaydi.'
+      : 'Vaqt tugaguncha saqlangan javoblar yopildi. Sizga ball yoki to‘g‘ri javoblar ko‘rsatilmaydi.';
+
+  return <div className="flex min-h-screen items-center justify-center bg-slate-100 p-5 sm:p-8">
+    <div className="card w-full max-w-2xl overflow-hidden text-center">
+      <div className={`px-6 py-8 sm:px-10 ${preview ? 'bg-sun-50' : 'bg-success-50'}`}>
+        <span className={`mx-auto flex h-14 w-14 items-center justify-center rounded-2xl ${preview ? 'bg-sun-100 text-sun-700' : 'bg-success-100 text-success-700'}`}><CheckCircle2 className="h-7 w-7" /></span>
+        <p className={`mt-5 text-xs font-bold uppercase tracking-wider ${preview ? 'text-sun-700' : 'text-success-700'}`}>{contestTitle ?? 'English exam'}</p>
+        <h1 className="mt-2 text-2xl font-bold text-slate-900">{title}</h1>
+        <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-slate-600">{description}</p>
+      </div>
+      <div className="p-6 text-left sm:p-8">
+        <div className="grid gap-3 sm:grid-cols-3">
+          {(['Listening', 'Reading', 'Writing'] as const).map((section) => <div key={section} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700"><CheckCircle2 className="h-4 w-4 text-success-600" />{section}</div>)}
+        </div>
+        {!preview && <div className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-sm leading-relaxed text-indigo-950"><p className="font-bold">Natijalar tekshiruvdan keyin e’lon qilinadi</p><p className="mt-1">Listening va Reading serverda saqlangan. Writing javoblarini admin tekshiradi; faqat administrator yakuniy baholashni tugatgach, natija va reyting paydo bo‘ladi.</p></div>}
+        <div className="mt-6 flex justify-center"><Link to={preview ? '/contest-management' : '/contests'} className="btn-primary px-5 py-2.5 text-sm">{preview ? 'Contest boshqaruviga qaytish' : 'Contestlar sahifasiga qaytish'}</Link></div>
+      </div>
+    </div>
+  </div>;
+}
+
+function ContestFinishedScreen({ contestTitle }: { contestTitle: string }) {
+  return <div className="flex min-h-screen items-center justify-center bg-slate-100 p-5 sm:p-8"><div className="card w-full max-w-xl p-8 text-center sm:p-10"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-success-50 text-success-700"><CheckCircle2 className="h-7 w-7" /></span><p className="mt-5 text-xs font-bold uppercase tracking-wider text-success-700">{contestTitle}</p><h1 className="mt-2 text-2xl font-bold text-slate-900">Contest vaqti tugadi</h1><p className="mt-3 text-sm leading-relaxed text-slate-600">Saqlangan javoblar yopildi. Ball va to‘g‘ri javoblar qatnashchiga ko‘rsatilmaydi; organizer yakuniy tekshiruvni tugatgach natija e’lon qilinadi.</p><Link to="/contests" className="btn-primary mt-6 px-5 py-2.5 text-sm">Contestlar sahifasiga qaytish</Link></div></div>;
+}
+
 /**
  * Browser APIs cannot prevent an OS-level app switch, but this guard detects
- * it as soon as the contest tab is hidden or focused again.  The server-side
- * end-contest RPC then makes the resulting lock durable across refreshes.
+ * it as soon as the contest tab is hidden or focused again. We intentionally
+ * avoid the native beforeunload blocker here because it produces the browser's
+ * "leave this page?" prompt during normal fullscreen exits, while the server-side
+ * end-contest RPC still makes the resulting lock durable across refreshes.
  */
 function ContestIntegrityGuard({ active, contestId, onAttemptEnded }: { active: boolean; contestId: string; onAttemptEnded: () => void }) {
   const [notice, setNotice] = useState<'fullscreen' | 'away' | null>(null);
@@ -775,22 +950,15 @@ function ContestIntegrityGuard({ active, contestId, onAttemptEnded }: { active: 
         setNotice('away');
       }
     };
-    const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = '';
-    };
-
     document.addEventListener('fullscreenchange', onFullscreenChange);
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('blur', markWindowLeft);
     window.addEventListener('focus', onFocus);
-    window.addEventListener('beforeunload', onBeforeUnload);
     return () => {
       document.removeEventListener('fullscreenchange', onFullscreenChange);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('blur', markWindowLeft);
       window.removeEventListener('focus', onFocus);
-      window.removeEventListener('beforeunload', onBeforeUnload);
     };
   }, [active, enterFullscreen]);
 
@@ -856,13 +1024,121 @@ function CefrReadingPartFiveMiniTexts({ questions, answers, textAnswers, locked,
   return <div className="mt-6 space-y-7"><section><div className="mb-4 rounded-2xl border border-violet-100 bg-violet-50/70 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">30–33 · Bitta kichik text</p><p className="mt-1 text-xs">Quyidagi bitta kichik textdagi barcha bo‘sh joylarni bitta so‘z bilan to‘ldiring.</p></div>{sharedText && pieces.length > 1 ? <article className="rounded-2xl border border-violet-100 bg-violet-50/35 p-5 sm:p-6"><div className="mb-4 flex items-center justify-between gap-3"><p className="text-xs font-bold uppercase tracking-wider text-violet-700">Questions 30–33</p><span className="text-xs font-semibold text-slate-500">Har biri bitta so‘z</span></div><p className="whitespace-pre-wrap text-sm leading-8 text-slate-800">{pieces.map((piece, index) => { const match = /^\{\{(30|31|32|33)\}\}$/.exec(piece); if (!match) return <span key={index}>{piece}</span>; const question = questionByPosition.get(Number(match[1])); return question ? <SharedTextBlank key={question.id} question={question} initialValue={textAnswers[question.id] ?? ''} locked={locked} saving={savingKey === `text:${question.id}`} onSave={onTextSave} /> : <span key={index} className="mx-1 rounded bg-error-100 px-2 py-1 text-xs font-bold text-error-700">{piece}</span>; })}</p><p className="mt-4 text-xs text-slate-500">Maydonni tark etganingizda javob saqlanadi.</p></article> : <div className="rounded-2xl border border-error-200 bg-error-50 p-4 text-sm text-error-800"><p className="font-bold">Kichik text hali sozlanmagan</p><p className="mt-1 text-xs leading-relaxed">Organizer 30-savolda <code>{'{{30}}'}</code> dan <code>{'{{33}}'}</code> gacha bo‘lgan barcha markerli umumiy textni saqlashi kerak.</p></div>}</section><section><div className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 text-sm leading-relaxed text-indigo-900"><p className="font-bold">34–35 · Multiple choice</p><p className="mt-1 text-xs">Har savol uchun A, B, C yoki D variantlaridan birini tanlang.</p></div><ObjectiveQuestions questions={choices} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onTextSave={onTextSave} useStoredPosition /></section></div>;
 }
 
-function IeltsReadingPassageOneSharedText({ part, questions, answers, textAnswers, locked, savingKey, onAnswer, onTextSave }: { part: ExamPart; questions: ContestWorkspace['questions']; answers: Record<string, number>; textAnswers: Record<string, string>; locked: boolean; savingKey: string | null; onAnswer: (questionId: string, option: number) => void; onTextSave: (questionId: string, value: string) => void }) {
+function InlineGapFillPassage({ content, highlights, locked, loading, saving, renderMarker, onAddHighlight }: { content: string; highlights: ReadingHighlight[]; locked: boolean; loading: boolean; saving: boolean; renderMarker: (marker: string, index: number) => ReactNode; onAddHighlight: (highlight: ReadingHighlight) => void }) {
+  const passageRef = useRef<HTMLDivElement>(null);
+  const [pendingHighlight, setPendingHighlight] = useState<ReadingHighlight | null>(null);
+  const [selectionMessage, setSelectionMessage] = useState<string | null>(null);
+
+  useEffect(() => { setPendingHighlight(null); setSelectionMessage(null); }, [content]);
+
+  const captureSelection = () => {
+    if (locked || loading || saving) return;
+    const root = passageRef.current;
+    const selection = window.getSelection();
+    if (!root || !selection || selection.rangeCount === 0 || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return;
+    const sourceElement = (node: Node): HTMLElement | null => {
+      const element = node.nodeType === Node.ELEMENT_NODE ? node as HTMLElement : node.parentElement;
+      return element?.closest<HTMLElement>('[data-reading-literal]') ?? null;
+    };
+    const startLiteral = sourceElement(range.startContainer);
+    const endLiteral = sourceElement(range.endContainer);
+    if (!startLiteral || startLiteral !== endLiteral) {
+      setSelectionMessage('Javob maydonini kesib o‘tuvchi belgi qo‘yib bo‘lmaydi. Bitta matn bo‘lagini tanlang.');
+      return;
+    }
+    const sourceStart = Number(startLiteral.dataset.readingStart);
+    if (!Number.isSafeInteger(sourceStart)) return;
+    const beforeStart = range.cloneRange();
+    beforeStart.selectNodeContents(startLiteral);
+    beforeStart.setEnd(range.startContainer, range.startOffset);
+    const beforeEnd = range.cloneRange();
+    beforeEnd.selectNodeContents(startLiteral);
+    beforeEnd.setEnd(range.endContainer, range.endOffset);
+    const rawStart = sourceStart + beforeStart.toString().length;
+    const rawEnd = sourceStart + beforeEnd.toString().length;
+    const rawQuote = content.slice(rawStart, rawEnd);
+    const leadingWhitespace = rawQuote.length - rawQuote.trimStart().length;
+    const trailingWhitespace = rawQuote.length - rawQuote.trimEnd().length;
+    const start = rawStart + leadingWhitespace;
+    const end = rawEnd - trailingWhitespace;
+    const quote = content.slice(start, end);
+    if (!quote) return;
+    if (quote.length > 800) {
+      setSelectionMessage('Bir martada 800 belgigacha bo‘lgan matnni belgilang.');
+      return;
+    }
+    if (highlights.length >= 80) {
+      setSelectionMessage('Bir passage uchun 80 tagacha belgi qo‘yish mumkin.');
+      return;
+    }
+    if (highlights.some((highlight) => start < highlight.end && end > highlight.start)) {
+      setSelectionMessage('Bu bo‘lak avvalgi belgi bilan ustma-ust keladi. Avval eski belgini o‘chiring.');
+      return;
+    }
+    setPendingHighlight({ id: createReadingHighlightId(), start, end, quote });
+    setSelectionMessage(null);
+    selection.removeAllRanges();
+  };
+
+  const chunks = content.split(/(\{\{[1-9]\d*\}\})/g);
+  let sourceOffset = 0;
+  const renderedChunks = chunks.map((chunk, index) => {
+    const start = sourceOffset;
+    sourceOffset += chunk.length;
+    if (/^\{\{[1-9]\d*\}\}$/.test(chunk)) return <span key={`marker-${index}`}>{renderMarker(chunk, index)}</span>;
+    const chunkEnd = start + chunk.length;
+    const localHighlights = highlights.filter((highlight) => highlight.start >= start && highlight.end <= chunkEnd);
+    const segments: Array<{ key: string; text: string; highlight?: ReadingHighlight }> = [];
+    let cursor = start;
+    localHighlights.forEach((highlight) => {
+      if (highlight.start > cursor) segments.push({ key: `text-${cursor}`, text: content.slice(cursor, highlight.start) });
+      segments.push({ key: highlight.id, text: highlight.quote, highlight });
+      cursor = highlight.end;
+    });
+    if (cursor < chunkEnd || segments.length === 0) segments.push({ key: `text-${cursor}`, text: content.slice(cursor, chunkEnd) });
+    return <span key={`text-${index}`} data-reading-literal data-reading-start={start} className="whitespace-pre-wrap">{segments.map((segment) => segment.highlight ? <mark key={segment.key} className="rounded bg-amber-200 px-0.5 text-inherit decoration-amber-500 decoration-2 underline-offset-2">{segment.text}</mark> : <span key={segment.key}>{segment.text}</span>)}</span>;
+  });
+
+  return <><div ref={passageRef} tabIndex={0} onMouseUp={captureSelection} onKeyUp={captureSelection} className="whitespace-pre-wrap rounded-lg outline-none focus:ring-2 focus:ring-amber-200">{renderedChunks}</div>{selectionMessage && <p className="mt-3 text-xs font-semibold text-error-700">{selectionMessage}</p>}{pendingHighlight && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs"><p className="min-w-0 flex-1 leading-relaxed text-amber-950"><span className="font-bold">Tanlangan:</span> {pendingHighlight.quote.length > 180 ? `${pendingHighlight.quote.slice(0, 180)}…` : pendingHighlight.quote}</p><div className="flex shrink-0 gap-2"><button type="button" onClick={() => setPendingHighlight(null)} className="btn-ghost bg-white px-3 py-2 text-xs">Bekor qilish</button><button type="button" disabled={saving || loading} onClick={() => { if (pendingHighlight) { onAddHighlight(pendingHighlight); setPendingHighlight(null); } }} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-amber-600 disabled:opacity-50"><Highlighter className="h-3.5 w-3.5" />Belgi qo‘yish</button></div></div>}</>;
+}
+
+function IeltsReadingPassageOneSharedText({ part, questions, answers, textAnswers, annotation, annotationsLoading, annotationSaving, locked, savingKey, onAnswer, onTextSave, onSaveAnnotation }: { part: ExamPart; questions: ContestWorkspace['questions']; answers: Record<string, number>; textAnswers: Record<string, string>; annotation: ReadingAnnotation | undefined; annotationsLoading: boolean; annotationSaving: boolean; locked: boolean; savingKey: string | null; onAnswer: (questionId: string, option: number) => void; onTextSave: (questionId: string, value: string) => void; onSaveAnnotation: (part: ExamPart, note: string, highlights: ReadingHighlight[]) => void }) {
   const sharedQuestions = questions.filter((question) => IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS.includes(question.position as typeof IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS[number])).sort((left, right) => left.position - right.position);
   const otherQuestions = questions.filter((question) => !IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS.includes(question.position as typeof IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS[number])).sort((left, right) => left.position - right.position);
   const questionByPosition = new Map(sharedQuestions.map((question) => [question.position, question]));
   const configured = sharedQuestions.length === IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS.length && sharedQuestions.every((question) => question.answerType === 'text');
-  const pieces = part.content.split(/(\{\{(?:48|49|50|51|52|53)\}\})/g);
-  return <><article className="rounded-2xl bg-slate-50 p-5 text-sm leading-7 text-slate-700 sm:p-6"><p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Reading passage</p>{configured ? <><div className="mb-5 rounded-xl border border-violet-100 bg-violet-50/70 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">Questions 48–53 · Bitta umumiy text</p><p className="mt-1 text-xs">Matndagi barcha bo‘sh joylarni to‘ldiring.</p></div><p className="whitespace-pre-wrap text-sm leading-8 text-slate-800">{pieces.map((piece, index) => { const match = /^\{\{(48|49|50|51|52|53)\}\}$/.exec(piece); if (!match) return <span key={index}>{piece}</span>; const question = questionByPosition.get(Number(match[1])); return question ? <SharedTextBlank key={question.id} question={question} initialValue={textAnswers[question.id] ?? ''} locked={locked} saving={savingKey === `text:${question.id}`} onSave={onTextSave} /> : <span key={index} className="mx-1 rounded bg-error-100 px-2 py-1 text-xs font-bold text-error-700">{piece}</span>; })}</p><p className="mt-4 text-xs text-slate-500">Maydonni tark etganingizda javob saqlanadi.</p></> : <><div className="whitespace-pre-wrap">{part.content}</div><div className="mt-5 rounded-xl border border-error-200 bg-error-50 p-4 text-sm leading-relaxed text-error-800"><p className="font-bold">48–53 uchun umumiy text hali to‘liq sozlanmagan</p><p className="mt-1 text-xs">Matnda <code>{'{{48}}'}</code> dan <code>{'{{53}}'}</code> gacha markerlar va ular uchun 6 ta yozma javob kaliti kerak.</p></div></>}</article>{otherQuestions.length > 0 && <ObjectiveQuestions questions={otherQuestions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onTextSave={onTextSave} useStoredPosition />}</>;
+  const highlights = usableReadingHighlights(part.content, annotation?.highlights ?? []);
+  const noteDraftRef = useRef(annotation?.note ?? '');
+  const setNoteDraft = useCallback((note: string) => { noteDraftRef.current = note; }, []);
+  useEffect(() => { noteDraftRef.current = annotation?.note ?? ''; }, [annotation?.note, part.id]);
+  return <ReadingTwoColumnLayout passage={<>
+    <article className="rounded-2xl bg-slate-50 p-5 text-sm leading-7 text-slate-700 sm:p-6">
+      <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Reading passage</p>
+      {configured ? <>
+        <div className="mb-5 rounded-xl border border-violet-100 bg-violet-50/70 p-4 text-sm leading-relaxed text-violet-900">
+          <p className="font-bold">Questions 8–13 · Bitta umumiy text</p>
+          <p className="mt-1 text-xs">Matndagi barcha bo‘sh joylarni to‘ldiring.</p>
+        </div>
+        <InlineGapFillPassage content={part.content} highlights={highlights} locked={locked} loading={annotationsLoading} saving={annotationSaving} onAddHighlight={(highlight) => onSaveAnnotation(part, noteDraftRef.current, [...highlights, highlight])} renderMarker={(marker, index) => {
+          const match = /^\{\{(8|9|10|11|12|13)\}\}$/.exec(marker);
+          const question = match ? questionByPosition.get(Number(match[1])) : undefined;
+          return question
+            ? <SharedTextBlank key={question.id} question={question} initialValue={textAnswers[question.id] ?? ''} locked={locked} saving={savingKey === `text:${question.id}`} onSave={onTextSave} />
+            : <span key={index} className="mx-1 rounded bg-error-100 px-2 py-1 text-xs font-bold text-error-700">{marker}</span>;
+        }} />
+        <p className="mt-4 text-xs text-slate-500">Maydonni tark etganingizda javob saqlanadi. Belgi qo‘yishda javob maydonini kesib o‘tmang.</p>
+      </> : <>
+        <div className="whitespace-pre-wrap">{part.content}</div>
+        <div className="mt-5 rounded-xl border border-error-200 bg-error-50 p-4 text-sm leading-relaxed text-error-800">
+          <p className="font-bold">8–13 uchun umumiy text hali to‘liq sozlanmagan</p>
+          <p className="mt-1 text-xs">Matnda <code>{'{{8}}'}</code> dan <code>{'{{13}}'}</code> gacha markerlar va ular uchun 6 ta yozma javob kaliti kerak.</p>
+        </div>
+      </>}
+    </article>
+    <ReadingNoteEditor part={part} annotation={annotation} highlights={highlights} loading={annotationsLoading} saving={annotationSaving} locked={locked} canHighlight onSave={onSaveAnnotation} onRemoveHighlight={(highlightId, note) => onSaveAnnotation(part, note, highlights.filter((highlight) => highlight.id !== highlightId))} onNoteChange={setNoteDraft} />
+  </>} questions={otherQuestions.length > 0 ? <ObjectiveQuestions questions={otherQuestions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onTextSave={onTextSave} useStoredPosition /> : <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">Javoblar passage ichida</p><p className="mt-1 text-xs">8–13 savollarning bo‘sh joylari chapdagi matnda joylashgan.</p></div>} />;
 }
 
 function IeltsReadingPassageTwoStructuredQuestions({ questions, answers, textAnswers, locked, savingKey, onAnswer, onClearAnswer, onTextSave }: { questions: ContestWorkspace['questions']; answers: Record<string, number>; textAnswers: Record<string, string>; locked: boolean; savingKey: string | null; onAnswer: (questionId: string, option: number) => void; onClearAnswer: (questionId: string) => void; onTextSave: (questionId: string, value: string) => void }) {
@@ -871,8 +1147,8 @@ function IeltsReadingPassageTwoStructuredQuestions({ questions, answers, textAns
   const gapFillQuestions = IELTS_READING_PASSAGE_TWO_GAP_FILL_POSITIONS.map((position) => byPosition.get(position)).filter((question): question is ContestWorkspace['questions'][number] => Boolean(question));
   const twoAnswerQuestions = IELTS_READING_PASSAGE_TWO_TWO_ANSWER_POSITIONS.map((position) => byPosition.get(position)).filter((question): question is ContestWorkspace['questions'][number] => Boolean(question));
   const headingOptions = headings[0]?.options ?? [];
-  const summary = byPosition.get(61);
-  const firstTwoAnswer = byPosition.get(65);
+  const summary = byPosition.get(21);
+  const firstTwoAnswer = byPosition.get(25);
   const configured = headings.length === 7
     && headings.every((question) => question.answerType === 'choice' && question.options.length === 9)
     && gapFillQuestions.length === 4
@@ -882,9 +1158,9 @@ function IeltsReadingPassageTwoStructuredQuestions({ questions, answers, textAns
     && twoAnswerQuestions.length === 2
     && twoAnswerQuestions.every((question) => question.answerType === 'choice' && question.options.length === 5)
     && firstTwoAnswer?.prompt;
-  if (!configured || !summary || !firstTwoAnswer) return <div className="mt-6 rounded-2xl border border-error-200 bg-error-50 p-4 text-sm leading-relaxed text-error-800"><p className="font-bold">Passage 2 hali to‘liq sozlanmagan</p><p className="mt-1 text-xs">54–60 uchun 9 ta heading, 61–64 markerli bitta summary va 65–66 uchun 5 ta A–E variant kerak.</p></div>;
+  if (!configured || !summary || !firstTwoAnswer) return <div className="mt-6 rounded-2xl border border-error-200 bg-error-50 p-4 text-sm leading-relaxed text-error-800"><p className="font-bold">Passage 2 hali to‘liq sozlanmagan</p><p className="mt-1 text-xs">14–20 uchun 9 ta heading, 21–24 markerli bitta summary va 25–26 uchun 5 ta A–E variant kerak.</p></div>;
 
-  const summaryPieces = summary.prompt.split(/(\{\{(?:61|62|63|64)\}\})/g);
+  const summaryPieces = summary.prompt.split(/(\{\{(?:21|22|23|24)\}\})/g);
   const usedTwoAnswerOptions = new Map<number, string>();
   twoAnswerQuestions.forEach((question) => {
     const selected = answers[question.id];
@@ -892,26 +1168,94 @@ function IeltsReadingPassageTwoStructuredQuestions({ questions, answers, textAns
   });
   return <div className="mt-7 space-y-8">
     <section>
-      <p className="text-sm font-bold text-slate-900">Questions 54–60</p>
+      <p className="text-sm font-bold text-slate-900">Questions 14–20</p>
       <p className="mt-2 text-sm text-slate-800">Reading Passage 2 has seven paragraphs, A–G.</p>
       <p className="mt-1 text-sm text-slate-800">Choose the correct heading for each paragraph from the list below.</p>
-      <p className="mt-1 text-sm font-semibold text-slate-900">Mahalliy Reading raqamlashida: Questions 14–20.</p>
       <div className="mt-5 max-w-2xl rounded-lg border border-slate-300 bg-slate-50/60 p-4 text-sm leading-6 text-slate-900"><p className="font-bold">List of Headings</p>{headingOptions.map((option, index) => <p key={index}><span className="mr-2 font-bold">{['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix'][index]}</span>{option}</p>)}</div>
       <div className="mt-5 max-w-xl space-y-2">{headings.map((question, index) => <label key={question.id} className="grid grid-cols-[2rem_9rem_minmax(0,1fr)] items-center gap-2 text-sm text-slate-900"><span className="font-bold">{question.position}</span><select value={answers[question.id] ?? ''} disabled={locked || Boolean(savingKey)} onChange={(event) => event.target.value === '' ? onClearAnswer(question.id) : onAnswer(question.id, Number(event.target.value))} className="input h-10 py-1 text-center font-semibold"><option value="">{question.position}</option>{headingOptions.map((_, optionIndex) => <option key={optionIndex} value={optionIndex}>{['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix'][optionIndex]}</option>)}</select><span>Paragraph {String.fromCharCode(65 + index)}</span></label>)}</div>
     </section>
     <section>
-      <p className="text-sm font-bold text-slate-900">Questions 61–64</p>
+      <p className="text-sm font-bold text-slate-900">Questions 21–24</p>
       <p className="mt-2 text-sm text-slate-800">Complete the summary below. Choose ONE WORD ONLY from the passage for each answer.</p>
-      <p className="mt-1 text-sm font-semibold text-slate-900">Mahalliy Reading raqamlashida: Questions 21–24.</p>
-      <article className="mt-5 rounded-lg border border-slate-300 bg-slate-50/50 p-5 text-sm leading-8 text-slate-900 sm:p-6"><p className="whitespace-pre-wrap">{summaryPieces.map((piece, index) => { const match = /^\{\{(61|62|63|64)\}\}$/.exec(piece); if (!match) return <span key={index}>{piece}</span>; const question = byPosition.get(Number(match[1])); return question ? <SharedTextBlank key={question.id} question={question} initialValue={textAnswers[question.id] ?? ''} locked={locked} saving={savingKey === `text:${question.id}`} onSave={onTextSave} /> : null; })}</p></article>
+      <article className="mt-5 rounded-lg border border-slate-300 bg-slate-50/50 p-5 text-sm leading-8 text-slate-900 sm:p-6"><p className="whitespace-pre-wrap">{summaryPieces.map((piece, index) => { const match = /^\{\{(21|22|23|24)\}\}$/.exec(piece); if (!match) return <span key={index}>{piece}</span>; const question = byPosition.get(Number(match[1])); return question ? <SharedTextBlank key={question.id} question={question} initialValue={textAnswers[question.id] ?? ''} locked={locked} saving={savingKey === `text:${question.id}`} onSave={onTextSave} /> : null; })}</p></article>
     </section>
     <section>
-      <p className="text-sm font-bold text-slate-900">Questions 65 and 66</p>
+      <p className="text-sm font-bold text-slate-900">Questions 25 and 26</p>
       <p className="mt-2 text-sm font-semibold text-slate-900">Choose TWO letters, A–E.</p>
-      <p className="mt-1 text-sm font-semibold text-slate-900">Mahalliy Reading raqamlashida: Questions 25 and 26.</p>
       <div className="mt-5 max-w-2xl space-y-2 text-sm text-slate-900"><p>{firstTwoAnswer.prompt}</p>{firstTwoAnswer.options.map((option, index) => <p key={index}><span className="mr-3 inline-block w-4 font-bold">{String.fromCharCode(65 + index)}</span>{option}</p>)}</div>
       <div className="mt-5 max-w-xl space-y-3">{twoAnswerQuestions.map((question, index) => <label key={question.id} className="grid grid-cols-[2rem_9rem_minmax(0,1fr)] items-center gap-2 text-sm text-slate-900"><span className="font-bold">{question.position}</span><select value={answers[question.id] ?? ''} disabled={locked || Boolean(savingKey)} onChange={(event) => event.target.value === '' ? onClearAnswer(question.id) : onAnswer(question.id, Number(event.target.value))} className="input h-10 py-1 text-center font-semibold"><option value="">{question.position}</option>{firstTwoAnswer.options.map((_, optionIndex) => <option key={optionIndex} value={optionIndex} disabled={usedTwoAnswerOptions.has(optionIndex) && usedTwoAnswerOptions.get(optionIndex) !== question.id}>{String.fromCharCode(65 + optionIndex)}</option>)}</select><span>{index === 0 ? 'Choose the first correct letter.' : 'Choose the second correct letter.'}</span></label>)}</div>
     </section>
+  </div>;
+}
+
+function IeltsReadingPassageThreeStructuredQuestions({ questions, answers, textAnswers, locked, savingKey, onAnswer, onClearAnswer, onTextSave }: { questions: ContestWorkspace['questions']; answers: Record<string, number>; textAnswers: Record<string, string>; locked: boolean; savingKey: string | null; onAnswer: (questionId: string, option: number) => void; onClearAnswer: (questionId: string) => void; onTextSave: (questionId: string, value: string) => void }) {
+  const byPosition = new Map(questions.map((question) => [question.position, question]));
+  const trueFalseNotGiven = IELTS_READING_PASSAGE_THREE_TFNG_POSITIONS.map((position) => byPosition.get(position)).filter((question): question is ContestWorkspace['questions'][number] => Boolean(question));
+  const summaryQuestions = IELTS_READING_PASSAGE_THREE_SUMMARY_POSITIONS.map((position) => byPosition.get(position)).filter((question): question is ContestWorkspace['questions'][number] => Boolean(question));
+  const legacyChoiceQuestions = [...IELTS_READING_PASSAGE_THREE_A_TO_F_POSITIONS, ...IELTS_READING_PASSAGE_THREE_PARAGRAPH_POSITIONS].map((position) => byPosition.get(position)).filter((question): question is ContestWorkspace['questions'][number] => Boolean(question));
+  const aToFQuestions = IELTS_READING_PASSAGE_THREE_A_TO_F_POSITIONS.map((position) => byPosition.get(position)).filter((question): question is ContestWorkspace['questions'][number] => Boolean(question));
+  const paragraphQuestions = IELTS_READING_PASSAGE_THREE_PARAGRAPH_POSITIONS.map((position) => byPosition.get(position)).filter((question): question is ContestWorkspace['questions'][number] => Boolean(question));
+  const summary = byPosition.get(32);
+  const legacyChoiceOptions = legacyChoiceQuestions[0]?.options ?? [];
+  const aToFOptions = aToFQuestions[0]?.options ?? [];
+  const legacyRomanChoiceBank = legacyChoiceQuestions.length === 6
+    && legacyChoiceQuestions.every((question) => question.answerType === 'choice' && question.options.length === 9);
+  const aToFChoiceBank = aToFQuestions.length === 3
+    && aToFQuestions.every((question) => question.answerType === 'choice' && question.options.length === 6);
+  const paragraphChoiceBank = paragraphQuestions.length === 3
+    && paragraphQuestions.every((question) => question.answerType === 'choice' && question.options.length === 8 && question.options.every((option, index) => option === IELTS_READING_PASSAGE_THREE_PARAGRAPH_LABELS[index]));
+  const configured = trueFalseNotGiven.length === 5
+    && trueFalseNotGiven.every((question) => question.answerType === 'choice' && question.options.length === 3 && question.options.every((option, index) => option === ['True', 'False', 'Not Given'][index]))
+    && summaryQuestions.length === 3
+    && summaryQuestions.every((question) => question.answerType === 'text' && question.wordLimit === 2)
+    && summary?.prompt
+    && IELTS_READING_PASSAGE_THREE_SUMMARY_POSITIONS.every((position) => summary.prompt.includes(`{{${position}}}`))
+    && (legacyRomanChoiceBank || (aToFChoiceBank && paragraphChoiceBank));
+  if (!configured || !summary) return <div className="mt-6 rounded-2xl border border-error-200 bg-error-50 p-4 text-sm leading-relaxed text-error-800"><p className="font-bold">Passage 3 hali to‘liq sozlanmagan</p><p className="mt-1 text-xs">27–31 uchun True / False / Not Given, 32–34 uchun markerli summary, 35–37 uchun A–F va 38–40 uchun A–H paragraph tanlovi kerak.</p></div>;
+
+  const summaryPieces = summary.prompt.split(/(\{\{(?:32|33|34)\}\})/g);
+  const choiceRows = (items: ContestWorkspace['questions'], options: string[], labels: readonly string[], offset = 0) => <div className="mt-5 max-w-3xl space-y-3">{items.map((question, index) => {
+    const saving = savingKey === `answer:${question.id}`;
+    return <label key={question.id} className="grid grid-cols-[2rem_minmax(0,1fr)_8rem] items-center gap-3 text-sm text-slate-900 sm:grid-cols-[2.5rem_minmax(0,1fr)_10rem]"><span className="flex h-8 w-8 items-center justify-center border border-slate-500 font-bold">{question.position}</span><span className="leading-6">{question.prompt.trim() || (legacyRomanChoiceBank ? `Paragraph ${String.fromCharCode(65 + offset + index)}` : `Item ${question.position}`)}</span><select value={answers[question.id] ?? ''} disabled={locked || saving} onChange={(event) => event.target.value === '' ? onClearAnswer(question.id) : onAnswer(question.id, Number(event.target.value))} className="h-10 border border-indigo-500 bg-white px-2 text-center font-semibold outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-100"><option value="">--</option>{options.map((_, optionIndex) => <option key={optionIndex} value={optionIndex}>{labels[optionIndex]}</option>)}</select></label>;
+  })}</div>;
+
+  return <div className="mt-7 space-y-9">
+    <section>
+      <p className="text-sm font-bold text-slate-900">Questions 27–31</p>
+      <p className="mt-1 text-sm text-slate-800">Do the following statements agree with the claims of the writer in Reading Passage 3?</p>
+      <p className="mt-2 text-sm text-slate-800">In boxes 27–31, write:</p>
+      <div className="mt-1 text-sm leading-5 text-slate-900"><p><span className="font-bold">TRUE</span> if the statement agrees with the claims of the writer</p><p><span className="font-bold">FALSE</span> if the statement contradicts the claims of the writer</p><p><span className="font-bold">NOT GIVEN</span> if it is impossible to say what the writer thinks about this</p></div>
+      <div className="mt-5 max-w-4xl space-y-5">{trueFalseNotGiven.map((question) => {
+        const saving = savingKey === `answer:${question.id}`;
+        return <label key={question.id} className="grid grid-cols-[2rem_minmax(0,1fr)_8rem] items-center gap-3 text-sm text-slate-900 sm:grid-cols-[2.5rem_minmax(0,1fr)_10rem]"><span className="flex h-8 w-8 items-center justify-center border border-slate-500 font-bold">{question.position}</span><span className="leading-6">{question.prompt}</span><select value={answers[question.id] ?? ''} disabled={locked || saving} onChange={(event) => event.target.value === '' ? onClearAnswer(question.id) : onAnswer(question.id, Number(event.target.value))} className="h-10 border border-indigo-500 bg-white px-2 text-center font-semibold outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-100"><option value="">--</option>{question.options.map((option, optionIndex) => <option key={optionIndex} value={optionIndex}>{option}</option>)}</select></label>;
+      })}</div>
+    </section>
+    <section>
+      <p className="text-sm font-bold text-slate-900">Questions 32–34</p>
+      <p className="mt-2 text-sm text-slate-800">Complete the summary below.</p>
+      <p className="mt-1 text-sm font-semibold text-slate-900">Choose NO MORE THAN TWO WORDS from the passage for each answer.</p>
+      <article className="mt-5 max-w-4xl rounded-lg border border-slate-300 bg-slate-50/50 p-5 text-sm leading-8 text-slate-900 sm:p-6"><p className="whitespace-pre-wrap">{summaryPieces.map((piece, index) => { const match = /^\{\{(32|33|34)\}\}$/.exec(piece); if (!match) return <span key={index}>{piece}</span>; const question = byPosition.get(Number(match[1])); return question ? <SharedTextBlank key={question.id} question={question} initialValue={textAnswers[question.id] ?? ''} locked={locked} saving={savingKey === `text:${question.id}`} onSave={onTextSave} /> : null; })}</p></article>
+    </section>
+    {legacyRomanChoiceBank ? <><section>
+      <p className="text-sm font-bold text-slate-900">Questions 35–37</p>
+      <p className="mt-2 text-sm text-slate-800">Choose the correct heading for each item from the list of headings below.</p>
+      <div className="mt-5 max-w-3xl rounded-lg border border-slate-300 bg-slate-50/60 p-4 text-sm leading-6 text-slate-900"><p className="font-bold">List of Headings</p>{legacyChoiceOptions.map((option, index) => <p key={index}><span className="mr-2 font-bold">{IELTS_ROMAN_HEADINGS[index]}</span>{option}</p>)}</div>
+      {choiceRows(legacyChoiceQuestions.slice(0, 3), legacyChoiceOptions, IELTS_ROMAN_HEADINGS, 0)}
+    </section><section>
+      <p className="text-sm font-bold text-slate-900">Questions 38–40</p>
+      <p className="mt-2 text-sm text-slate-800">Choose the correct heading for each item from the list of headings above.</p>
+      {choiceRows(legacyChoiceQuestions.slice(3), legacyChoiceOptions, IELTS_ROMAN_HEADINGS, 3)}
+    </section></> : <><section>
+      <p className="text-sm font-bold text-slate-900">Questions 35–37</p>
+      <p className="mt-2 text-sm text-slate-800">Choose the correct letter, A–F, for each item from the options below.</p>
+      <div className="mt-5 max-w-3xl rounded-lg border border-slate-300 bg-slate-50/60 p-4 text-sm leading-6 text-slate-900"><p className="font-bold">Options</p>{aToFOptions.map((option, index) => <p key={index}><span className="mr-2 font-bold">{IELTS_READING_PASSAGE_THREE_OPTION_LABELS[index]}</span>{option}</p>)}</div>
+      {choiceRows(aToFQuestions, aToFOptions, IELTS_READING_PASSAGE_THREE_OPTION_LABELS)}
+    </section><section>
+      <p className="text-sm font-bold text-slate-900">Questions 38–40</p>
+      <p className="mt-2 text-sm text-slate-800">Which paragraph contains the following information?</p>
+      <p className="mt-1 text-sm font-semibold text-slate-900">Write the correct letter, A–H, in boxes 38–40.</p>
+      {choiceRows(paragraphQuestions, [...IELTS_READING_PASSAGE_THREE_PARAGRAPH_LABELS], IELTS_READING_PASSAGE_THREE_PARAGRAPH_LABELS)}
+    </section></>}
   </div>;
 }
 
@@ -1066,15 +1410,15 @@ function IeltsListeningPartThreeStructuredQuestions({ questions, answers, locked
   </div>;
 }
 
-function ListeningPart({ part, questions, answers, textAnswers, gapFillResponses, matchingConfig, matchingResponses, locked, savingKey, audioOnly, gapFill, matching, mapMatching, extractQuestions, ieltsSharedGapFill, ieltsSharedGapFillPartFour, ieltsStructuredPartTwo, ieltsStructuredPartThree, showAudio, onAnswer, onClearAnswer, onTextSave, onGapFillSave, onMatchingSave }: { part: ExamPart; questions: ContestWorkspace['questions']; answers: Record<string, number>; textAnswers: Record<string, string>; gapFillResponses: Record<string, GapFillResponse>; matchingConfig: MatchingWorkspaceConfig | undefined; matchingResponses: Record<string, MatchingResponse>; locked: boolean; savingKey: string | null; audioOnly: boolean; gapFill: boolean; matching: boolean; mapMatching: boolean; extractQuestions: boolean; ieltsSharedGapFill: boolean; ieltsSharedGapFillPartFour: boolean; ieltsStructuredPartTwo: boolean; ieltsStructuredPartThree: boolean; showAudio: boolean; onAnswer: (questionId: string, option: number) => void; onClearAnswer: (questionId: string) => void; onTextSave: (questionId: string, value: string) => void; onGapFillSave: (part: ExamPart, blankNumber: number, answer: string) => void; onMatchingSave: (part: ExamPart, speakerNumber: number, optionPosition: number) => void }) {
+function ListeningPart({ part, audioSource, questions, answers, textAnswers, gapFillResponses, matchingConfig, matchingResponses, locked, savingKey, audioOnly, gapFill, matching, mapMatching, extractQuestions, ieltsExam, ieltsSharedGapFill, ieltsSharedGapFillPartFour, ieltsStructuredPartTwo, ieltsStructuredPartThree, showAudio, onAnswer, onClearAnswer, onTextSave, onGapFillSave, onMatchingSave }: { part: ExamPart; audioSource: string | null; questions: ContestWorkspace['questions']; answers: Record<string, number>; textAnswers: Record<string, string>; gapFillResponses: Record<string, GapFillResponse>; matchingConfig: MatchingWorkspaceConfig | undefined; matchingResponses: Record<string, MatchingResponse>; locked: boolean; savingKey: string | null; audioOnly: boolean; gapFill: boolean; matching: boolean; mapMatching: boolean; extractQuestions: boolean; ieltsExam: boolean; ieltsSharedGapFill: boolean; ieltsSharedGapFillPartFour: boolean; ieltsStructuredPartTwo: boolean; ieltsStructuredPartThree: boolean; showAudio: boolean; onAnswer: (questionId: string, option: number) => void; onClearAnswer: (questionId: string) => void; onTextSave: (questionId: string, value: string) => void; onGapFillSave: (part: ExamPart, blankNumber: number, answer: string) => void; onMatchingSave: (part: ExamPart, speakerNumber: number, optionPosition: number) => void }) {
   const useIeltsSharedGapFill = ieltsSharedGapFill && hasIeltsListeningPartOneGapFillMarkers(part.content);
   const useIeltsSharedGapFillPartFour = ieltsSharedGapFillPartFour && hasIeltsListeningPartFourGapFillMarkers(part.content);
   const useIeltsStructuredPartTwo = ieltsStructuredPartTwo && part.content === IELTS_LISTENING_PART_TWO_STRUCTURED_FORMAT;
   const useIeltsStructuredPartThree = ieltsStructuredPartThree && part.content === IELTS_LISTENING_PART_THREE_STRUCTURED_FORMAT;
-  return <>{showAudio && <ListeningAudio source={part.audioUrl} locked={locked} />}{gapFill ? <GapFillListeningText part={part} responses={gapFillResponses} locked={locked} savingKey={savingKey} onSave={onGapFillSave} /> : matching ? <SpeakerMatchingListening part={part} config={matchingConfig} responses={matchingResponses} locked={locked} savingKey={savingKey} mapMode={mapMatching} onSave={onMatchingSave} /> : useIeltsSharedGapFill ? <IeltsListeningPartOneSharedGapFill part={part} questions={questions} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onTextSave={onTextSave} /> : useIeltsSharedGapFillPartFour ? <IeltsListeningPartFourSharedGapFill part={part} questions={questions} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onTextSave={onTextSave} /> : useIeltsStructuredPartTwo ? <IeltsListeningPartTwoStructuredQuestions questions={questions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onClearAnswer={onClearAnswer} onTextSave={onTextSave} /> : useIeltsStructuredPartThree ? <IeltsListeningPartThreeStructuredQuestions questions={questions} answers={answers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onClearAnswer={onClearAnswer} /> : <>{part.content && <p className="mt-5 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{part.content}</p>}{audioOnly && <p className="mt-5 rounded-xl bg-cyan-50 px-4 py-3 text-sm leading-relaxed text-cyan-900">1–8-savollar audio yozuvda beriladi. To‘g‘ri deb bilgan 3 variantdan birini tanlang.</p>}{extractQuestions && <div className="mt-5 rounded-2xl border border-fuchsia-100 bg-fuchsia-50/70 p-4 text-sm leading-relaxed text-fuchsia-900"><p className="font-bold">3 ta extract · 24–29-savollar</p><p className="mt-1 text-xs">Har extractni tinglab, uning ostidagi 2 ta savolga javob bering.</p></div>}<ObjectiveQuestions questions={questions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} audioOnly={audioOnly} groupByExtract={extractQuestions} onAnswer={onAnswer} onTextSave={onTextSave} /></>}</>;
+  return <>{showAudio && <ListeningAudio source={audioSource} locked={locked} />}{gapFill ? <GapFillListeningText part={part} responses={gapFillResponses} locked={locked} savingKey={savingKey} onSave={onGapFillSave} /> : matching ? <SpeakerMatchingListening part={part} config={matchingConfig} responses={matchingResponses} locked={locked} savingKey={savingKey} mapMode={mapMatching} onSave={onMatchingSave} /> : useIeltsSharedGapFill ? <IeltsListeningPartOneSharedGapFill part={part} questions={questions} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onTextSave={onTextSave} /> : useIeltsSharedGapFillPartFour ? <IeltsListeningPartFourSharedGapFill part={part} questions={questions} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onTextSave={onTextSave} /> : useIeltsStructuredPartTwo ? <IeltsListeningPartTwoStructuredQuestions questions={questions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onClearAnswer={onClearAnswer} onTextSave={onTextSave} /> : useIeltsStructuredPartThree ? <IeltsListeningPartThreeStructuredQuestions questions={questions} answers={answers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onClearAnswer={onClearAnswer} /> : <>{part.content && <p className="mt-5 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{part.content}</p>}{audioOnly && <p className="mt-5 rounded-xl bg-cyan-50 px-4 py-3 text-sm leading-relaxed text-cyan-900">1–8-savollar audio yozuvda beriladi. To‘g‘ri deb bilgan 3 variantdan birini tanlang.</p>}{extractQuestions && <div className="mt-5 rounded-2xl border border-fuchsia-100 bg-fuchsia-50/70 p-4 text-sm leading-relaxed text-fuchsia-900"><p className="font-bold">3 ta extract · 24–29-savollar</p><p className="mt-1 text-xs">Har extractni tinglab, uning ostidagi 2 ta savolga javob bering.</p></div>}<ObjectiveQuestions questions={questions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} audioOnly={audioOnly} groupByExtract={extractQuestions} useStoredPosition={ieltsExam} onAnswer={onAnswer} onTextSave={onTextSave} /></>}</>;
 }
 
-function ListeningAudio({ source, locked, fullListening = false }: { source: string | null; locked: boolean; fullListening?: boolean }) {
+function ListeningAudio({ source, locked }: { source: string | null; locked: boolean }) {
   const player = useRef<HTMLAudioElement | null>(null);
   const [started, setStarted] = useState(false);
   const [finished, setFinished] = useState(false);
@@ -1085,10 +1429,10 @@ function ListeningAudio({ source, locked, fullListening = false }: { source: str
     setStarted(true);
     try { await player.current.play(); } catch { setStarted(false); setError('Audio ishga tushmadi. Brauzeringizda ovozga ruxsat berilganini tekshiring.'); }
   };
-  return <div className="rounded-2xl bg-slate-950 p-5 text-white"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">{fullListening ? 'Full Listening audio · Part 1–4' : 'Listening audio'}</p>{source ? <><audio ref={player} src={source} preload="auto" onEnded={() => setFinished(true)}>Brauzeringiz audio tinglashni qo‘llamaydi.</audio><div className="mt-3 flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-slate-200">Audio faqat bir marta eshittiriladi.</p><button type="button" disabled={locked || started} onClick={() => void start()} className="rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-900 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-300">{finished ? 'Audio tugadi' : started ? 'Audio ijro etilmoqda…' : 'Audioni boshlash'}</button></div>{error && <p className="mt-3 text-xs font-semibold text-error-200">{error}</p>}</> : <p className="mt-3 text-sm text-error-200">Audio mavjud emas.</p>}</div>;
+  return <div className="rounded-2xl bg-slate-950 p-5 text-white"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Listening audio</p>{source ? <><audio ref={player} src={source} preload="auto" onEnded={() => setFinished(true)}>Brauzeringiz audio tinglashni qo‘llamaydi.</audio><div className="mt-3 flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-slate-200">Audio faqat bir marta eshittiriladi.</p><button type="button" disabled={locked || started} onClick={() => void start()} className="rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-900 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-300">{finished ? 'Audio tugadi' : started ? 'Audio ijro etilmoqda…' : 'Audioni boshlash'}</button></div>{error && <p className="mt-3 text-xs font-semibold text-error-200">{error}</p>}</> : <p className="mt-3 text-sm text-error-200">Audio mavjud emas.</p>}</div>;
 }
 
-function GapFillListeningText({ part, responses, locked, savingKey, onSave }: { part: ExamPart; responses: Record<string, GapFillResponse>; locked: boolean; savingKey: string | null; onSave: (part: ExamPart, blankNumber: number, answer: string) => void }) {
+function GapFillListeningText({ part, responses, locked, savingKey, highlights = [], annotationLoading = false, annotationSaving = false, onSave, onAddHighlight }: { part: ExamPart; responses: Record<string, GapFillResponse>; locked: boolean; savingKey: string | null; highlights?: ReadingHighlight[]; annotationLoading?: boolean; annotationSaving?: boolean; onSave: (part: ExamPart, blankNumber: number, answer: string) => void; onAddHighlight?: (highlight: ReadingHighlight) => void }) {
   const [drafts, setDrafts] = useState<Record<number, string>>(() => Object.fromEntries(gapFillBlankNumbers(part.content).map((blankNumber) => [blankNumber, responses[gapFillResponseKey(part.id, blankNumber)]?.answer ?? ''])));
   const blankNumbers = useMemo(() => gapFillBlankNumbers(part.content), [part.content]);
 
@@ -1097,16 +1441,17 @@ function GapFillListeningText({ part, responses, locked, savingKey, onSave }: { 
   }, [blankNumbers, part.id, responses]);
 
   const chunks = part.content.split(/(\{\{[1-9]\d*\}\})/g);
-  return <div className="mt-6"><div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">Bo‘sh joylarni to‘ldiring</p><p className="mt-1 text-xs">Har javob bitta so‘z yoki son bo‘lishi kerak. Maydonni tark etganingizda javob avtomatik saqlanadi.</p></div><article className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 text-[15px] leading-8 text-slate-800 shadow-sm sm:p-7">{chunks.map((chunk, index) => {
+  const renderBlank = (chunk: string, index: number) => {
     const match = chunk.match(/^\{\{([1-9]\d*)\}\}$/);
     if (!match) return <span key={`${index}-${chunk}`} className="whitespace-pre-wrap">{chunk}</span>;
     const blankNumber = Number(match[1]);
     const saving = savingKey === `gap-fill:${gapFillResponseKey(part.id, blankNumber)}`;
     return <span key={chunk} className="mx-1 inline-flex align-middle"><label className="sr-only" htmlFor={`gap-fill-${part.id}-${blankNumber}`}>({blankNumber}) javob</label><span className="flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-1.5 py-0.5 shadow-sm"><span className="mr-1 text-xs font-extrabold text-indigo-600">{blankNumber}</span><input id={`gap-fill-${part.id}-${blankNumber}`} value={drafts[blankNumber] ?? ''} disabled={locked || saving} onChange={(event) => setDrafts((current) => ({ ...current, [blankNumber]: event.target.value }))} onBlur={() => onSave(part, blankNumber, drafts[blankNumber] ?? '')} className="w-28 border-0 bg-transparent px-1 py-0.5 text-sm font-semibold text-slate-900 outline-none placeholder:text-indigo-300 focus:ring-0 disabled:opacity-60 sm:w-36" placeholder="javob" />{saving && <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin text-indigo-600" />}</span></span>;
-  })}</article><div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{blankNumbers.map((blankNumber) => <div key={blankNumber} className={`rounded-xl px-3 py-2 text-xs font-semibold ${responses[gapFillResponseKey(part.id, blankNumber)]?.answer ? 'bg-success-50 text-success-700' : 'bg-slate-100 text-slate-500'}`}>({blankNumber}) {responses[gapFillResponseKey(part.id, blankNumber)]?.answer ? 'saqlandi' : 'kutilmoqda'}</div>)}</div></div>;
+  };
+  return <div className="mt-6"><div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">Bo‘sh joylarni to‘ldiring</p><p className="mt-1 text-xs">Har javob bitta so‘z yoki son bo‘lishi kerak. Maydonni tark etganingizda javob avtomatik saqlanadi.</p></div><article className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 text-[15px] leading-8 text-slate-800 shadow-sm sm:p-7">{onAddHighlight ? <InlineGapFillPassage content={part.content} highlights={highlights} locked={locked} loading={annotationLoading} saving={annotationSaving} renderMarker={renderBlank} onAddHighlight={onAddHighlight} /> : chunks.map(renderBlank)}</article><div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{blankNumbers.map((blankNumber) => <div key={blankNumber} className={`rounded-xl px-3 py-2 text-xs font-semibold ${responses[gapFillResponseKey(part.id, blankNumber)]?.answer ? 'bg-success-50 text-success-700' : 'bg-slate-100 text-slate-500'}`}>({blankNumber}) {responses[gapFillResponseKey(part.id, blankNumber)]?.answer ? 'saqlandi' : 'kutilmoqda'}</div>)}</div></div>;
 }
 
-function SpeakerMatchingListening({ part, config, responses, locked, savingKey, mapMode, readingMode = null, onSave }: { part: ExamPart; config: MatchingWorkspaceConfig | undefined; responses: Record<string, MatchingResponse>; locked: boolean; savingKey: string | null; mapMode: boolean; readingMode?: 'headings' | 'situations' | null; onSave: (part: ExamPart, speakerNumber: number, optionPosition: number) => void }) {
+function SpeakerMatchingListening({ part, config, responses, locked, savingKey, mapMode, readingMode = null, showPartContent = true, onSave }: { part: ExamPart; config: MatchingWorkspaceConfig | undefined; responses: Record<string, MatchingResponse>; locked: boolean; savingKey: string | null; mapMode: boolean; readingMode?: 'headings' | 'situations' | null; showPartContent?: boolean; onSave: (part: ExamPart, speakerNumber: number, optionPosition: number) => void }) {
   const [activeSpeaker, setActiveSpeaker] = useState<number | null>(config?.speakers.find((speaker) => !responses[matchingResponseKey(part.id, speaker.speakerNumber)])?.speakerNumber ?? config?.speakers[0]?.speakerNumber ?? null);
   useEffect(() => {
     setActiveSpeaker((current) => current && config?.speakers.some((speaker) => speaker.speakerNumber === current) ? current : (config?.speakers.find((speaker) => !responses[matchingResponseKey(part.id, speaker.speakerNumber)])?.speakerNumber ?? config?.speakers[0]?.speakerNumber ?? null));
@@ -1131,7 +1476,7 @@ function SpeakerMatchingListening({ part, config, responses, locked, savingKey, 
         <p className="mt-1 text-xs">Avval {entryLabel} kartasini tanlang, keyin o‘ng tomondagi umumiy javob bankidan A/B/C… variantni bosing. Ayrim variantlar ishlatilmasligi mumkin.</p>
       </div>
       {mapMode && <div className="mt-5 overflow-hidden rounded-2xl border border-sky-100 bg-sky-50/50 p-2 sm:p-3">{part.imageUrl ? <><img src={part.imageUrl} alt={`${part.title} xaritasi`} className="h-auto w-full object-contain" /><div className="mt-2 flex justify-end"><a href={part.imageUrl} target="_blank" rel="noreferrer" className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-sky-700 ring-1 ring-sky-200 hover:bg-sky-50">Xaritani original o‘lchamda ochish</a></div></> : <p className="p-5 text-sm text-sun-800">Xarita rasmi mavjud emas.</p>}</div>}
-      {part.content && <p className="mt-5 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{part.content}</p>}
+      {showPartContent && part.content && <p className="mt-5 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{part.content}</p>}
       <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <div className="space-y-3">
           <p className="text-xs font-bold uppercase tracking-wider text-slate-400">{entryHeading}</p>
@@ -1157,16 +1502,142 @@ function SpeakerMatchingListening({ part, config, responses, locked, savingKey, 
   );
 }
 
-function ReadingPart({ part, questions, answers, textAnswers, gapFillResponses, matchingConfig, matchingResponses, cefrExam, locked, savingKey, onAnswer, onClearAnswer, onTextSave, onGapFillSave, onMatchingSave }: { part: ExamPart; questions: ContestWorkspace['questions']; answers: Record<string, number>; textAnswers: Record<string, string>; gapFillResponses: Record<string, GapFillResponse>; matchingConfig: MatchingWorkspaceConfig | undefined; matchingResponses: Record<string, MatchingResponse>; cefrExam: boolean; locked: boolean; savingKey: string | null; onAnswer: (questionId: string, option: number) => void; onClearAnswer: (questionId: string) => void; onTextSave: (questionId: string, value: string) => void; onGapFillSave: (part: ExamPart, blankNumber: number, answer: string) => void; onMatchingSave: (part: ExamPart, speakerNumber: number, optionPosition: number) => void }) {
+function createReadingHighlightId(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function usableReadingHighlights(content: string, highlights: ReadingHighlight[]): ReadingHighlight[] {
+  let previousEnd = 0;
+  return highlights
+    .filter((highlight) => highlight.start >= 0 && highlight.end > highlight.start && highlight.end <= content.length && content.slice(highlight.start, highlight.end) === highlight.quote)
+    .sort((left, right) => left.start - right.start || left.end - right.end)
+    .filter((highlight) => {
+      if (highlight.start < previousEnd) return false;
+      previousEnd = highlight.end;
+      return true;
+    });
+}
+
+function ReadingNoteEditor({ part, annotation, highlights, loading, saving, locked, canHighlight, onSave, onRemoveHighlight, onNoteChange }: { part: ExamPart; annotation: ReadingAnnotation | undefined; highlights: ReadingHighlight[]; loading: boolean; saving: boolean; locked: boolean; canHighlight: boolean; onSave: (part: ExamPart, note: string, highlights: ReadingHighlight[]) => void; onRemoveHighlight?: (highlightId: string, note: string) => void; onNoteChange?: (note: string) => void }) {
+  const storedNote = annotation?.note ?? '';
+  const [note, setNote] = useState(storedNote);
+  useEffect(() => { setNote(storedNote); onNoteChange?.(storedNote); }, [onNoteChange, part.id, storedNote]);
+  const save = () => {
+    if (!locked && !saving) onSave(part, note, highlights);
+  };
+  const changed = note.trim() !== storedNote;
+  return <section className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 sm:p-5">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700"><StickyNote className="h-4.5 w-4.5" /></span><div><p className="text-sm font-bold text-amber-950">Shaxsiy eslatmalar</p><p className="mt-1 text-xs leading-relaxed text-amber-900/75">Bu yozuvlar va belgilaringiz faqat sizga ko‘rinadi, baholashga ta’sir qilmaydi.</p></div></div><span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-amber-700 ring-1 ring-amber-200"><Highlighter className="h-3.5 w-3.5" />{highlights.length} belgi</span></div>
+    {loading ? <div className="mt-4 flex items-center gap-2 text-xs font-semibold text-amber-700"><Loader2 className="h-3.5 w-3.5 animate-spin" />Eslatmalar yuklanmoqda…</div> : <>
+      <label className="sr-only" htmlFor={`reading-note-${part.id}`}>Reading Passage uchun shaxsiy eslatma</label>
+      <textarea id={`reading-note-${part.id}`} value={note} disabled={locked || saving} onChange={(event) => { setNote(event.target.value); onNoteChange?.(event.target.value); }} onBlur={() => changed && save()} maxLength={4000} className="input mt-4 min-h-28 resize-y bg-white text-sm leading-relaxed disabled:bg-slate-50" placeholder="Muhim fikr, kalit so‘z yoki keyin tekshiriladigan joyni yozing…" />
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs"><p className="text-amber-900/70">{locked ? 'Bo‘lim yopilgan; eslatmalar endi o‘zgarmaydi.' : canHighlight ? 'Matndan bo‘lak tanlang, keyin “Belgi qo‘yish”ni bosing.' : 'Inline javob maydonlari bo‘lgan bu passage uchun eslatma yozishingiz mumkin.'}</p><button type="button" disabled={locked || saving || !changed} onClick={save} className="btn-ghost border border-amber-200 bg-white px-3 py-2 text-xs text-amber-800 hover:bg-amber-100 disabled:opacity-50">{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}{saving ? 'Saqlanmoqda…' : 'Eslatmani saqlash'}</button></div>
+      {highlights.length > 0 && <div className="mt-4 space-y-2 border-t border-amber-200/80 pt-4"><p className="text-xs font-bold uppercase tracking-wider text-amber-800">Belgilangani</p>{highlights.map((highlight) => <div key={highlight.id} className="flex items-start justify-between gap-3 rounded-xl bg-white/80 px-3 py-2 text-xs text-slate-700 ring-1 ring-amber-100"><p className="min-w-0 flex-1 break-words leading-relaxed"><mark className="rounded bg-amber-200 px-1 text-slate-800">{highlight.quote}</mark></p>{onRemoveHighlight && <button type="button" disabled={locked || saving} onClick={() => onRemoveHighlight(highlight.id, note)} className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-error-50 hover:text-error-700 disabled:opacity-50" aria-label="Belgini o‘chirish" title="Belgini o‘chirish"><X className="h-4 w-4" /></button>}</div>)}</div>}
+    </>}
+  </section>;
+}
+
+function AnnotatableReadingPassage({ part, content, annotation, loading, saving, locked, onSave }: { part: ExamPart; content: string; annotation: ReadingAnnotation | undefined; loading: boolean; saving: boolean; locked: boolean; onSave: (part: ExamPart, note: string, highlights: ReadingHighlight[]) => void }) {
+  const passageRef = useRef<HTMLDivElement>(null);
+  const noteDraftRef = useRef(annotation?.note ?? '');
+  const setNoteDraft = useCallback((note: string) => { noteDraftRef.current = note; }, []);
+  const highlights = useMemo(() => usableReadingHighlights(content, annotation?.highlights ?? []), [annotation?.highlights, content]);
+  const [pendingHighlight, setPendingHighlight] = useState<ReadingHighlight | null>(null);
+  const [selectionMessage, setSelectionMessage] = useState<string | null>(null);
+  useEffect(() => { setPendingHighlight(null); setSelectionMessage(null); }, [content, part.id]);
+  useEffect(() => { noteDraftRef.current = annotation?.note ?? ''; }, [annotation?.note, part.id]);
+
+  const captureSelection = () => {
+    if (locked || saving || loading) return;
+    const root = passageRef.current;
+    const selection = window.getSelection();
+    if (!root || !selection || selection.rangeCount === 0 || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return;
+    const beforeStart = range.cloneRange();
+    beforeStart.selectNodeContents(root);
+    beforeStart.setEnd(range.startContainer, range.startOffset);
+    const beforeEnd = range.cloneRange();
+    beforeEnd.selectNodeContents(root);
+    beforeEnd.setEnd(range.endContainer, range.endOffset);
+    const rawStart = beforeStart.toString().length;
+    const rawEnd = beforeEnd.toString().length;
+    const rawQuote = content.slice(rawStart, rawEnd);
+    const leadingWhitespace = rawQuote.length - rawQuote.trimStart().length;
+    const trailingWhitespace = rawQuote.length - rawQuote.trimEnd().length;
+    const start = rawStart + leadingWhitespace;
+    const end = rawEnd - trailingWhitespace;
+    const quote = content.slice(start, end);
+    if (!quote) return;
+    if (quote.length > 800) {
+      setSelectionMessage('Bir martada 800 belgigacha bo‘lgan matnni belgilang.');
+      return;
+    }
+    if (highlights.length >= 80) {
+      setSelectionMessage('Bir passage uchun 80 tagacha belgi qo‘yish mumkin.');
+      return;
+    }
+    if (highlights.some((highlight) => start < highlight.end && end > highlight.start)) {
+      setSelectionMessage('Bu bo‘lak avvalgi belgi bilan ustma-ust keladi. Avval eski belgini o‘chiring.');
+      return;
+    }
+    setPendingHighlight({ id: createReadingHighlightId(), start, end, quote });
+    setSelectionMessage(null);
+    selection.removeAllRanges();
+  };
+
+  const addHighlight = () => {
+    if (!pendingHighlight || locked || saving || loading) return;
+    onSave(part, noteDraftRef.current, [...highlights, pendingHighlight]);
+    setPendingHighlight(null);
+  };
+
+  const removeHighlight = (highlightId: string, note: string) => {
+    if (!locked && !saving) onSave(part, note, highlights.filter((highlight) => highlight.id !== highlightId));
+  };
+
+  const segments: Array<{ key: string; text: string; highlight?: ReadingHighlight }> = [];
+  let cursor = 0;
+  highlights.forEach((highlight) => {
+    if (highlight.start > cursor) segments.push({ key: `text-${cursor}`, text: content.slice(cursor, highlight.start) });
+    segments.push({ key: highlight.id, text: highlight.quote, highlight });
+    cursor = highlight.end;
+  });
+  if (cursor < content.length || segments.length === 0) segments.push({ key: `text-${cursor}`, text: content.slice(cursor) });
+
+  return <><article className="rounded-2xl bg-slate-50 p-5 text-sm leading-7 text-slate-700 sm:p-6"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Reading passage</p>{!locked && <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-700"><Highlighter className="h-3.5 w-3.5" />{loading ? 'Eslatmalar yuklanmoqda' : 'Matnni tanlab belgilang'}</span>}</div><div ref={passageRef} tabIndex={0} onMouseUp={captureSelection} onKeyUp={captureSelection} className="whitespace-pre-wrap rounded-lg outline-none focus:ring-2 focus:ring-amber-200">{segments.map((segment) => segment.highlight ? <mark key={segment.key} className="rounded bg-amber-200 px-0.5 text-inherit decoration-amber-500 decoration-2 underline-offset-2">{segment.text}</mark> : <span key={segment.key}>{segment.text}</span>)}</div>{selectionMessage && <p className="mt-3 text-xs font-semibold text-error-700">{selectionMessage}</p>}{pendingHighlight && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs"><p className="min-w-0 flex-1 leading-relaxed text-amber-950"><span className="font-bold">Tanlangan:</span> {pendingHighlight.quote.length > 180 ? `${pendingHighlight.quote.slice(0, 180)}…` : pendingHighlight.quote}</p><div className="flex shrink-0 gap-2"><button type="button" onClick={() => setPendingHighlight(null)} className="btn-ghost bg-white px-3 py-2 text-xs">Bekor qilish</button><button type="button" disabled={saving || loading} onClick={addHighlight} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-amber-600 disabled:opacity-50"><Highlighter className="h-3.5 w-3.5" />Belgi qo‘yish</button></div></div>}</article><ReadingNoteEditor part={part} annotation={annotation} highlights={highlights} loading={loading} saving={saving} locked={locked} canHighlight onSave={onSave} onRemoveHighlight={removeHighlight} onNoteChange={setNoteDraft} /></>;
+}
+
+function ReadingTwoColumnLayout({ passage, questions }: { passage: ReactNode; questions: ReactNode }) {
+  return <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(22rem,0.92fr)]">
+    <aside className="min-w-0">{passage}</aside>
+    <section className="min-w-0 rounded-3xl border border-indigo-100 bg-white p-5 shadow-sm sm:p-6">
+      <div className="mb-5 flex items-center gap-3 border-b border-indigo-100 pb-4"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700"><ClipboardList className="h-4.5 w-4.5" /></span><div><p className="text-sm font-bold text-slate-900">Savollar</p><p className="mt-0.5 text-xs text-slate-500">Matn chapda qoladi, javoblarni shu yerda belgilang.</p></div></div>
+      {questions}
+    </section>
+  </div>;
+}
+
+function ReadingPart({ part, questions, answers, textAnswers, gapFillResponses, matchingConfig, matchingResponses, annotation, annotationsLoading, annotationSaving, cefrExam, locked, savingKey, onAnswer, onClearAnswer, onTextSave, onGapFillSave, onMatchingSave, onSaveAnnotation }: { part: ExamPart; questions: ContestWorkspace['questions']; answers: Record<string, number>; textAnswers: Record<string, string>; gapFillResponses: Record<string, GapFillResponse>; matchingConfig: MatchingWorkspaceConfig | undefined; matchingResponses: Record<string, MatchingResponse>; annotation: ReadingAnnotation | undefined; annotationsLoading: boolean; annotationSaving: boolean; cefrExam: boolean; locked: boolean; savingKey: string | null; onAnswer: (questionId: string, option: number) => void; onClearAnswer: (questionId: string) => void; onTextSave: (questionId: string, value: string) => void; onGapFillSave: (part: ExamPart, blankNumber: number, answer: string) => void; onMatchingSave: (part: ExamPart, speakerNumber: number, optionPosition: number) => void; onSaveAnnotation: (part: ExamPart, note: string, highlights: ReadingHighlight[]) => void }) {
   const gapFill = cefrExam && part.position === 1;
   const matching = cefrExam && (part.position === 2 || part.position === 3);
   const miniTextCompletion = cefrExam && part.position === 5;
   const ieltsPassageOneSharedText = !cefrExam && part.position === 5 && hasIeltsReadingPassageOneSharedTextMarkers(part.content);
   const ieltsPassageTwoStructured = !cefrExam && part.position === 6 && isIeltsReadingPassageTwoStructured(part.content);
+  const ieltsPassageThreeStructured = !cefrExam && part.position === 7 && isIeltsReadingPassageThreeStructured(part.content);
+  const ieltsStructuredReading = ieltsPassageTwoStructured || ieltsPassageThreeStructured;
   const matchingMode = part.position === 2 ? 'situations' as const : 'headings' as const;
-  const objectiveQuestions = <ObjectiveQuestions questions={questions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onTextSave={onTextSave} useStoredPosition={cefrExam} />;
-  if (ieltsPassageOneSharedText) return <IeltsReadingPassageOneSharedText part={part} questions={questions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onTextSave={onTextSave} />;
-  return <><article className="rounded-2xl bg-slate-50 p-5 text-sm leading-7 text-slate-700 sm:p-6"><p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Reading passage</p><div className="whitespace-pre-wrap">{ieltsPassageTwoStructured ? ieltsReadingPassageContent(part.content) : part.content}</div></article>{ieltsPassageTwoStructured ? <IeltsReadingPassageTwoStructuredQuestions questions={questions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onClearAnswer={onClearAnswer} onTextSave={onTextSave} /> : gapFill ? <GapFillListeningText part={part} responses={gapFillResponses} locked={locked} savingKey={savingKey} onSave={onGapFillSave} /> : matching ? <><div className="mt-5 rounded-2xl border border-cyan-100 bg-cyan-50/70 p-4 text-sm leading-relaxed text-cyan-900"><p className="font-bold">{matchingMode === 'headings' ? 'Matching headings' : 'Statement → Situation matching'}</p><p className="mt-1 text-xs">{matchingMode === 'headings' ? '15–20-paragraf uchun mos headingni tanlang. 8 headingdan 2 tasi ortiqcha bo‘ladi.' : '7–14 — statementlar. O‘ngdagi A/B/C… javob banki — situationlar; har statement uchun mos situationni tanlang.'}</p></div><SpeakerMatchingListening part={part} config={matchingConfig} responses={matchingResponses} locked={locked} savingKey={savingKey} mapMode={false} readingMode={matchingMode} onSave={onMatchingSave} /></> : miniTextCompletion ? <CefrReadingPartFiveMiniTexts questions={questions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onTextSave={onTextSave} /> : objectiveQuestions}</>;
+  const objectiveQuestions = <ObjectiveQuestions questions={questions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onTextSave={onTextSave} useStoredPosition />;
+  const noteDraftRef = useRef(annotation?.note ?? '');
+  const setNoteDraft = useCallback((note: string) => { noteDraftRef.current = note; }, []);
+  useEffect(() => { noteDraftRef.current = annotation?.note ?? ''; }, [annotation?.note, part.id]);
+  if (ieltsPassageOneSharedText) return <IeltsReadingPassageOneSharedText part={part} questions={questions} answers={answers} textAnswers={textAnswers} annotation={annotation} annotationsLoading={annotationsLoading} annotationSaving={annotationSaving} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onTextSave={onTextSave} onSaveAnnotation={onSaveAnnotation} />;
+  const annotationHighlights = usableReadingHighlights(part.content, annotation?.highlights ?? []);
+  if (gapFill) return <ReadingTwoColumnLayout passage={<><GapFillListeningText part={part} responses={gapFillResponses} locked={locked} savingKey={savingKey} highlights={annotationHighlights} annotationLoading={annotationsLoading} annotationSaving={annotationSaving} onSave={onGapFillSave} onAddHighlight={(highlight) => onSaveAnnotation(part, noteDraftRef.current, [...annotationHighlights, highlight])} /><ReadingNoteEditor part={part} annotation={annotation} highlights={annotationHighlights} loading={annotationsLoading} saving={annotationSaving} locked={locked} canHighlight onSave={onSaveAnnotation} onRemoveHighlight={(highlightId, note) => onSaveAnnotation(part, note, annotationHighlights.filter((highlight) => highlight.id !== highlightId))} onNoteChange={setNoteDraft} /></>} questions={<div className="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">Javoblar matn ichida</p><p className="mt-1 text-xs">Chapdagi bo‘sh maydonlarni to‘ldiring; savollar passage ichiga joylashtirilgan.</p></div>} />;
+  const questionPanel = ieltsPassageTwoStructured ? <IeltsReadingPassageTwoStructuredQuestions questions={questions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onClearAnswer={onClearAnswer} onTextSave={onTextSave} /> : ieltsPassageThreeStructured ? <IeltsReadingPassageThreeStructuredQuestions questions={questions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onClearAnswer={onClearAnswer} onTextSave={onTextSave} /> : matching ? <><div className="rounded-2xl border border-cyan-100 bg-cyan-50/70 p-4 text-sm leading-relaxed text-cyan-900"><p className="font-bold">{matchingMode === 'headings' ? 'Matching headings' : 'Statement → Situation matching'}</p><p className="mt-1 text-xs">{matchingMode === 'headings' ? '15–20-paragraf uchun mos headingni tanlang. 8 headingdan 2 tasi ortiqcha bo‘ladi.' : '7–14 — statementlar. Quyidagi javob bankidan mos situationni tanlang.'}</p></div><SpeakerMatchingListening part={part} config={matchingConfig} responses={matchingResponses} locked={locked} savingKey={savingKey} mapMode={false} readingMode={matchingMode} showPartContent={false} onSave={onMatchingSave} /></> : miniTextCompletion ? <CefrReadingPartFiveMiniTexts questions={questions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onTextSave={onTextSave} /> : objectiveQuestions;
+  return <ReadingTwoColumnLayout passage={<AnnotatableReadingPassage part={part} content={ieltsStructuredReading ? ieltsReadingPassageContent(part.content) : part.content} annotation={annotation} loading={annotationsLoading} saving={annotationSaving} locked={locked} onSave={onSaveAnnotation} />} questions={questionPanel} />;
 }
 
 function WritingPart({ part, draft, response, locked, saving, ieltsTask, onChange, onSave, onSubmit }: { part: ExamPart; draft: string; response: WritingResponse | undefined; locked: boolean; saving: boolean; ieltsTask: 1 | 2 | null; onChange: (value: string) => void; onSave: () => void; onSubmit: () => void }) {
@@ -1174,6 +1645,7 @@ function WritingPart({ part, draft, response, locked, saving, ieltsTask, onChang
   const wordCount = draft.trim() ? draft.trim().split(/\s+/).length : 0;
   const minimumWords = ieltsTask === 1 ? 150 : ieltsTask === 2 ? 250 : 1;
   const enoughWords = wordCount >= minimumWords;
+  const wordProgress = Math.min(100, Math.round((wordCount / minimumWords) * 100));
   const taskLabel = ieltsTask ? `IELTS Writing Task ${ieltsTask}` : 'Writing topic';
-  return <><article className="rounded-2xl bg-slate-50 p-5 text-sm leading-7 text-slate-700 sm:p-6"><p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">{taskLabel}{ieltsTask === 2 ? ' · weight ×2' : ''}</p>{ieltsTask && <div className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-xs leading-relaxed text-indigo-900">{ieltsTask === 1 ? 'Task 1: kamida 150 so‘z yozing. Grafik, jadval, chart yoki diagramdagi asosiy xususiyatlarni tasvirlang.' : 'Task 2: kamida 250 so‘z yozing. Pozitsiya, argument yoki muammoni to‘liq muhokama qiling; bu task Writing bahosida ikki baravar og‘irlikka ega.'}</div>}{part.imageUrl && <img src={part.imageUrl} alt={`${taskLabel} visual`} className="mb-5 h-auto w-full rounded-xl border border-slate-200 bg-white object-contain" />}<div className="whitespace-pre-wrap">{part.content}</div></article><div className="mt-6"><div className="mb-2 flex items-center justify-between"><label htmlFor={`writing-${part.id}`} className="text-sm font-bold text-slate-800">Javobingiz</label><span className={`text-xs font-semibold ${enoughWords ? 'text-success-700' : 'text-sun-700'}`}>{wordCount} / {minimumWords} so‘z</span></div><textarea id={`writing-${part.id}`} value={draft} disabled={locked || submitted} onChange={(event) => onChange(event.target.value)} className="input min-h-72 resize-y leading-relaxed disabled:bg-slate-50" placeholder="Javobingizni shu yerga yozing…" />{!submitted && ieltsTask && !enoughWords && <p className="mt-2 text-xs font-semibold text-sun-700">Yuborishdan oldin kamida {minimumWords} so‘z yozing.</p>}{submitted ? <div className="mt-4 flex items-start gap-3 rounded-2xl border border-success-200 bg-success-50 p-4 text-sm text-success-800"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-bold">Writing yuborilgan</p><p className="mt-1">Bu javob organizer tekshirganidan keyin yakuniy natijaga qo‘shiladi.</p></div></div> : <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" disabled={locked || saving || !draft.trim()} onClick={onSave} className="btn-ghost px-4 py-2.5 text-sm disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Draftni saqlash</button><button type="button" disabled={locked || saving || !draft.trim() || !enoughWords} onClick={onSubmit} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Writingni yuborish</button></div>}</div></>;
+  return <><article className="rounded-2xl bg-slate-50 p-5 text-sm leading-7 text-slate-700 sm:p-6"><p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">{taskLabel}{ieltsTask === 2 ? ' · weight ×2' : ''}</p>{ieltsTask && <div className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-xs leading-relaxed text-indigo-900">{ieltsTask === 1 ? 'Task 1: kamida 150 so‘z yozing. Grafik, jadval, chart yoki diagramdagi asosiy xususiyatlarni tasvirlang.' : 'Task 2: kamida 250 so‘z yozing. Pozitsiya, argument yoki muammoni to‘liq muhokama qiling; bu task Writing bahosida ikki baravar og‘irlikka ega.'}</div>}{part.imageUrl && <img src={part.imageUrl} alt={`${taskLabel} visual`} className="mb-5 h-auto w-full rounded-xl border border-slate-200 bg-white object-contain" />}<div className="whitespace-pre-wrap">{part.content}</div></article><div className="mt-6"><div className="mb-3 flex items-center justify-between gap-3"><label htmlFor={`writing-${part.id}`} className="text-sm font-bold text-slate-800">Javobingiz</label><span className={`shrink-0 text-xs font-semibold ${enoughWords ? 'text-success-700' : 'text-sun-700'}`}>{wordCount} / {minimumWords} so‘z</span></div><div className="mb-4 h-2 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label="Writing so‘zlar soni" aria-valuemin={0} aria-valuemax={minimumWords} aria-valuenow={Math.min(wordCount, minimumWords)}><div className={`h-full rounded-full transition-all ${enoughWords ? 'bg-success-500' : 'bg-sun-500'}`} style={{ width: `${wordProgress}%` }} /></div><textarea id={`writing-${part.id}`} value={draft} disabled={locked || submitted} onChange={(event) => onChange(event.target.value)} className="input min-h-72 resize-y leading-relaxed disabled:bg-slate-50" placeholder="Javobingizni shu yerga yozing…" />{!submitted && ieltsTask && !enoughWords && <p className="mt-2 text-xs font-semibold text-sun-700">Yuborishdan oldin kamida {minimumWords} so‘z yozing.</p>}{submitted ? <div className="mt-4 flex items-start gap-3 rounded-2xl border border-success-200 bg-success-50 p-4 text-sm text-success-800"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-bold">Writing yuborilgan</p><p className="mt-1">Bu javob organizer tekshirganidan keyin yakuniy natijaga qo‘shiladi.</p></div></div> : <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><p className="text-xs leading-relaxed text-slate-500">Draftni saqlang, tayyor bo‘lganda yuboring. Yuborilgach matn o‘zgarmaydi.</p><div className="flex flex-wrap justify-end gap-2"><button type="button" disabled={locked || saving || !draft.trim()} onClick={onSave} className="btn-ghost px-4 py-2.5 text-sm disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Draftni saqlash</button><button type="button" disabled={locked || saving || !draft.trim() || !enoughWords} onClick={onSubmit} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Writingni yuborish</button></div></div>}</div></>;
 }

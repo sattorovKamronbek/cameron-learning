@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Activity,
   AlertCircle,
@@ -12,6 +12,8 @@ import {
   ShieldCheck,
   Trash2,
   Users,
+  Trophy,
+  type LucideIcon,
 } from 'lucide-react';
 import { Link, useRouter } from '@/router';
 import { LoadingState } from '@/components/LoadingState';
@@ -27,9 +29,10 @@ import {
   adminUpdateUserRole,
   adminUpdateUserStatus,
 } from '@/lib/security';
+import { fetchManagedContests, fetchContestAdminResults, type ManagedContest, type ContestAdminResult } from '@/lib/contests';
 import type { AdminEmail, AdminUserView, AuditLog, Role, UserStatus } from '@/lib/supabase';
 
-type Section = 'overview' | 'users' | 'audit' | 'allowlist' | 'announcements';
+type Section = 'overview' | 'users' | 'audit' | 'allowlist' | 'announcements' | 'contests';
 
 const roles: Role[] = ['user', 'judge', 'admin'];
 const statuses: UserStatus[] = ['active', 'suspended', 'banned'];
@@ -59,6 +62,8 @@ export function AdminDashboard() {
   const [users, setUsers] = useState<AdminUserView[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [adminEmails, setAdminEmails] = useState<AdminEmail[]>([]);
+  const [contests, setContests] = useState<ManagedContest[]>([]);
+  const [contestResults, setContestResults] = useState<Record<string, ContestAdminResult[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -68,14 +73,33 @@ export function AdminDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const [userRows, auditRows, emailRows] = await Promise.all([
+      const [userRows, auditRows, emailRows, contestRows] = await Promise.all([
         adminListUsers(),
         adminListAuditLogs(100),
         adminListAdminEmails(),
+        fetchManagedContests(),
       ]);
       setUsers(asList<AdminUserView>(userRows));
       setAuditLogs(asList<AuditLog>(auditRows));
       setAdminEmails(asList<AdminEmail>(emailRows));
+      const managedContests = asList<ManagedContest>(contestRows);
+      setContests(managedContests);
+      
+      // Fetch results for finished contests
+      const resultsMap: Record<string, ContestAdminResult[]> = {};
+      const now = new Date();
+      const finishedContests = managedContests.filter((c) => new Date(c.endAt) < now);
+      
+      for (const contest of finishedContests) {
+        try {
+          const results = await fetchContestAdminResults(contest.id);
+          resultsMap[contest.id] = asList<ContestAdminResult>(results);
+        } catch {
+          // Individual contest result fetch errors are ignored to allow partial loading
+          resultsMap[contest.id] = [];
+        }
+      }
+      setContestResults(resultsMap);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Admin data could not be loaded.');
     } finally {
@@ -95,7 +119,7 @@ export function AdminDashboard() {
 
   const runMutation = useCallback(async (
     key: string,
-    operation: () => Promise<void>,
+    operation: () => Promise<unknown>,
     successMessage: string,
   ) => {
     setMutation(key);
@@ -246,6 +270,9 @@ export function AdminDashboard() {
           <SectionButton active={section === 'users'} onClick={() => setSection('users')} icon={Users}>
             Users
           </SectionButton>
+          <SectionButton active={section === 'contests'} onClick={() => setSection('contests')} icon={Trophy}>
+            Contests
+          </SectionButton>
           <SectionButton active={section === 'audit'} onClick={() => setSection('audit')} icon={Clock3}>
             Audit log
           </SectionButton>
@@ -310,6 +337,9 @@ export function AdminDashboard() {
                 onChangeStatus={changeStatus}
               />
             )}
+            {section === 'contests' && (
+              <ContestsPanel contests={contests} results={contestResults} />
+            )}
             {section === 'audit' && <AuditPanel records={auditLogs} />}
             {section === 'allowlist' && (
               <AllowlistPanel
@@ -340,8 +370,8 @@ function SectionButton({
   onClick,
 }: {
   active: boolean;
-  children: React.ReactNode;
-  icon: typeof Activity;
+  children: ReactNode;
+  icon: LucideIcon;
   onClick: () => void;
 }) {
   return (
@@ -407,7 +437,7 @@ function Metric({
   value,
   description,
 }: {
-  icon: typeof Activity;
+  icon: LucideIcon;
   label: string;
   value: string;
   description: string;
@@ -758,12 +788,93 @@ function AnnouncementPanel({
   );
 }
 
+function ContestsPanel({
+  contests,
+  results,
+}: {
+  contests: ManagedContest[];
+  results: Record<string, ContestAdminResult[]>;
+}) {
+  if (contests.length === 0) {
+    return <EmptyState icon={Trophy} title="No managed contests found" message="You have not created any contests yet, or the protected list did not return any contests." />;
+  }
+
+  const now = new Date();
+  const finishedContests = contests.filter((c) => new Date(c.endAt) < now);
+
+  if (finishedContests.length === 0) {
+    return <EmptyState icon={Trophy} title="No finished contests" message="Contests that have ended will appear here with their results." />;
+  }
+
+  return (
+    <section className="card overflow-hidden">
+      <div className="border-b border-slate-100 p-5">
+        <h2 className="text-lg font-bold text-slate-900">Contest results</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Results for contests that have finished. Click on a contest to view participant scores and standings.
+        </p>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {finishedContests.map((contest) => {
+          const contestResults = results[contest.id] || [];
+          const participantCount = contestResults.length;
+          const topScore = contestResults[0]?.score ?? 0;
+
+          return (
+            <article key={contest.id} className="p-5 hover:bg-slate-50 transition-colors">
+              <Link
+                to={`/contest-management?contestId=${contest.id}`}
+                className="block space-y-3"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-900 truncate">{contest.title}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {new Date(contest.startAt).toLocaleDateString()} – {new Date(contest.endAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-4">
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-slate-900">{participantCount}</p>
+                      <p className="text-xs text-slate-400">Participants</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-slate-900">{topScore}</p>
+                      <p className="text-xs text-slate-400">Top score</p>
+                    </div>
+                  </div>
+                </div>
+                {participantCount > 0 && (
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="text-xs font-semibold text-slate-700 mb-2">Top 3 Participants</p>
+                    <div className="space-y-1.5">
+                      {contestResults.slice(0, 3).map((result) => (
+                        <div key={result.userId} className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-bold text-slate-400">#{result.rank}</span>
+                            <span className="truncate text-slate-700">{result.displayName}</span>
+                          </div>
+                          <span className="font-semibold text-indigo-600 shrink-0">{result.score} pts</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Link>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function EmptyState({
   icon: Icon,
   title,
   message,
 }: {
-  icon: typeof Activity;
+  icon: LucideIcon;
   title: string;
   message: string;
 }) {

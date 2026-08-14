@@ -91,6 +91,22 @@ export type WritingResponse = {
   updatedAt: string | null;
 };
 
+/** A personal text anchor inside a Reading passage. */
+export type ReadingHighlight = {
+  id: string;
+  start: number;
+  end: number;
+  quote: string;
+};
+
+/** Private per-user notes and highlights for one Reading part. */
+export type ReadingAnnotation = {
+  partId: string;
+  note: string;
+  highlights: ReadingHighlight[];
+  updatedAt: string | null;
+};
+
 export type WritingSubmission = {
   id: string;
   partId: string;
@@ -171,6 +187,12 @@ export type ContestLeaderboardEntry = {
   score: number;
   answeredCount: number;
   totalQuestions: number;
+};
+
+/** Server-calculated results visible only to the contest manager after it ends. */
+export type ContestAdminResult = ContestLeaderboardEntry & {
+  completedAt: string | null;
+  pendingWritingCount: number;
 };
 
 export type ManagedContest = Contest & {
@@ -469,6 +491,33 @@ function mapActiveExamTiming(value: unknown): ActiveExamTiming | null {
   return { ...timings, activeSection, sectionStartsAt, sectionEndsAt };
 }
 
+function mapReadingHighlights(value: unknown): ReadingHighlight[] {
+  return asRows(value).flatMap((row): ReadingHighlight[] => {
+    const id = text(valueAt(row, 'id'));
+    const start = number(valueAt(row, 'start'), -1);
+    const end = number(valueAt(row, 'end'), -1);
+    const quote = text(valueAt(row, 'quote'));
+    return id
+      && Number.isSafeInteger(start)
+      && Number.isSafeInteger(end)
+      && start >= 0
+      && end > start
+      && quote
+      ? [{ id, start, end, quote }]
+      : [];
+  });
+}
+
+function mapReadingAnnotation(value: unknown): ReadingAnnotation {
+  const row = asRow(value);
+  return {
+    partId: text(valueAt(row, 'part_id', 'partId')),
+    note: text(valueAt(row, 'note')),
+    highlights: mapReadingHighlights(valueAt(row, 'highlights')),
+    updatedAt: nullableTimestamp(valueAt(row, 'updated_at', 'updatedAt')),
+  };
+}
+
 function rpcError(error: { message: string } | null): void {
   if (error) throw new Error(error.message);
 }
@@ -590,6 +639,32 @@ export async function fetchContestPreviewWorkspace(slug: string): Promise<Contes
   const { data, error } = await supabase.rpc('get_contest_preview_workspace', { p_slug: slug });
   rpcError(error);
   return mapContestWorkspace(data);
+}
+
+/** Fetches only the signed-in user's private Reading notes for a contest. */
+export async function fetchReadingAnnotations(contestId: string): Promise<Record<string, ReadingAnnotation>> {
+  const { data, error } = await supabase.rpc('get_reading_annotations', { p_contest_id: contestId });
+  rpcError(error);
+  return Object.fromEntries(asRows(data).flatMap((row): Array<[string, ReadingAnnotation]> => {
+    const annotation = mapReadingAnnotation(row);
+    return annotation.partId ? [[annotation.partId, annotation]] : [];
+  }));
+}
+
+/** Saves a user's note and highlights for one Reading part. Empty data removes it. */
+export async function saveReadingAnnotation(partId: string, note: string, highlights: ReadingHighlight[]): Promise<ReadingAnnotation> {
+  const { data, error } = await supabase.rpc('save_reading_annotation', {
+    p_exam_part_id: partId,
+    p_note: note.trim(),
+    p_highlights: highlights.map((highlight) => ({
+      id: highlight.id,
+      start: highlight.start,
+      end: highlight.end,
+      quote: highlight.quote,
+    })),
+  });
+  rpcError(error);
+  return mapReadingAnnotation(data);
 }
 
 export async function submitContestAnswer(questionId: string, selectedOption: number): Promise<void> {
@@ -734,6 +809,15 @@ export async function completeListeningSection(contestId: string): Promise<void>
   rpcError(error);
 }
 
+/** Closes Listening or Reading early for this participant and opens the next section. */
+export async function completeExamSection(contestId: string, section: 'listening' | 'reading'): Promise<void> {
+  const { error } = await supabase.rpc('complete_exam_section', {
+    p_contest_id: contestId,
+    p_section: section,
+  });
+  rpcError(error);
+}
+
 export async function fetchContestLeaderboard(slug: string): Promise<ContestLeaderboardEntry[]> {
   const { data, error } = await supabase.rpc('get_contest_leaderboard', { p_slug: slug });
   rpcError(error);
@@ -744,6 +828,22 @@ export async function fetchContestLeaderboard(slug: string): Promise<ContestLead
     score: number(valueAt(row, 'score')),
     answeredCount: number(valueAt(row, 'answered_count', 'answeredCount')),
     totalQuestions: number(valueAt(row, 'total_questions', 'totalQuestions')),
+  }));
+}
+
+/** Reads the private post-contest result board for an owning manager or administrator. */
+export async function fetchContestAdminResults(contestId: string): Promise<ContestAdminResult[]> {
+  const { data, error } = await supabase.rpc('get_contest_admin_results', { p_contest_id: contestId });
+  rpcError(error);
+  return asRows(data).map((row, index) => ({
+    rank: number(valueAt(row, 'rank'), index + 1),
+    userId: text(valueAt(row, 'user_id', 'userId')),
+    displayName: text(valueAt(row, 'display_name', 'full_name'), 'Participant'),
+    score: number(valueAt(row, 'score')),
+    answeredCount: number(valueAt(row, 'answered_count', 'answeredCount')),
+    totalQuestions: number(valueAt(row, 'total_questions', 'totalQuestions')),
+    completedAt: nullableTimestamp(valueAt(row, 'completed_at', 'completedAt')),
+    pendingWritingCount: number(valueAt(row, 'pending_writing_count', 'pendingWritingCount')),
   }));
 }
 
@@ -790,6 +890,8 @@ export async function fetchContestEditor(contestId: string): Promise<ContestEdit
   rpcError(error);
   const payload = asRow(data);
   const contest = mapContest(asRow(payload.contest), true) as ManagedContest;
+  const parts = asRows(payload.parts).map(mapExamPart).sort((left, right) => left.position - right.position);
+  const partOrder = new Map(parts.map((part, index) => [part.id, index]));
   const questions = asRows(payload.questions).map((row) => ({
     id: text(valueAt(row, 'id')),
     partId: nullableText(valueAt(row, 'exam_part_id', 'part_id', 'partId')),
@@ -804,10 +906,10 @@ export async function fetchContestEditor(contestId: string): Promise<ContestEdit
     acceptedAnswers: arrayOfStrings(valueAt(row, 'accepted_answers', 'acceptedAnswers')),
     points: number(valueAt(row, 'points'), 1),
     explanation: nullableText(valueAt(row, 'explanation')),
-  })).sort((a, b) => a.position - b.position);
+  })).sort((a, b) => (partOrder.get(a.partId ?? '') ?? Number.MAX_SAFE_INTEGER) - (partOrder.get(b.partId ?? '') ?? Number.MAX_SAFE_INTEGER) || a.position - b.position);
   return {
     contest,
-    parts: asRows(payload.parts).map(mapExamPart).sort((left, right) => left.position - right.position),
+    parts,
     sectionTimings: mapExamSectionTimings(payload.section_timings),
     questions,
     gapFillAnswerKeys: asRows(payload.gap_fill_answer_keys).map((row) => ({
