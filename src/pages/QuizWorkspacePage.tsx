@@ -142,6 +142,27 @@ function ieltsReadingPassageContent(content: string): string {
   return content;
 }
 
+const IELTS_READING_PASSAGE_ONE_SPLIT_PREFIX = 'IELTS_READING_PASSAGE_ONE_SPLIT\n';
+const IELTS_READING_PASSAGE_ONE_QUESTIONS_SEPARATOR = '\n---IELTS_READING_PASSAGE_ONE_QUESTIONS---\n';
+
+function splitIeltsReadingPassageOneContent(content: string): { passage: string; questionText: string; legacyQuestionTextOnly: boolean } {
+  if (content.startsWith(IELTS_READING_PASSAGE_ONE_SPLIT_PREFIX)) {
+    const body = content.slice(IELTS_READING_PASSAGE_ONE_SPLIT_PREFIX.length);
+    const separatorIndex = body.indexOf(IELTS_READING_PASSAGE_ONE_QUESTIONS_SEPARATOR);
+    if (separatorIndex >= 0) {
+      return {
+        passage: body.slice(0, separatorIndex),
+        questionText: body.slice(separatorIndex + IELTS_READING_PASSAGE_ONE_QUESTIONS_SEPARATOR.length),
+        legacyQuestionTextOnly: false,
+      };
+    }
+  }
+  if (hasIeltsReadingPassageOneSharedTextMarkers(content)) {
+    return { passage: '', questionText: content, legacyQuestionTextOnly: true };
+  }
+  return { passage: content, questionText: '', legacyQuestionTextOnly: false };
+}
+
 function matchingResponseKey(partId: string, speakerNumber: number): string {
   return `${partId}:${speakerNumber}`;
 }
@@ -785,7 +806,7 @@ function EnglishExamWorkspace({ workspace, now, onRefresh, preview = false, prev
         <button type="button" onClick={() => setShowNavigator((current) => !current)} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700">{showNavigator ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}<span className="hidden lg:inline">Partlar</span></button>
       </header>
 
-      <div className="flex min-h-0 flex-1"><main className="min-w-0 flex-1 overflow-y-auto bg-white"><div className="mx-auto max-w-4xl p-5 sm:p-8"><div className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{preview ? 'Sinov rejimi' : 'Hozirgi bo‘lim'}</p><p className="mt-1 text-sm font-bold text-slate-900">{sectionTiming ? `${examSectionLabel(sectionTiming.activeSection)} uchun ${sectionMinutes(sectionTiming)} minut` : `${examSectionLabel(part.section)} bo‘limi`}</p></div><p className="text-xs leading-relaxed text-slate-600">{preview ? 'Listening tugagach Reading, Reading tugagach Writing avtomatik ochiladi. Writing vaqti yakunlanganda sinov ham yakunlanadi.' : isListeningSection ? 'Listeningni vaqt tugashini kutmasdan yakunlashingiz mumkin. Yakunlangandan keyin Reading ochiladi va Listening qayta ochilmaydi.' : isReadingSection ? 'Reading vaqti tugashi bilan Writing avtomatik ochiladi. Oldingi bo‘limga qaytib bo‘lmaydi.' : 'Writing vaqti tugashi bilan imtihon yopiladi. Saqlangan javoblarni faqat organizer tekshiradi.'}</p></div></div><div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-sm font-bold text-white">{part.position}</span><div><p className="text-sm font-bold text-slate-900">{examSectionLabel(part.section)} · Part {ieltsPartNumber(workspace.contest.subjectSlug, part)} / {visibleParts.length}</p><p className="text-xs text-slate-400">{answeredCount} ta test javobi · {submittedWritingCount} ta writing yuborilgan</p></div></div><div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><div className="h-2 w-28 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${progress}%` }} /></div>{progress}%</div></div>
+      <div className="flex min-h-0 flex-1"><main className="min-w-0 flex-1 overflow-y-auto bg-white"><div className={`mx-auto w-full p-5 sm:p-8 ${isReadingSection ? 'max-w-[1600px]' : 'max-w-4xl'}`}><div className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{preview ? 'Sinov rejimi' : 'Hozirgi bo‘lim'}</p><p className="mt-1 text-sm font-bold text-slate-900">{sectionTiming ? `${examSectionLabel(sectionTiming.activeSection)} uchun ${sectionMinutes(sectionTiming)} minut` : `${examSectionLabel(part.section)} bo‘limi`}</p></div><p className="text-xs leading-relaxed text-slate-600">{preview ? 'Listening tugagach Reading, Reading tugagach Writing avtomatik ochiladi. Writing vaqti yakunlanganda sinov ham yakunlanadi.' : isListeningSection ? 'Listeningni vaqt tugashini kutmasdan yakunlashingiz mumkin. Yakunlangandan keyin Reading ochiladi va Listening qayta ochilmaydi.' : isReadingSection ? 'Reading vaqti tugashi bilan Writing avtomatik ochiladi. Oldingi bo‘limga qaytib bo‘lmaydi.' : 'Writing vaqti tugashi bilan imtihon yopiladi. Saqlangan javoblarni faqat organizer tekshiradi.'}</p></div></div><div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-sm font-bold text-white">{part.position}</span><div><p className="text-sm font-bold text-slate-900">{examSectionLabel(part.section)} · Part {ieltsPartNumber(workspace.contest.subjectSlug, part)} / {visibleParts.length}</p><p className="text-xs text-slate-400">{answeredCount} ta test javobi · {submittedWritingCount} ta writing yuborilgan</p></div></div><div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><div className="h-2 w-28 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${progress}%` }} /></div>{progress}%</div></div>
 
         {preview && <ExamNotice kind="success" title="Sinov rejimi faol">Bu test faqat sizning akkauntingizda saqlanadi. Contest e’lon qilinmaydi va ratingga kirmaydi.</ExamNotice>}
         {contestEnded && <ExamNotice kind="error" title="Imtihon vaqti tugadi">Yangi javob qabul qilinmaydi. Saqlangan javoblar organizer tomonidan yakunlanadi.</ExamNotice>}
@@ -1105,40 +1126,29 @@ function InlineGapFillPassage({ content, highlights, locked, loading, saving, re
 }
 
 function IeltsReadingPassageOneSharedText({ part, questions, answers, textAnswers, annotation, annotationsLoading, annotationSaving, locked, savingKey, onAnswer, onTextSave, onSaveAnnotation }: { part: ExamPart; questions: ContestWorkspace['questions']; answers: Record<string, number>; textAnswers: Record<string, string>; annotation: ReadingAnnotation | undefined; annotationsLoading: boolean; annotationSaving: boolean; locked: boolean; savingKey: string | null; onAnswer: (questionId: string, option: number) => void; onTextSave: (questionId: string, value: string) => void; onSaveAnnotation: (part: ExamPart, note: string, highlights: ReadingHighlight[]) => void }) {
+  const { passage, questionText, legacyQuestionTextOnly } = splitIeltsReadingPassageOneContent(part.content);
   const sharedQuestions = questions.filter((question) => IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS.includes(question.position as typeof IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS[number])).sort((left, right) => left.position - right.position);
   const otherQuestions = questions.filter((question) => !IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS.includes(question.position as typeof IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS[number])).sort((left, right) => left.position - right.position);
   const questionByPosition = new Map(sharedQuestions.map((question) => [question.position, question]));
-  const configured = sharedQuestions.length === IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS.length && sharedQuestions.every((question) => question.answerType === 'text');
-  const highlights = usableReadingHighlights(part.content, annotation?.highlights ?? []);
-  const noteDraftRef = useRef(annotation?.note ?? '');
-  const setNoteDraft = useCallback((note: string) => { noteDraftRef.current = note; }, []);
-  useEffect(() => { noteDraftRef.current = annotation?.note ?? ''; }, [annotation?.note, part.id]);
-  return <ReadingTwoColumnLayout passage={<>
-    <article className="rounded-2xl bg-slate-50 p-5 text-sm leading-7 text-slate-700 sm:p-6">
-      <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Reading passage</p>
-      {configured ? <>
-        <div className="mb-5 rounded-xl border border-violet-100 bg-violet-50/70 p-4 text-sm leading-relaxed text-violet-900">
-          <p className="font-bold">Questions 8–13 · Bitta umumiy text</p>
-          <p className="mt-1 text-xs">Matndagi barcha bo‘sh joylarni to‘ldiring.</p>
-        </div>
-        <InlineGapFillPassage content={part.content} highlights={highlights} locked={locked} loading={annotationsLoading} saving={annotationSaving} onAddHighlight={(highlight) => onSaveAnnotation(part, noteDraftRef.current, [...highlights, highlight])} renderMarker={(marker, index) => {
-          const match = /^\{\{(8|9|10|11|12|13)\}\}$/.exec(marker);
-          const question = match ? questionByPosition.get(Number(match[1])) : undefined;
-          return question
-            ? <SharedTextBlank key={question.id} question={question} initialValue={textAnswers[question.id] ?? ''} locked={locked} saving={savingKey === `text:${question.id}`} onSave={onTextSave} />
-            : <span key={index} className="mx-1 rounded bg-error-100 px-2 py-1 text-xs font-bold text-error-700">{marker}</span>;
-        }} />
-        <p className="mt-4 text-xs text-slate-500">Maydonni tark etganingizda javob saqlanadi. Belgi qo‘yishda javob maydonini kesib o‘tmang.</p>
-      </> : <>
-        <div className="whitespace-pre-wrap">{part.content}</div>
-        <div className="mt-5 rounded-xl border border-error-200 bg-error-50 p-4 text-sm leading-relaxed text-error-800">
-          <p className="font-bold">8–13 uchun umumiy text hali to‘liq sozlanmagan</p>
-          <p className="mt-1 text-xs">Matnda <code>{'{{8}}'}</code> dan <code>{'{{13}}'}</code> gacha markerlar va ular uchun 6 ta yozma javob kaliti kerak.</p>
-        </div>
-      </>}
-    </article>
-    <ReadingNoteEditor part={part} annotation={annotation} highlights={highlights} loading={annotationsLoading} saving={annotationSaving} locked={locked} canHighlight onSave={onSaveAnnotation} onRemoveHighlight={(highlightId, note) => onSaveAnnotation(part, note, highlights.filter((highlight) => highlight.id !== highlightId))} onNoteChange={setNoteDraft} />
-  </>} questions={otherQuestions.length > 0 ? <ObjectiveQuestions questions={otherQuestions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onTextSave={onTextSave} useStoredPosition /> : <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">Javoblar passage ichida</p><p className="mt-1 text-xs">8–13 savollarning bo‘sh joylari chapdagi matnda joylashgan.</p></div>} />;
+  const configured = hasIeltsReadingPassageOneSharedTextMarkers(questionText)
+    && sharedQuestions.length === IELTS_READING_PASSAGE_ONE_SHARED_TEXT_POSITIONS.length
+    && sharedQuestions.every((question) => question.answerType === 'text');
+  const questionChunks = configured ? questionText.split(/(\{\{(?:8|9|10|11|12|13)\}\})/g) : [];
+
+  const passagePanel = passage.trim()
+    ? <AnnotatableReadingPassage part={part} content={passage} annotation={annotation} loading={annotationsLoading} saving={annotationSaving} locked={locked} onSave={onSaveAnnotation} />
+    : <div className="rounded-2xl border border-error-200 bg-error-50 p-5 text-sm leading-relaxed text-error-800"><p className="font-bold">Passage 1 matni tiklanishi kerak</p><p className="mt-2 text-xs">Oldingi builder Questions 8–13 gap-fill matnini Passage 1 o‘rniga saqlab yuborgan. Gap-fill savollari o‘ng panelga ko‘chirildi, lekin asl passage matni bu fayllarda saqlanmagan. Admin panelda haqiqiy Passage 1 matnini qayta kiriting.</p>{legacyQuestionTextOnly && <p className="mt-2 text-xs font-semibold">Eski gap-fill matni yo‘qolmagan — u o‘ng tomonda ko‘rsatiladi.</p>}</div>;
+
+  const sharedPanel = configured ? <article className="rounded-2xl border border-violet-100 bg-violet-50/55 p-5 text-sm leading-7 text-slate-700 sm:p-6"><div className="mb-4"><p className="text-xs font-bold uppercase tracking-wider text-violet-700">Questions 8–13</p><p className="mt-1 text-sm font-bold text-slate-900">Complete the text below.</p></div><div className="whitespace-pre-wrap">{questionChunks.map((chunk, index) => {
+    const match = /^\{\{(8|9|10|11|12|13)\}\}$/.exec(chunk);
+    if (!match) return <span key={`reading-p1-text-${index}`}>{chunk}</span>;
+    const question = questionByPosition.get(Number(match[1]));
+    return question
+      ? <SharedTextBlank key={question.id} question={question} initialValue={textAnswers[question.id] ?? ''} locked={locked} saving={savingKey === `text:${question.id}`} onSave={onTextSave} />
+      : <span key={`reading-p1-missing-${index}`} className="mx-1 rounded bg-error-100 px-2 py-1 text-xs font-bold text-error-700">{chunk}</span>;
+  })}</div><p className="mt-4 text-xs text-slate-500">Javob maydonidan chiqqaningizda javob avtomatik saqlanadi.</p></article> : <div className="rounded-2xl border border-error-200 bg-error-50 p-4 text-sm leading-relaxed text-error-800"><p className="font-bold">Questions 8–13 umumiy gap-fill matni to‘liq sozlanmagan</p><p className="mt-1 text-xs">Savollar panelidagi matnda <code>{'{{8}}'}</code> dan <code>{'{{13}}'}</code> gacha markerlar va 6 ta yozma javob kaliti bo‘lishi kerak.</p></div>;
+
+  return <ReadingTwoColumnLayout partId={part.id} passage={passagePanel} questions={<div className="space-y-6">{otherQuestions.length > 0 && <ObjectiveQuestions questions={otherQuestions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onTextSave={onTextSave} useStoredPosition />}{sharedPanel}</div>} />;
 }
 
 function IeltsReadingPassageTwoStructuredQuestions({ questions, answers, textAnswers, locked, savingKey, onAnswer, onClearAnswer, onTextSave }: { questions: ContestWorkspace['questions']; answers: Record<string, number>; textAnswers: Record<string, string>; locked: boolean; savingKey: string | null; onAnswer: (questionId: string, option: number) => void; onClearAnswer: (questionId: string) => void; onTextSave: (questionId: string, value: string) => void }) {
@@ -1610,11 +1620,29 @@ function AnnotatableReadingPassage({ part, content, annotation, loading, saving,
   return <><article className="rounded-2xl bg-slate-50 p-5 text-sm leading-7 text-slate-700 sm:p-6"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Reading passage</p>{!locked && <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-700"><Highlighter className="h-3.5 w-3.5" />{loading ? 'Eslatmalar yuklanmoqda' : 'Matnni tanlab belgilang'}</span>}</div><div ref={passageRef} tabIndex={0} onMouseUp={captureSelection} onKeyUp={captureSelection} className="whitespace-pre-wrap rounded-lg outline-none focus:ring-2 focus:ring-amber-200">{segments.map((segment) => segment.highlight ? <mark key={segment.key} className="rounded bg-amber-200 px-0.5 text-inherit decoration-amber-500 decoration-2 underline-offset-2">{segment.text}</mark> : <span key={segment.key}>{segment.text}</span>)}</div>{selectionMessage && <p className="mt-3 text-xs font-semibold text-error-700">{selectionMessage}</p>}{pendingHighlight && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs"><p className="min-w-0 flex-1 leading-relaxed text-amber-950"><span className="font-bold">Tanlangan:</span> {pendingHighlight.quote.length > 180 ? `${pendingHighlight.quote.slice(0, 180)}…` : pendingHighlight.quote}</p><div className="flex shrink-0 gap-2"><button type="button" onClick={() => setPendingHighlight(null)} className="btn-ghost bg-white px-3 py-2 text-xs">Bekor qilish</button><button type="button" disabled={saving || loading} onClick={addHighlight} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-amber-600 disabled:opacity-50"><Highlighter className="h-3.5 w-3.5" />Belgi qo‘yish</button></div></div>}</article><ReadingNoteEditor part={part} annotation={annotation} highlights={highlights} loading={loading} saving={saving} locked={locked} canHighlight onSave={onSave} onRemoveHighlight={removeHighlight} onNoteChange={setNoteDraft} /></>;
 }
 
-function ReadingTwoColumnLayout({ passage, questions }: { passage: ReactNode; questions: ReactNode }) {
-  return <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(22rem,0.92fr)]">
-    <aside className="min-w-0">{passage}</aside>
-    <section className="min-w-0 rounded-3xl border border-indigo-100 bg-white p-5 shadow-sm sm:p-6">
-      <div className="mb-5 flex items-center gap-3 border-b border-indigo-100 pb-4"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700"><ClipboardList className="h-4.5 w-4.5" /></span><div><p className="text-sm font-bold text-slate-900">Savollar</p><p className="mt-0.5 text-xs text-slate-500">Matn chapda qoladi, javoblarni shu yerda belgilang.</p></div></div>
+function ReadingTwoColumnLayout({ partId, passage, questions }: { partId: string; passage: ReactNode; questions: ReactNode }) {
+  const passageScrollRef = useRef<HTMLElement>(null);
+  const questionsScrollRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    passageScrollRef.current?.scrollTo({ top: 0 });
+    questionsScrollRef.current?.scrollTo({ top: 0 });
+  }, [partId]);
+
+  return <div className="grid min-h-0 gap-5 lg:h-[calc(100dvh-25rem)] lg:grid-cols-2 lg:overflow-hidden lg:gap-0">
+    <aside
+      ref={passageScrollRef}
+      className="min-w-0 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:border-r lg:border-slate-200 lg:pr-6 xl:pr-8"
+      style={{ scrollbarGutter: 'stable' }}
+    >
+      {passage}
+    </aside>
+    <section
+      ref={questionsScrollRef}
+      className="min-w-0 rounded-3xl border border-indigo-100 bg-white p-5 shadow-sm sm:p-6 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:rounded-none lg:border-0 lg:bg-transparent lg:pl-6 lg:shadow-none xl:pl-8"
+      style={{ scrollbarGutter: 'stable' }}
+    >
+      <div className="mb-5 flex items-center gap-3 border-b border-indigo-100 pb-4"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700"><ClipboardList className="h-4.5 w-4.5" /></span><div><p className="text-sm font-bold text-slate-900">Savollar</p><p className="mt-0.5 text-xs text-slate-500">Passage chap tomonda qoladi. Savollarni o‘ng panelda alohida aylantiring.</p></div></div>
       {questions}
     </section>
   </div>;
@@ -1624,7 +1652,8 @@ function ReadingPart({ part, questions, answers, textAnswers, gapFillResponses, 
   const gapFill = cefrExam && part.position === 1;
   const matching = cefrExam && (part.position === 2 || part.position === 3);
   const miniTextCompletion = cefrExam && part.position === 5;
-  const ieltsPassageOneSharedText = !cefrExam && part.position === 5 && hasIeltsReadingPassageOneSharedTextMarkers(part.content);
+  const ieltsPassageOneSplit = !cefrExam && part.position === 5 ? splitIeltsReadingPassageOneContent(part.content) : null;
+  const ieltsPassageOneSharedText = Boolean(ieltsPassageOneSplit && hasIeltsReadingPassageOneSharedTextMarkers(ieltsPassageOneSplit.questionText));
   const ieltsPassageTwoStructured = !cefrExam && part.position === 6 && isIeltsReadingPassageTwoStructured(part.content);
   const ieltsPassageThreeStructured = !cefrExam && part.position === 7 && isIeltsReadingPassageThreeStructured(part.content);
   const ieltsStructuredReading = ieltsPassageTwoStructured || ieltsPassageThreeStructured;
@@ -1633,11 +1662,11 @@ function ReadingPart({ part, questions, answers, textAnswers, gapFillResponses, 
   const noteDraftRef = useRef(annotation?.note ?? '');
   const setNoteDraft = useCallback((note: string) => { noteDraftRef.current = note; }, []);
   useEffect(() => { noteDraftRef.current = annotation?.note ?? ''; }, [annotation?.note, part.id]);
-  if (ieltsPassageOneSharedText) return <IeltsReadingPassageOneSharedText part={part} questions={questions} answers={answers} textAnswers={textAnswers} annotation={annotation} annotationsLoading={annotationsLoading} annotationSaving={annotationSaving} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onTextSave={onTextSave} onSaveAnnotation={onSaveAnnotation} />;
+  if (!cefrExam && part.position === 5 && (ieltsPassageOneSharedText || ieltsPassageOneSplit?.legacyQuestionTextOnly)) return <IeltsReadingPassageOneSharedText part={part} questions={questions} answers={answers} textAnswers={textAnswers} annotation={annotation} annotationsLoading={annotationsLoading} annotationSaving={annotationSaving} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onTextSave={onTextSave} onSaveAnnotation={onSaveAnnotation} />;
   const annotationHighlights = usableReadingHighlights(part.content, annotation?.highlights ?? []);
-  if (gapFill) return <ReadingTwoColumnLayout passage={<><GapFillListeningText part={part} responses={gapFillResponses} locked={locked} savingKey={savingKey} highlights={annotationHighlights} annotationLoading={annotationsLoading} annotationSaving={annotationSaving} onSave={onGapFillSave} onAddHighlight={(highlight) => onSaveAnnotation(part, noteDraftRef.current, [...annotationHighlights, highlight])} /><ReadingNoteEditor part={part} annotation={annotation} highlights={annotationHighlights} loading={annotationsLoading} saving={annotationSaving} locked={locked} canHighlight onSave={onSaveAnnotation} onRemoveHighlight={(highlightId, note) => onSaveAnnotation(part, note, annotationHighlights.filter((highlight) => highlight.id !== highlightId))} onNoteChange={setNoteDraft} /></>} questions={<div className="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">Javoblar matn ichida</p><p className="mt-1 text-xs">Chapdagi bo‘sh maydonlarni to‘ldiring; savollar passage ichiga joylashtirilgan.</p></div>} />;
+  if (gapFill) return <ReadingTwoColumnLayout partId={part.id} passage={<><GapFillListeningText part={part} responses={gapFillResponses} locked={locked} savingKey={savingKey} highlights={annotationHighlights} annotationLoading={annotationsLoading} annotationSaving={annotationSaving} onSave={onGapFillSave} onAddHighlight={(highlight) => onSaveAnnotation(part, noteDraftRef.current, [...annotationHighlights, highlight])} /><ReadingNoteEditor part={part} annotation={annotation} highlights={annotationHighlights} loading={annotationsLoading} saving={annotationSaving} locked={locked} canHighlight onSave={onSaveAnnotation} onRemoveHighlight={(highlightId, note) => onSaveAnnotation(part, note, annotationHighlights.filter((highlight) => highlight.id !== highlightId))} onNoteChange={setNoteDraft} /></>} questions={<div className="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-sm leading-relaxed text-violet-900"><p className="font-bold">Javoblar matn ichida</p><p className="mt-1 text-xs">Chapdagi bo‘sh maydonlarni to‘ldiring; savollar passage ichiga joylashtirilgan.</p></div>} />;
   const questionPanel = ieltsPassageTwoStructured ? <IeltsReadingPassageTwoStructuredQuestions questions={questions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onClearAnswer={onClearAnswer} onTextSave={onTextSave} /> : ieltsPassageThreeStructured ? <IeltsReadingPassageThreeStructuredQuestions questions={questions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onClearAnswer={onClearAnswer} onTextSave={onTextSave} /> : matching ? <><div className="rounded-2xl border border-cyan-100 bg-cyan-50/70 p-4 text-sm leading-relaxed text-cyan-900"><p className="font-bold">{matchingMode === 'headings' ? 'Matching headings' : 'Statement → Situation matching'}</p><p className="mt-1 text-xs">{matchingMode === 'headings' ? '15–20-paragraf uchun mos headingni tanlang. 8 headingdan 2 tasi ortiqcha bo‘ladi.' : '7–14 — statementlar. Quyidagi javob bankidan mos situationni tanlang.'}</p></div><SpeakerMatchingListening part={part} config={matchingConfig} responses={matchingResponses} locked={locked} savingKey={savingKey} mapMode={false} readingMode={matchingMode} showPartContent={false} onSave={onMatchingSave} /></> : miniTextCompletion ? <CefrReadingPartFiveMiniTexts questions={questions} answers={answers} textAnswers={textAnswers} locked={locked} savingKey={savingKey} onAnswer={onAnswer} onTextSave={onTextSave} /> : objectiveQuestions;
-  return <ReadingTwoColumnLayout passage={<AnnotatableReadingPassage part={part} content={ieltsStructuredReading ? ieltsReadingPassageContent(part.content) : part.content} annotation={annotation} loading={annotationsLoading} saving={annotationSaving} locked={locked} onSave={onSaveAnnotation} />} questions={questionPanel} />;
+  return <ReadingTwoColumnLayout partId={part.id} passage={<AnnotatableReadingPassage part={part} content={ieltsStructuredReading ? ieltsReadingPassageContent(part.content) : part.content} annotation={annotation} loading={annotationsLoading} saving={annotationSaving} locked={locked} onSave={onSaveAnnotation} />} questions={questionPanel} />;
 }
 
 function WritingPart({ part, draft, response, locked, saving, ieltsTask, onChange, onSave, onSubmit }: { part: ExamPart; draft: string; response: WritingResponse | undefined; locked: boolean; saving: boolean; ieltsTask: 1 | 2 | null; onChange: (value: string) => void; onSave: () => void; onSubmit: () => void }) {
