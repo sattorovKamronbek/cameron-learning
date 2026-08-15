@@ -2269,11 +2269,96 @@ function CefrReadingObjectiveQuestions({ part, questions, form, setForm, parts, 
 
 function ContestResultsSection({ results, finalized, englishExam, ungradedWritingCount }: { results: ContestAdminResult[]; finalized: boolean; englishExam: boolean; ungradedWritingCount: number }) {
   const pendingWriting = results.reduce((total, result) => total + result.pendingWritingCount, 0);
+
   return <section className="card overflow-hidden">
-    <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 p-5 sm:p-6"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Faqat administrator uchun</p><h2 className="mt-1 text-xl font-bold text-slate-900">Contest natijalari</h2><p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500">Ballar ishtirokchilar javoblaridan serverda hisoblangan. Bu jadval qatnashchilarga ko‘rinmaydi; <strong>Natijani yakunlash</strong> bosilgach ommaviy leaderboard ochiladi.</p></div><span className={`rounded-full px-3 py-1.5 text-xs font-bold ${finalized ? 'bg-success-50 text-success-700' : 'bg-indigo-50 text-indigo-700'}`}>{finalized ? 'Yakuniy natija' : 'Tekshiruvdagi natija'}</span></div>
-    {!finalized && englishExam && (ungradedWritingCount > 0 || pendingWriting > 0) && <div className="m-5 rounded-2xl border border-sun-200 bg-sun-50 p-4 text-sm leading-relaxed text-sun-900 sm:m-6"><p className="font-bold">Writing tekshiruvi tugallanmagan</p><p className="mt-1 text-xs">{ungradedWritingCount > 0 ? `${ungradedWritingCount} ta Writingga ball qo‘yilishi kerak. ` : ''}{pendingWriting > 0 ? `${pendingWriting} ta yuborilgan Writing hali baholanmagan. ` : ''}Writing baholari kiritilgandan keyin “Natijani yakunlash” tugmasi bilan natijani e’lon qiling.</p></div>}
-    {results.length ? <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-3 sm:px-6">O‘rin</th><th className="px-5 py-3 sm:px-6">Ishtirokchi</th><th className="px-5 py-3 text-center sm:px-6">Bajarilgan</th><th className="px-5 py-3 text-right sm:px-6">Ball</th><th className="px-5 py-3 text-right sm:px-6">Holat</th></tr></thead><tbody className="divide-y divide-slate-100">{results.map((result) => <tr key={result.userId} className="text-slate-700"><td className="px-5 py-4 font-bold text-indigo-700 sm:px-6">#{result.rank}</td><td className="px-5 py-4 font-semibold sm:px-6">{result.displayName}</td><td className="px-5 py-4 text-center tabular-nums sm:px-6">{result.answeredCount}/{result.totalQuestions}</td><td className="px-5 py-4 text-right font-display text-base font-extrabold tabular-nums text-slate-900 sm:px-6">{result.score}</td><td className="px-5 py-4 text-right sm:px-6">{result.pendingWritingCount > 0 ? <span className="text-xs font-bold text-sun-700">Writing kutilmoqda</span> : result.completedAt ? <span className="text-xs font-bold text-success-700">Yakunlagan</span> : <span className="text-xs font-semibold text-slate-500">Vaqt bilan yopilgan</span>}</td></tr>)}</tbody></table></div> : <div className="p-6 text-sm leading-relaxed text-slate-500">Hali saqlangan ishtirokchi javobi yo‘q. Preview rejimidagi javoblar bu jadvalga tushmaydi — ular faqat sinov uchun saqlanadi.</div>}
+    <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 p-5 sm:p-6">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Faqat administrator uchun</p>
+        <h2 className="mt-1 text-xl font-bold text-slate-900">Contest natijalari</h2>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500">
+          Listening va Reading natijalari alohida ko‘rsatiladi. Writing balli administrator tekshirganidan keyin umumiy ballga qo‘shiladi.
+          To‘liq Writing matnlari yuqoridagi <strong>Writing tekshiruvi</strong> bo‘limida ko‘rinadi.
+        </p>
+      </div>
+      <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${finalized ? 'bg-success-50 text-success-700' : 'bg-indigo-50 text-indigo-700'}`}>
+        {finalized ? 'Yakuniy natija' : 'Tekshiruvdagi natija'}
+      </span>
+    </div>
+
+    {!finalized && englishExam && (ungradedWritingCount > 0 || pendingWriting > 0) && <div className="m-5 rounded-2xl border border-sun-200 bg-sun-50 p-4 text-sm leading-relaxed text-sun-900 sm:m-6">
+      <p className="font-bold">Writing tekshiruvi tugallanmagan</p>
+      <p className="mt-1 text-xs">
+        {ungradedWritingCount > 0 ? `${ungradedWritingCount} ta Writingga ball qo‘yilishi kerak. ` : ''}
+        {pendingWriting > 0 ? `${pendingWriting} ta yuborilgan Writing hali baholanmagan. ` : ''}
+        Writing baholari kiritilgandan keyin “Natijani yakunlash” tugmasi bilan natijani e’lon qiling.
+      </p>
+    </div>}
+
+    {results.length ? <div className="overflow-x-auto">
+      <table className="min-w-[1120px] w-full text-left text-sm">
+        <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-500">
+          <tr>
+            <th className="px-5 py-3 sm:px-6">O‘rin</th>
+            <th className="px-5 py-3 sm:px-6">Ishtirokchi</th>
+            <th className="px-4 py-3 text-center">Listening</th>
+            <th className="px-4 py-3 text-center">Reading</th>
+            <th className="px-4 py-3 text-center">Writing</th>
+            <th className="px-4 py-3 text-center">Bajarilgan</th>
+            <th className="px-5 py-3 text-right sm:px-6">Umumiy ball</th>
+            <th className="px-5 py-3 text-right sm:px-6">Holat</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {results.map((result) => <tr key={result.userId} className="align-top text-slate-700">
+            <td className="px-5 py-4 font-bold text-indigo-700 sm:px-6">#{result.rank}</td>
+            <td className="px-5 py-4 font-semibold sm:px-6">{result.displayName}</td>
+            <td className="px-4 py-4 text-center">
+              <ResultSectionStat
+                correct={result.listeningCorrectCount}
+                answered={result.listeningAnsweredCount}
+                total={result.listeningTotalQuestions}
+              />
+            </td>
+            <td className="px-4 py-4 text-center">
+              <ResultSectionStat
+                correct={result.readingCorrectCount}
+                answered={result.readingAnsweredCount}
+                total={result.readingTotalQuestions}
+              />
+            </td>
+            <td className="px-4 py-4 text-center">
+              {result.writingTotalCount > 0 ? <div>
+                <p className="font-bold tabular-nums text-slate-900">
+                  {result.writingGradedCount > 0 ? `${result.writingScore}/${result.writingMaxPoints}` : '—'}
+                </p>
+                <p className={`mt-1 text-[11px] font-semibold ${result.pendingWritingCount > 0 ? 'text-sun-700' : 'text-slate-500'}`}>
+                  {result.writingSubmittedCount}/{result.writingTotalCount} yuborilgan
+                  {result.pendingWritingCount > 0 ? ` · ${result.pendingWritingCount} baholanmagan` : result.writingGradedCount > 0 ? ' · baholangan' : ''}
+                </p>
+              </div> : <span className="text-slate-400">—</span>}
+            </td>
+            <td className="px-4 py-4 text-center tabular-nums">{result.answeredCount}/{result.totalQuestions}</td>
+            <td className="px-5 py-4 text-right font-display text-base font-extrabold tabular-nums text-slate-900 sm:px-6">{result.score}</td>
+            <td className="px-5 py-4 text-right sm:px-6">
+              {result.pendingWritingCount > 0
+                ? <span className="text-xs font-bold text-sun-700">Writing kutilmoqda</span>
+                : result.completedAt
+                  ? <span className="text-xs font-bold text-success-700">Yakunlagan</span>
+                  : <span className="text-xs font-semibold text-slate-500">Vaqt bilan yopilgan</span>}
+            </td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div> : <div className="p-6 text-sm leading-relaxed text-slate-500">Hali saqlangan ishtirokchi javobi yo‘q. Preview rejimidagi javoblar bu jadvalga tushmaydi — ular faqat sinov uchun saqlanadi.</div>}
   </section>;
+}
+
+function ResultSectionStat({ correct, answered, total }: { correct: number; answered: number; total: number }) {
+  if (total <= 0) return <span className="text-slate-400">—</span>;
+  return <div>
+    <p className="font-bold tabular-nums text-slate-900">{correct}/{total} to‘g‘ri</p>
+    <p className="mt-1 text-[11px] font-medium tabular-nums text-slate-500">{answered}/{total} javob berilgan</p>
+  </div>;
 }
 
 function WritingReviewSection({ submissions, grades, setGrades, busy, finalized, onGrade }: { submissions: WritingSubmission[]; grades: Record<string, WritingGradeForm>; setGrades: Dispatch<SetStateAction<Record<string, WritingGradeForm>>>; busy: string | null; finalized: boolean; onGrade: (submission: WritingSubmission) => void }) {

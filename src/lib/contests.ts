@@ -192,6 +192,17 @@ export type ContestLeaderboardEntry = {
 /** Server-calculated results visible only to the contest manager after it ends. */
 export type ContestAdminResult = ContestLeaderboardEntry & {
   completedAt: string | null;
+  listeningCorrectCount: number;
+  listeningAnsweredCount: number;
+  listeningTotalQuestions: number;
+  readingCorrectCount: number;
+  readingAnsweredCount: number;
+  readingTotalQuestions: number;
+  writingScore: number;
+  writingMaxPoints: number;
+  writingSubmittedCount: number;
+  writingGradedCount: number;
+  writingTotalCount: number;
   pendingWritingCount: number;
 };
 
@@ -843,6 +854,17 @@ export async function fetchContestAdminResults(contestId: string): Promise<Conte
     answeredCount: number(valueAt(row, 'answered_count', 'answeredCount')),
     totalQuestions: number(valueAt(row, 'total_questions', 'totalQuestions')),
     completedAt: nullableTimestamp(valueAt(row, 'completed_at', 'completedAt')),
+    listeningCorrectCount: number(valueAt(row, 'listening_correct_count', 'listeningCorrectCount')),
+    listeningAnsweredCount: number(valueAt(row, 'listening_answered_count', 'listeningAnsweredCount')),
+    listeningTotalQuestions: number(valueAt(row, 'listening_total_questions', 'listeningTotalQuestions')),
+    readingCorrectCount: number(valueAt(row, 'reading_correct_count', 'readingCorrectCount')),
+    readingAnsweredCount: number(valueAt(row, 'reading_answered_count', 'readingAnsweredCount')),
+    readingTotalQuestions: number(valueAt(row, 'reading_total_questions', 'readingTotalQuestions')),
+    writingScore: number(valueAt(row, 'writing_score', 'writingScore')),
+    writingMaxPoints: number(valueAt(row, 'writing_max_points', 'writingMaxPoints')),
+    writingSubmittedCount: number(valueAt(row, 'writing_submitted_count', 'writingSubmittedCount')),
+    writingGradedCount: number(valueAt(row, 'writing_graded_count', 'writingGradedCount')),
+    writingTotalCount: number(valueAt(row, 'writing_total_count', 'writingTotalCount')),
     pendingWritingCount: number(valueAt(row, 'pending_writing_count', 'pendingWritingCount')),
   }));
 }

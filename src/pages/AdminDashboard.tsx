@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Activity,
   AlertCircle,
   ArrowRight,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock3,
+  FileText,
+  Loader2,
   LogOut,
   Mail,
   Megaphone,
@@ -29,7 +33,15 @@ import {
   adminUpdateUserRole,
   adminUpdateUserStatus,
 } from '@/lib/security';
-import { fetchManagedContests, fetchContestAdminResults, type ManagedContest, type ContestAdminResult } from '@/lib/contests';
+import {
+  fetchManagedContests,
+  fetchContestAdminResults,
+  fetchWritingSubmissions,
+  gradeWritingSubmission,
+  type ManagedContest,
+  type ContestAdminResult,
+  type WritingSubmission,
+} from '@/lib/contests';
 import type { AdminEmail, AdminUserView, AuditLog, Role, UserStatus } from '@/lib/supabase';
 
 type Section = 'overview' | 'users' | 'audit' | 'allowlist' | 'announcements' | 'contests';
@@ -88,7 +100,7 @@ export function AdminDashboard() {
       // Fetch results for finished contests
       const resultsMap: Record<string, ContestAdminResult[]> = {};
       const now = new Date();
-      const finishedContests = managedContests.filter((c) => new Date(c.endAt) < now);
+      const finishedContests = managedContests.filter((c) => c.isPublished && c.status === 'Finished');
       
       for (const contest of finishedContests) {
         try {
@@ -105,6 +117,14 @@ export function AdminDashboard() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const refreshContestResult = useCallback(async (contestId: string) => {
+    const rows = await fetchContestAdminResults(contestId);
+    setContestResults((current) => ({
+      ...current,
+      [contestId]: asList<ContestAdminResult>(rows),
+    }));
   }, []);
 
   useEffect(() => {
@@ -338,7 +358,7 @@ export function AdminDashboard() {
               />
             )}
             {section === 'contests' && (
-              <ContestsPanel contests={contests} results={contestResults} />
+              <ContestsPanel contests={contests} results={contestResults} onResultRefresh={refreshContestResult} />
             )}
             {section === 'audit' && <AuditPanel records={auditLogs} />}
             {section === 'allowlist' && (
@@ -791,76 +811,375 @@ function AnnouncementPanel({
 function ContestsPanel({
   contests,
   results,
+  onResultRefresh,
 }: {
   contests: ManagedContest[];
   results: Record<string, ContestAdminResult[]>;
+  onResultRefresh: (contestId: string) => Promise<void>;
 }) {
+  const [expandedContestId, setExpandedContestId] = useState<string | null>(null);
+  const [expandedWritingKey, setExpandedWritingKey] = useState<string | null>(null);
+  const [writingByContest, setWritingByContest] = useState<Record<string, WritingSubmission[]>>({});
+  const [writingGrades, setWritingGrades] = useState<Record<string, { score: string; feedback: string }>>({});
+  const [writingLoadingContestId, setWritingLoadingContestId] = useState<string | null>(null);
+  const [savingWritingId, setSavingWritingId] = useState<string | null>(null);
+  const [writingError, setWritingError] = useState<string | null>(null);
+  const [writingNotice, setWritingNotice] = useState<string | null>(null);
+
   if (contests.length === 0) {
     return <EmptyState icon={Trophy} title="No managed contests found" message="You have not created any contests yet, or the protected list did not return any contests." />;
   }
 
-  const now = new Date();
-  const finishedContests = contests.filter((c) => new Date(c.endAt) < now);
+  const finishedContests = contests.filter((contest) => contest.isPublished && contest.status === 'Finished');
 
   if (finishedContests.length === 0) {
     return <EmptyState icon={Trophy} title="No finished contests" message="Contests that have ended will appear here with their results." />;
   }
 
+  const toggleContest = (contestId: string) => {
+    setExpandedContestId((current) => current === contestId ? null : contestId);
+    setExpandedWritingKey(null);
+    setWritingError(null);
+    setWritingNotice(null);
+  };
+
+  const toggleWriting = async (contestId: string, userId: string) => {
+    const key = `${contestId}:${userId}`;
+    if (expandedWritingKey === key) {
+      setExpandedWritingKey(null);
+      return;
+    }
+
+    setWritingError(null);
+    setWritingNotice(null);
+    setExpandedWritingKey(key);
+    if (writingByContest[contestId]) return;
+
+    setWritingLoadingContestId(contestId);
+    try {
+      const submissions = await fetchWritingSubmissions(contestId);
+      setWritingByContest((current) => ({ ...current, [contestId]: submissions }));
+      setWritingGrades((current) => {
+        const next = { ...current };
+        for (const submission of submissions) {
+          next[submission.id] = {
+            score: submission.score === null ? '' : String(submission.score),
+            feedback: submission.feedback ?? '',
+          };
+        }
+        return next;
+      });
+    } catch (reason) {
+      setWritingError(reason instanceof Error ? reason.message : 'Writing javoblari yuklanmadi.');
+    } finally {
+      setWritingLoadingContestId(null);
+    }
+  };
+
+  const saveWritingGrade = async (contestId: string, submission: WritingSubmission) => {
+    const grade = writingGrades[submission.id] ?? {
+      score: submission.score === null ? '' : String(submission.score),
+      feedback: submission.feedback ?? '',
+    };
+    const score = Number(grade.score);
+    if (!Number.isInteger(score) || score < 0 || score > submission.maxPoints) {
+      setWritingNotice(null);
+      setWritingError(`Ball 0 va ${submission.maxPoints} oralig‘idagi butun son bo‘lishi kerak.`);
+      return;
+    }
+
+    setSavingWritingId(submission.id);
+    setWritingError(null);
+    setWritingNotice(null);
+    try {
+      await gradeWritingSubmission(submission.id, score, grade.feedback);
+      const refreshed = await fetchWritingSubmissions(contestId);
+      setWritingByContest((current) => ({ ...current, [contestId]: refreshed }));
+      setWritingGrades((current) => {
+        const next = { ...current };
+        for (const item of refreshed) {
+          next[item.id] = {
+            score: item.score === null ? '' : String(item.score),
+            feedback: item.feedback ?? '',
+          };
+        }
+        return next;
+      });
+      await onResultRefresh(contestId);
+      setWritingNotice(`${submission.partTitle} bahosi saqlandi.`);
+    } catch (reason) {
+      setWritingError(reason instanceof Error ? reason.message : 'Writing bahosini saqlab bo‘lmadi.');
+    } finally {
+      setSavingWritingId(null);
+    }
+  };
+
   return (
     <section className="card overflow-hidden">
       <div className="border-b border-slate-100 p-5">
-        <h2 className="text-lg font-bold text-slate-900">Contest results</h2>
+        <h2 className="text-lg font-bold text-slate-900">Contest natijalari</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Results for contests that have finished. Click on a contest to view participant scores and standings.
+          Tugagan contestlarning to‘liq natijalari shu yerda. Contestni oching, Listening, Reading va Writing natijalarini alohida ko‘ring.
         </p>
       </div>
+
       <div className="divide-y divide-slate-100">
         {finishedContests.map((contest) => {
           const contestResults = results[contest.id] || [];
           const participantCount = contestResults.length;
           const topScore = contestResults[0]?.score ?? 0;
+          const expanded = expandedContestId === contest.id;
 
           return (
-            <article key={contest.id} className="p-5 hover:bg-slate-50 transition-colors">
-              <Link
-                to={`/contest-management?contestId=${contest.id}`}
-                className="block space-y-3"
+            <article key={contest.id} className="bg-white">
+              <button
+                type="button"
+                onClick={() => toggleContest(contest.id)}
+                className="flex w-full flex-wrap items-center justify-between gap-4 p-5 text-left transition-colors hover:bg-slate-50"
               >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-900 truncate">{contest.title}</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {new Date(contest.startAt).toLocaleDateString()} – {new Date(contest.endAt).toLocaleDateString()}
-                    </p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-sm font-bold text-slate-900">{contest.title}</p>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">{contest.subject}</span>
                   </div>
-                  <div className="flex shrink-0 items-center gap-4">
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-slate-900">{participantCount}</p>
-                      <p className="text-xs text-slate-400">Participants</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-slate-900">{topScore}</p>
-                      <p className="text-xs text-slate-400">Top score</p>
-                    </div>
-                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {new Date(contest.startTime).toLocaleString()} – {new Date(contest.endTime).toLocaleString()}
+                  </p>
                 </div>
-                {participantCount > 0 && (
-                  <div className="rounded-lg bg-slate-50 p-3">
-                    <p className="text-xs font-semibold text-slate-700 mb-2">Top 3 Participants</p>
-                    <div className="space-y-1.5">
-                      {contestResults.slice(0, 3).map((result) => (
-                        <div key={result.userId} className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="font-bold text-slate-400">#{result.rank}</span>
-                            <span className="truncate text-slate-700">{result.displayName}</span>
-                          </div>
-                          <span className="font-semibold text-indigo-600 shrink-0">{result.score} pts</span>
-                        </div>
-                      ))}
-                    </div>
+
+                <div className="flex shrink-0 items-center gap-5">
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-slate-900">{participantCount}</p>
+                    <p className="text-xs text-slate-400">Participants</p>
                   </div>
-                )}
-              </Link>
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-slate-900">{topScore}</p>
+                    <p className="text-xs text-slate-400">Top score</p>
+                  </div>
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-indigo-700">
+                    {expanded ? 'Yopish' : 'To‘liq natijalar'}
+                    {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </span>
+                </div>
+              </button>
+
+              {expanded && (
+                <div className="border-t border-slate-100 bg-slate-50/50">
+                  {participantCount === 0 ? (
+                    <div className="p-6 text-sm text-slate-500">Bu contest uchun server natija qaytarmadi.</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[1120px] text-left text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-100/80 text-xs font-bold uppercase tracking-wider text-slate-500">
+                            <th className="px-4 py-3">O‘rin</th>
+                            <th className="px-4 py-3">Ishtirokchi</th>
+                            <th className="px-4 py-3 text-center">Listening</th>
+                            <th className="px-4 py-3 text-center">Reading</th>
+                            <th className="px-4 py-3 text-center">Writing</th>
+                            <th className="px-4 py-3 text-center">Umumiy</th>
+                            <th className="px-4 py-3 text-right">Holat</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {contestResults.map((result) => {
+                            const writingKey = `${contest.id}:${result.userId}`;
+                            const writingExpanded = expandedWritingKey === writingKey;
+                            const participantWriting = (writingByContest[contest.id] ?? [])
+                              .filter((submission) => submission.userId === result.userId)
+                              .sort((left, right) => left.partPosition - right.partPosition);
+                            const writingLoading = writingLoadingContestId === contest.id && writingExpanded;
+
+                            return (
+                              <Fragment key={result.userId}>
+                                <tr className="align-top text-slate-700">
+                                  <td className="px-4 py-4 font-bold text-indigo-700">#{result.rank}</td>
+                                  <td className="px-4 py-4">
+                                    <p className="font-bold text-slate-900">{result.displayName}</p>
+                                    <p className="mt-1 text-[11px] text-slate-400">{result.answeredCount}/{result.totalQuestions} item saqlangan</p>
+                                  </td>
+                                  <td className="px-4 py-4 text-center">
+                                    <p className="font-display text-lg font-extrabold text-slate-900">{result.listeningCorrectCount}/{result.listeningTotalQuestions}</p>
+                                    <p className="mt-1 text-[11px] text-slate-400">{result.listeningAnsweredCount}/{result.listeningTotalQuestions} javob</p>
+                                  </td>
+                                  <td className="px-4 py-4 text-center">
+                                    <p className="font-display text-lg font-extrabold text-slate-900">{result.readingCorrectCount}/{result.readingTotalQuestions}</p>
+                                    <p className="mt-1 text-[11px] text-slate-400">{result.readingAnsweredCount}/{result.readingTotalQuestions} javob</p>
+                                  </td>
+                                  <td className="px-4 py-4 text-center">
+                                    {result.writingTotalCount > 0 ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => void toggleWriting(contest.id, result.userId)}
+                                        className="mx-auto inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700 transition-colors hover:bg-indigo-100"
+                                      >
+                                        <FileText className="h-4 w-4" />
+                                        <span>
+                                          {result.writingSubmittedCount}/{result.writingTotalCount}
+                                          {result.pendingWritingCount > 0
+                                            ? ` · ${result.pendingWritingCount} baholanmagan`
+                                            : ` · ${result.writingScore}/${result.writingMaxPoints}`}
+                                        </span>
+                                        {writingExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                                      </button>
+                                    ) : (
+                                      <span className="text-xs text-slate-400">Writing yo‘q</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-4 text-center">
+                                    <p className="font-display text-xl font-extrabold text-slate-900">{result.score}</p>
+                                    {result.pendingWritingCount > 0 && <p className="mt-1 text-[11px] font-semibold text-sun-700">Writing hali qo‘shilmagan</p>}
+                                  </td>
+                                  <td className="px-4 py-4 text-right">
+                                    {result.pendingWritingCount > 0 ? (
+                                      <span className="text-xs font-bold text-sun-700">Writing kutilmoqda</span>
+                                    ) : result.completedAt ? (
+                                      <span className="text-xs font-bold text-success-700">Yakunlagan</span>
+                                    ) : (
+                                      <span className="text-xs font-semibold text-slate-500">Vaqt bilan yopilgan</span>
+                                    )}
+                                  </td>
+                                </tr>
+
+                                {writingExpanded && (
+                                  <tr>
+                                    <td colSpan={7} className="bg-indigo-50/40 px-4 py-4">
+                                      <div className="rounded-2xl border border-indigo-100 bg-white p-4 sm:p-5">
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                          <div>
+                                            <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Writing tekshiruvi</p>
+                                            <h3 className="mt-1 text-base font-bold text-slate-900">{result.displayName}</h3>
+                                            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">Task 1 va Task 2 javoblarini shu yerning o‘zida o‘qing, ball qo‘ying va kerak bo‘lsa feedback yozing. Saqlangan ball umumiy natijaga darhol qo‘shiladi.</p>
+                                          </div>
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${contest.isFinalized ? 'bg-success-50 text-success-700' : result.pendingWritingCount > 0 ? 'bg-sun-50 text-sun-700' : 'bg-indigo-50 text-indigo-700'}`}>
+                                              {contest.isFinalized ? 'Natija yakunlangan' : result.pendingWritingCount > 0 ? `${result.pendingWritingCount} ta baholanmagan` : `Writing ${result.writingScore}/${result.writingMaxPoints}`}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        {writingNotice && (
+                                          <div role="status" className="mt-4 flex items-center gap-2 rounded-xl border border-success-200 bg-success-50 p-3 text-xs font-semibold text-success-700">
+                                            <CheckCircle2 className="h-4 w-4 shrink-0" />
+                                            {writingNotice}
+                                          </div>
+                                        )}
+
+                                        {writingLoading ? (
+                                          <div className="py-8 text-center text-sm text-slate-500">Writinglar yuklanmoqda…</div>
+                                        ) : writingError ? (
+                                          <div className="mt-4 rounded-xl border border-error-200 bg-error-50 p-3 text-sm text-error-700">{writingError}</div>
+                                        ) : participantWriting.length === 0 ? (
+                                          <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Bu participantning Writing submissioni topilmadi.</div>
+                                        ) : (
+                                          <div className="mt-4 space-y-5">
+                                            {participantWriting.map((submission, index) => {
+                                              const taskNumber = submission.partPosition >= 8 ? submission.partPosition - 7 : index + 1;
+                                              const grade = writingGrades[submission.id] ?? {
+                                                score: submission.score === null ? '' : String(submission.score),
+                                                feedback: submission.feedback ?? '',
+                                              };
+                                              const saving = savingWritingId === submission.id;
+                                              const wordCount = submission.content.trim() ? submission.content.trim().split(/\s+/).length : 0;
+                                              const gradingLocked = contest.isFinalized || savingWritingId !== null;
+                                              return (
+                                                <article key={submission.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 bg-slate-50 px-5 py-4">
+                                                    <div>
+                                                      <div className="flex flex-wrap items-center gap-2">
+                                                        <p className="text-xs font-extrabold uppercase tracking-wider text-indigo-600">Writing Task {taskNumber}</p>
+                                                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500 ring-1 ring-slate-200">{wordCount} so‘z</span>
+                                                      </div>
+                                                      <p className="mt-1 text-sm font-bold text-slate-900">{submission.partTitle}</p>
+                                                      <p className="mt-1 text-[11px] text-slate-400">Yuborilgan: {formatDate(submission.submittedAt)}</p>
+                                                    </div>
+                                                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${submission.score === null ? 'bg-sun-50 text-sun-700' : 'bg-success-50 text-success-700'}`}>
+                                                      {submission.score === null ? 'Baholanmagan' : `${submission.score}/${submission.maxPoints} ball`}
+                                                    </span>
+                                                  </div>
+
+                                                  <div className="grid lg:grid-cols-[minmax(0,1.55fr)_minmax(280px,0.7fr)]">
+                                                    <div className="min-w-0 border-b border-slate-100 p-5 lg:border-b-0 lg:border-r">
+                                                      <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Participant javobi</p>
+                                                      <div className="max-h-[420px] overflow-y-auto rounded-xl bg-slate-50 p-4">
+                                                        <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{submission.content}</p>
+                                                      </div>
+                                                    </div>
+
+                                                    <div className="bg-white p-5">
+                                                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Baholash</p>
+                                                      {contest.isFinalized && (
+                                                        <div className="mt-3 rounded-xl border border-success-200 bg-success-50 p-3 text-xs leading-relaxed text-success-700">Natija yakunlangan. Writing bahosini endi o‘zgartirib bo‘lmaydi.</div>
+                                                      )}
+
+                                                      <label className="mt-4 block">
+                                                        <span className="mb-1.5 flex items-center justify-between text-xs font-semibold text-slate-700">
+                                                          <span>Ball</span>
+                                                          <span className="font-normal text-slate-400">0 – {submission.maxPoints}</span>
+                                                        </span>
+                                                        <input
+                                                          type="number"
+                                                          min={0}
+                                                          max={submission.maxPoints}
+                                                          step={1}
+                                                          value={grade.score}
+                                                          disabled={gradingLocked}
+                                                          onChange={(event) => setWritingGrades((current) => ({
+                                                            ...current,
+                                                            [submission.id]: { ...grade, score: event.target.value },
+                                                          }))}
+                                                          className="input text-center font-display text-lg font-extrabold tabular-nums"
+                                                          placeholder={`0–${submission.maxPoints}`}
+                                                        />
+                                                      </label>
+
+                                                      <label className="mt-4 block">
+                                                        <span className="mb-1.5 block text-xs font-semibold text-slate-700">Feedback <span className="font-normal text-slate-400">(ixtiyoriy)</span></span>
+                                                        <textarea
+                                                          value={grade.feedback}
+                                                          disabled={gradingLocked}
+                                                          onChange={(event) => setWritingGrades((current) => ({
+                                                            ...current,
+                                                            [submission.id]: { ...grade, feedback: event.target.value },
+                                                          }))}
+                                                          className="input min-h-28 resize-y text-sm"
+                                                          placeholder="Masalan: structure yaxshi, lekin grammar xatolari bor…"
+                                                        />
+                                                      </label>
+
+                                                      <button
+                                                        type="button"
+                                                        disabled={gradingLocked || !grade.score.trim()}
+                                                        onClick={() => void saveWritingGrade(contest.id, submission)}
+                                                        className="btn-primary mt-4 w-full justify-center px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                                                      >
+                                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                                                        {saving ? 'Saqlanmoqda…' : submission.score === null ? 'Bahoni saqlash' : 'Bahoni yangilash'}
+                                                      </button>
+
+                                                      {submission.gradedAt && (
+                                                        <p className="mt-3 text-center text-[11px] text-slate-400">Oxirgi baholash: {formatDate(submission.gradedAt)}</p>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                </article>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </article>
           );
         })}
