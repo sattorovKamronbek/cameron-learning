@@ -37,14 +37,17 @@ import {
   deleteContestQuestion,
   fetchContestAdminResults,
   fetchContestEditor,
+  fetchContestIntegrityExclusions,
   fetchManagedContests,
   fetchWritingSubmissions,
   finalizeContest,
   formatContestDate,
   generatePrivateAccessCode,
+  generateContestIntegrityOverrideCode,
   gradeWritingSubmission,
   publishContest,
   reopenContestAfterTesting,
+  restoreContestAttemptWithOverride,
   saveExamPart,
   saveExamPartImage,
   saveContestQuestion,
@@ -52,12 +55,14 @@ import {
   saveCefrMatchingConfig,
   saveCefrMapImage,
   saveExamSectionTimings,
+  setContestIntegrityOverrideCode,
   uploadContestAudio,
   uploadContestImage,
   updateContest,
   type ContestDifficulty,
   type ContestAdminResult,
   type ContestEditor,
+  type ContestIntegrityExclusion,
   type ContestInput,
   type ContestQuestionInput,
   type ContestType,
@@ -79,6 +84,7 @@ type ContestForm = {
   subjectSlug: string;
   difficulty: ContestDifficulty;
   type: ContestType;
+  mode: 'Contest' | 'Test';
   visibility: ContestVisibility;
   privateAccessCode: string;
   startTime: string;
@@ -166,6 +172,7 @@ function defaultContestForm(): ContestForm {
     subjectSlug: 'science',
     difficulty: 'Medium',
     type: 'Unrated',
+    mode: 'Contest',
     visibility: 'Public',
     privateAccessCode: '',
     startTime: localDateTime(start),
@@ -184,6 +191,7 @@ function contestFormFrom(contest: ManagedContest): ContestForm {
     subjectSlug: contest.subjectSlug,
     difficulty: contest.difficulty,
     type: contest.type,
+    mode: contest.mode === 'Test' ? 'Test' : 'Contest',
     visibility: contest.visibility,
     privateAccessCode: '',
     startTime: localDateTime(new Date(contest.startTime)),
@@ -202,6 +210,7 @@ function contestInput(form: ContestForm): ContestInput {
     subjectSlug: form.subjectSlug,
     difficulty: form.difficulty,
     type: form.type,
+    mode: form.mode,
     visibility: form.visibility,
     privateAccessCode: form.privateAccessCode || null,
     startTime: form.startTime,
@@ -796,6 +805,9 @@ export function ContestManagementPage() {
   const [writingSubmissions, setWritingSubmissions] = useState<WritingSubmission[]>([]);
   const [writingGrades, setWritingGrades] = useState<Record<string, WritingGradeForm>>({});
   const [adminResults, setAdminResults] = useState<ContestAdminResult[]>([]);
+  const [integrityExclusions, setIntegrityExclusions] = useState<ContestIntegrityExclusion[]>([]);
+  const [integrityOverrideCode, setIntegrityOverrideCode] = useState('');
+  const [revealedIntegrityCode, setRevealedIntegrityCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editorLoading, setEditorLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -852,26 +864,33 @@ export function ContestManagementPage() {
         setActiveCefrListeningPart(next.contest.subjectSlug === 'cefr' ? 1 : null);
         setActiveCefrReadingPart(null);
       }
-      if (isEnglishExam(next.contest) && next.contest.status === 'Finished') {
-        const submissions = await fetchWritingSubmissions(contestId);
+      if (isEnglishExam(next.contest) && (next.contest.status === 'Finished' || next.contest.mode === 'Test')) {
+        const submissions = await fetchWritingSubmissions(contestId, next.contest.mode === 'Test');
         setWritingSubmissions(submissions);
         setWritingGrades(Object.fromEntries(submissions.map((submission) => [submission.id, writingGradeFormFrom(submission)])));
       } else {
         setWritingSubmissions([]);
         setWritingGrades({});
       }
-      if (next.contest.isPublished && next.contest.status === 'Finished') {
-        setAdminResults(await fetchContestAdminResults(contestId));
+      if (next.contest.isPublished && (next.contest.status === 'Finished' || next.contest.mode === 'Test')) {
+        setAdminResults(await fetchContestAdminResults(contestId, next.contest.mode === 'Test'));
       } else {
         setAdminResults([]);
       }
+      if (adminAccess) {
+        setIntegrityExclusions(await fetchContestIntegrityExclusions(contestId));
+      } else {
+        setIntegrityExclusions([]);
+      }
+      setIntegrityOverrideCode('');
+      setRevealedIntegrityCode(null);
       setNewContest(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Contest tahrirlovchisi ochilmadi.');
     } finally {
       setEditorLoading(false);
     }
-  }, []);
+  }, [adminAccess]);
 
   const selectContest = (contest: ManagedContest) => {
     if (contest.subjectSlug === 'programming') {
@@ -896,6 +915,9 @@ export function ContestManagementPage() {
     setWritingSubmissions([]);
     setWritingGrades({});
     setAdminResults([]);
+    setIntegrityExclusions([]);
+    setIntegrityOverrideCode('');
+    setRevealedIntegrityCode(null);
     setError(null);
     setNotice(null);
   };
@@ -1223,7 +1245,7 @@ export function ContestManagementPage() {
       setError('IELTS Academic uchun vaqtlar qat’iy: 30 min Listening, 60 min Reading va 60 min Writing.');
       return;
     }
-    if (!adminAccess && input.listeningMinutes + input.readingMinutes + input.writingMinutes !== contestMinutes) {
+    if (currentContest.mode !== 'Test' && !adminAccess && input.listeningMinutes + input.readingMinutes + input.writingMinutes !== contestMinutes) {
       setError(`Bo‘limlar jami ${contestMinutes} minut bo‘lishi shart.`);
       return;
     }
@@ -1266,7 +1288,7 @@ export function ContestManagementPage() {
       return;
     }
     await run(`grade:${submission.id}`, async () => {
-      await gradeWritingSubmission(submission.id, score, grade.feedback);
+      await gradeWritingSubmission(submission.id, score, grade.feedback, currentContest?.mode === 'Test');
       if (currentContest) await loadEditor(currentContest.id, false);
     }, 'Writing bahosi saqlandi.');
   };
@@ -1425,6 +1447,28 @@ export function ContestManagementPage() {
     }, 'Sinov javoblari tozalandi. Contestni istalgancha qayta tekshirishingiz mumkin.');
   };
 
+  const createIntegrityOverrideCode = async () => {
+    if (!currentContest || !adminAccess) return;
+    const code = generateContestIntegrityOverrideCode();
+    await run('integrity-code', async () => {
+      await setContestIntegrityOverrideCode(currentContest.id, code);
+      setRevealedIntegrityCode(code);
+    }, 'Yangi oqlash kodi yaratildi. Uni faqat administrator saqlab qo‘ysin.');
+  };
+
+  const restoreExcludedAttempt = async (exclusion: ContestIntegrityExclusion) => {
+    if (!currentContest || !adminAccess) return;
+    if (!integrityOverrideCode.trim()) {
+      setError('Oqlash kodini kiriting.');
+      return;
+    }
+    await run(`integrity-restore:${exclusion.userId}`, async () => {
+      await restoreContestAttemptWithOverride(currentContest.id, exclusion.userId, integrityOverrideCode);
+      setIntegrityOverrideCode('');
+      setIntegrityExclusions(await fetchContestIntegrityExclusions(currentContest.id));
+    }, `${exclusion.displayName}ning urinishiga qayta ruxsat berildi.`);
+  };
+
   const finalize = async () => {
     if (!currentContest || !window.confirm('Contest natijalari va ratinglarini yakunlaysizmi? Bu amal qaytarilmaydi.')) return;
     await run('finalize', async () => {
@@ -1561,10 +1605,11 @@ export function ContestManagementPage() {
                   {!editable && <div className="border-t border-slate-100 bg-slate-50 p-5 text-sm text-slate-500">Boshlangan, yakunlangan yoki arxivlangan contest savollari o‘zgarmaydi.</div>}
                 </section>}
 
-                {englishExam && currentContest.status === 'Finished' && <WritingReviewSection submissions={writingSubmissions} grades={writingGrades} setGrades={setWritingGrades} busy={busy} finalized={currentContest.isFinalized} onGrade={saveWritingGrade} />}
-                {currentContest.isPublished && currentContest.status === 'Finished' && <ContestResultsSection results={adminResults} finalized={currentContest.isFinalized} englishExam={englishExam} ungradedWritingCount={ungradedWritingCount} />}
+                {englishExam && (currentContest.status === 'Finished' || currentContest.mode === 'Test') && <WritingReviewSection submissions={writingSubmissions} grades={writingGrades} setGrades={setWritingGrades} busy={busy} finalized={currentContest.isFinalized} onGrade={saveWritingGrade} />}
+                {currentContest.isPublished && (currentContest.status === 'Finished' || currentContest.mode === 'Test') && <ContestResultsSection results={adminResults} finalized={currentContest.isFinalized} englishExam={englishExam} ungradedWritingCount={ungradedWritingCount} />}
 
                 <section className="card p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-5"><div><h2 className="text-lg font-bold text-slate-900">Contest holati</h2><p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-500">Draft paytida <strong>Sinov rejimi</strong> faqat sizga ochiladi: e’lon qilinmaydi, qatnashuvchi yaratmaydi va ratingga ta’sir qilmaydi. E’lon qilingan contestning jadvali va tafsilotlarini ham boshlanishidan oldin yangilash mumkin.</p>{englishExam && currentContest.status === 'Finished' && ungradedWritingCount > 0 && <p className="mt-2 text-xs font-semibold text-sun-700">{ungradedWritingCount} ta writing hali baholanmagan. Reyting va yakuniy natijalar shu baholar kiritilguncha kutadi.</p>}{currentContest.type === 'Rated' && !adminAccess && <p className="mt-2 text-xs font-medium text-slate-500">Rated contest natijasini yakunlash admin tasdiqlovini talab qiladi.</p>}</div><div className="flex flex-wrap gap-2">{!currentContest.isPublished && !currentContest.archivedAt && <Link to={`/contests/${currentContest.slug}/preview`} className="btn-ghost px-4 py-2.5 text-sm"><ClipboardList className="h-4 w-4" />Sinov rejimida ochish</Link>}{!currentContest.isPublished && !currentContest.archivedAt && <button type="button" onClick={() => void clearPreviewResponses()} disabled={isBusy} className="btn-ghost px-4 py-2.5 text-sm disabled:opacity-50"><RefreshCw className="h-4 w-4" />Sinov javoblarini tozalash</button>}{editable && !currentContest.isPublished && <button type="button" onClick={() => void publish()} disabled={questionCount === 0 || isBusy} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"><Send className="h-4 w-4" />E’lon qilish</button>}{canFinalize && <button type="button" onClick={() => void finalize()} disabled={isBusy} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"><Trophy className="h-4 w-4" />Natijani yakunlash</button>}{canReopenAfterTesting && <button type="button" onClick={() => void reopenAfterTesting()} disabled={isBusy} className="btn-ghost px-4 py-2.5 text-sm text-indigo-700 disabled:opacity-50"><RotateCcw className="h-4 w-4" />Ertaga qayta tayyorlash</button>}{editable && !currentContest.isPublished && <button type="button" onClick={() => void removeContest()} disabled={isBusy} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Trash2 className="h-4 w-4" />O‘chirish</button>}{!currentContest.archivedAt && <button type="button" onClick={() => void archive()} disabled={isBusy} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Archive className="h-4 w-4" />Arxivlash</button>}</div></div></section>
+                {adminAccess && <section className="card overflow-hidden"><div className="border-b border-indigo-100 bg-indigo-50/60 p-5 sm:p-6"><div className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700"><ShieldCheck className="h-5 w-5" /></span><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Integrity override</p><h2 className="mt-1 text-lg font-bold text-slate-900">Chetlatilgan urinishni oqlash</h2><p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-600">Sahifa yoki tabdan chiqib ketgan participant avtomatik chetlatiladi. Har contest uchun bitta administrator kodi yarating; shu kod bilan faqat contest davomida qayta ruxsat berish mumkin.</p></div></div><button type="button" onClick={() => void createIntegrityOverrideCode()} disabled={isBusy} className="btn-primary shrink-0 px-4 py-2.5 text-sm disabled:opacity-50">{busy === 'integrity-code' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}Yangi oqlash kodi</button></div>{revealedIntegrityCode && <div className="mt-4 rounded-xl border border-indigo-200 bg-white p-3"><p className="text-xs font-semibold text-indigo-900">Bu kod faqat hozir ko‘rsatiladi. Administrator uni xavfsiz joyga nusxalab saqlashi kerak.</p><code className="mt-2 block select-all break-all rounded-lg bg-slate-950 px-3 py-2 font-mono text-sm font-bold tracking-wide text-white">{revealedIntegrityCode}</code></div>}</div><div className="p-5 sm:p-6"><label className="text-xs font-bold uppercase tracking-wider text-slate-500" htmlFor="integrity-override-code">Oqlash kodi</label><input id="integrity-override-code" value={integrityOverrideCode} onChange={(event) => setIntegrityOverrideCode(event.target.value)} autoComplete="off" className="input mt-2 font-mono" placeholder="Administrator yaratgan kodni kiriting" />{integrityExclusions.length ? <div className="mt-5 space-y-3">{integrityExclusions.map((exclusion) => <div key={exclusion.userId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-4"><div><p className="text-sm font-bold text-slate-800">{exclusion.displayName}</p><p className="mt-1 text-xs text-slate-500">{displayDate(exclusion.excludedAt)} · {exclusion.reason}</p></div><button type="button" disabled={currentContest.status !== 'Live' || !integrityOverrideCode.trim() || isBusy} onClick={() => void restoreExcludedAttempt(exclusion)} className="btn-ghost border border-indigo-200 px-3 py-2 text-xs font-bold text-indigo-700 disabled:opacity-50">{busy === `integrity-restore:${exclusion.userId}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}Qayta ruxsat berish</button></div>)}</div> : <p className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Hozircha chetlatilgan participant yo‘q.</p>}</div></section>}
               </>
             )}
           </div>
@@ -1575,13 +1620,19 @@ export function ContestManagementPage() {
 }
 
 function StatusPill({ contest, large = false }: { contest: ManagedContest; large?: boolean }) {
-  const label = contest.archivedAt ? 'Arxiv' : contest.isFinalized ? 'Yakunlangan' : contest.isPublished ? contest.status : 'Draft';
-  const color = contest.archivedAt ? 'bg-slate-100 text-slate-600' : contest.isFinalized ? 'bg-success-50 text-success-700' : contest.isPublished && contest.status === 'Live' ? 'bg-error-50 text-error-700' : contest.isPublished ? 'bg-indigo-50 text-indigo-700' : 'bg-sun-50 text-sun-700';
+  const label = contest.archivedAt ? 'Arxiv' : contest.isFinalized ? 'Yakunlangan' : contest.isPublished ? contest.mode === 'Test' ? 'Test ochiq' : contest.status : 'Draft';
+  const color = contest.archivedAt ? 'bg-slate-100 text-slate-600' : contest.isFinalized ? 'bg-success-50 text-success-700' : contest.isPublished && contest.mode === 'Test' ? 'bg-emerald-50 text-emerald-700' : contest.isPublished && contest.status === 'Live' ? 'bg-error-50 text-error-700' : contest.isPublished ? 'bg-indigo-50 text-indigo-700' : 'bg-sun-50 text-sun-700';
   return <span className={`shrink-0 rounded-full font-bold ${large ? 'px-3 py-1.5 text-xs' : 'px-2 py-1 text-[10px]'} ${color}`}>{label}</span>;
 }
 
 function ContestFormFields({ form, setForm, disabled, onSubjectChange, onSubmit, busy, isNew, canCreateRated }: { form: ContestForm; setForm: Dispatch<SetStateAction<ContestForm>>; disabled: boolean; onSubjectChange: (subjectSlug: string) => void; onSubmit: (event: FormEvent) => void; busy: boolean; isNew: boolean; canCreateRated: boolean }) {
   const update = <K extends keyof ContestForm>(key: K, value: ContestForm[K]) => setForm((current) => ({ ...current, [key]: value }));
+  const updateMode = (mode: ContestForm['mode']) => setForm((current) => ({
+    ...current,
+    mode,
+    type: mode === 'Test' ? 'Unrated' : current.type,
+    subjectSlug: mode === 'Test' && current.subjectSlug !== 'ielts' && current.subjectSlug !== 'cefr' ? 'ielts' : current.subjectSlug,
+  }));
   const updateVisibility = (visibility: ContestVisibility) => setForm((current) => ({
     ...current,
     visibility,
@@ -1595,14 +1646,14 @@ function ContestFormFields({ form, setForm, disabled, onSubjectChange, onSubmit,
       <div className="grid gap-5 md:grid-cols-2">
         <Field label="Contest nomi" className="md:col-span-2"><input required value={form.title} disabled={disabled} onChange={(event) => update('title', event.target.value)} className="input" placeholder="Masalan: August Mathematics Challenge" /></Field>
         <Field label="Tavsif" className="md:col-span-2"><textarea value={form.description} disabled={disabled} onChange={(event) => update('description', event.target.value)} className="input min-h-28 resize-y" placeholder="Contest maqsadi va qatnashuvchilar bilishi kerak bo‘lgan ma’lumotlar" /></Field>
-        <Field label="Fan yoki imtihon"><AppSelect value={form.subjectSlug} disabled={disabled} onChange={onSubjectChange} options={academicContestSubjects.map(([value, label]) => ({ value, label }))} ariaLabel="Fan yoki imtihon" /><p className="mt-1.5 text-xs text-slate-500">IELTS tanlansa vaqt avtomatik 30 + 60 + 60 minutga (jami 150 minut) o‘rnatiladi. Programming contestlarni maxsus programming boshqaruvida yarating.</p></Field>
-        <Field label="Turi"><AppSelect value={form.type} disabled={disabled} onChange={(value) => update('type', value as ContestType)} options={[{ value: 'Unrated', label: 'Unrated', description: 'Ratingga ta’sir qilmaydi' }, { value: 'Rated', label: 'Rated', description: 'Yakunlangach ratingga ta’sir qiladi', disabled: !canCreateRated }]} ariaLabel="Contest turi" />{!canCreateRated && <p className="mt-1.5 text-xs text-slate-500">Rated contestlarni faqat tasdiqlangan admin yaratadi.</p>}</Field>
+        <Field label="Format"><AppSelect value={form.mode} disabled={disabled} onChange={(value) => updateMode(value as ContestForm['mode'])} options={[{ value: 'Contest', label: 'Contest', description: 'Barcha qatnashchi uchun bitta umumiy jadval' }, { value: 'Test', label: 'Individual test', description: 'IELTS/CEFR, har ishtirokchi vaqtni o‘zi boshlaydi' }]} ariaLabel="Contest yoki test" /><p className="mt-1.5 text-xs text-slate-500">Test faqat IELTS yoki CEFR uchun. Natijani ko‘rish tanlovini participant testni boshlashidan oldin beradi.</p></Field>
+        <Field label="Fan yoki imtihon"><AppSelect value={form.subjectSlug} disabled={disabled} onChange={onSubjectChange} options={(form.mode === 'Test' ? academicContestSubjects.filter(([value]) => value === 'ielts' || value === 'cefr') : academicContestSubjects).map(([value, label]) => ({ value, label }))} ariaLabel="Fan yoki imtihon" /><p className="mt-1.5 text-xs text-slate-500">IELTS tanlansa vaqt avtomatik 30 + 60 + 60 minutga (jami 150 minut) o‘rnatiladi. Programming contestlarni maxsus programming boshqaruvida yarating.</p></Field>
+        <Field label="Turi"><AppSelect value={form.type} disabled={disabled || form.mode === 'Test'} onChange={(value) => update('type', value as ContestType)} options={[{ value: 'Unrated', label: 'Unrated', description: form.mode === 'Test' ? 'Individual testlar ratingga kirmaydi' : 'Ratingga ta’sir qilmaydi' }, { value: 'Rated', label: 'Rated', description: 'Yakunlangach ratingga ta’sir qiladi', disabled: !canCreateRated || form.mode === 'Test' }]} ariaLabel="Contest turi" />{!canCreateRated && <p className="mt-1.5 text-xs text-slate-500">Rated contestlarni faqat tasdiqlangan admin yaratadi.</p>}</Field>
         <Field label="Kirish"><AppSelect value={form.visibility} disabled={disabled} onChange={(value) => updateVisibility(value as ContestVisibility)} options={[{ value: 'Public', label: 'Public', description: 'Contest katalogida ko‘rinadi' }, { value: 'Private', label: 'Private', description: 'Faqat access code bilan' }]} ariaLabel="Contestga kirish turi" /></Field>
         <Field label="Qiyinlik"><AppSelect value={form.difficulty} disabled={disabled} onChange={(value) => update('difficulty', value as ContestDifficulty)} options={['Easy', 'Medium', 'Hard', 'Expert'].map((value) => ({ value, label: value }))} ariaLabel="Contest qiyinligi" /></Field>
         {form.visibility === 'Private' && <Field label={isNew ? 'Private access code' : 'Yangi access code (ixtiyoriy)'} className="md:col-span-2"><div className="flex flex-col gap-2 sm:flex-row"><input required={isNew} readOnly value={form.privateAccessCode} disabled={disabled} className="input flex-1 font-mono tracking-wide" placeholder="Private tanlanganda xavfsiz kod yaratiladi" /><button type="button" disabled={disabled} onClick={() => update('privateAccessCode', generatePrivateAccessCode())} className="btn-ghost shrink-0 px-4 py-2.5 text-sm disabled:opacity-50">Yangi kod yaratish</button></div><p className="mt-1.5 text-xs text-slate-500">Har yangi kod 100-bit tasodifiy qiymatdir. U faqat hash holatida saqlanadi va bitta private contestga bog‘lanadi.</p></Field>}
         <Field label="Ishtirokchilar limiti"><input required min="1" max="100000" type="number" value={form.maxParticipants} disabled={disabled} onChange={(event) => update('maxParticipants', event.target.value)} className="input" /></Field>
-        <Field label="Boshlanish vaqti"><input required type="datetime-local" value={form.startTime} disabled={disabled} onChange={(event) => update('startTime', event.target.value)} className="input" /></Field>
-        <Field label="Tugash vaqti"><input required type="datetime-local" value={form.endTime} disabled={disabled} onChange={(event) => update('endTime', event.target.value)} className="input" /></Field>
+        {form.mode === 'Test' ? <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4 text-sm leading-relaxed text-cyan-900"><p className="font-bold">Individual boshlanish vaqti</p><p className="mt-1 text-xs">Test e’lon qilingach, participant “Boshlash”ni bosgan vaqtda Listening → Reading → Writing timeri ochiladi. Pastdagi bo‘lim vaqtlari testning haqiqiy davomiyligini belgilaydi.</p></div> : <><Field label="Boshlanish vaqti"><input required type="datetime-local" value={form.startTime} disabled={disabled} onChange={(event) => update('startTime', event.target.value)} className="input" /></Field><Field label="Tugash vaqti"><input required type="datetime-local" value={form.endTime} disabled={disabled} onChange={(event) => update('endTime', event.target.value)} className="input" /></Field></>}
         <Field label="Qoidalar (har qatorda bittadan)" className="md:col-span-2"><textarea value={form.rulesText} disabled={disabled} onChange={(event) => update('rulesText', event.target.value)} className="input min-h-24 resize-y" placeholder="Masalan: Bitta akkaunt bilan qatnashing\nMaslahatlashmang" /></Field>
         <Field label="Teglar (vergul bilan)" className="md:col-span-1"><input value={form.tagsText} disabled={disabled} onChange={(event) => update('tagsText', event.target.value)} className="input" placeholder="algebra, olympiad" /></Field>
         <Field label="Sovrin (ixtiyoriy)" className="md:col-span-1"><input value={form.prize} disabled={disabled} onChange={(event) => update('prize', event.target.value)} className="input" placeholder="Certificate yoki prize pool" /></Field>
@@ -2075,11 +2126,12 @@ function ExamSectionTimingSection({ form, setForm, contest, savedTimings, editab
   const readingMinutes = Number(form.readingMinutes) || 0;
   const writingMinutes = Number(form.writingMinutes) || 0;
   const totalMinutes = listeningMinutes + readingMinutes + writingMinutes;
+  const individualTest = contest.mode === 'Test';
   const remainingMinutes = contestMinutes - totalMinutes;
   const update = (key: keyof ExamTimingForm, value: string) => setForm((current) => ({ ...current, [key]: value }));
   const ielts = contest.subjectSlug === 'ielts';
   const timingOverride = adminAccess;
-  return <section className="card overflow-hidden ring-cyan-100"><div className="workspace-panel-heading bg-gradient-to-r from-cyan-50/80 to-white"><div><p className="text-xs font-bold uppercase tracking-wider text-cyan-700">Section timers</p><h2 className="mt-1 text-xl font-bold text-slate-900">Listening, Reading va Writing vaqti</h2><p className="mt-1 max-w-2xl text-sm text-slate-500">{timingOverride ? 'Administrator override faol: bo‘lim vaqtlarini contest holati va IELTS standart vaqtlaridan mustaqil o‘zgartirishingiz mumkin.' : ielts ? 'IELTS Academic kompyuter testi uchun qat’iy vaqt: 30 min Listening, 60 min Reading, 60 min Writing.' : 'Har bir bo‘limning alohida server timeri bo‘ladi. Vaqt tugashi bilan oldingi bo‘lim yopiladi va keyingi bo‘lim avtomatik ochiladi.'}</p></div><span className={`rounded-full px-3 py-1.5 text-xs font-bold ${savedTimings ? 'bg-success-50 text-success-700' : 'bg-sun-50 text-sun-700'}`}>{savedTimings ? 'Sozlangan' : 'Sozlanmagan'}</span></div><div className="p-5 sm:p-6"><div className="grid gap-4 md:grid-cols-3"><SectionTimerField label="Listening" value={form.listeningMinutes} icon={<Headphones className="h-4 w-4" />} color="indigo" disabled={!editable || (ielts && !timingOverride)} onChange={(value) => update('listeningMinutes', value)} /><SectionTimerField label="Reading" value={form.readingMinutes} icon={<ClipboardList className="h-4 w-4" />} color="cyan" disabled={!editable || (ielts && !timingOverride)} onChange={(value) => update('readingMinutes', value)} /><SectionTimerField label="Writing" value={form.writingMinutes} icon={<PenLine className="h-4 w-4" />} color="violet" disabled={!editable || (ielts && !timingOverride)} onChange={(value) => update('writingMinutes', value)} /></div><div className={`mt-5 flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4 ${remainingMinutes === 0 ? 'border-success-200 bg-success-50/70' : 'border-sun-200 bg-sun-50/70'}`}><div><p className="text-sm font-bold text-slate-800">Jami: {totalMinutes} / {contestMinutes} minut</p><p className="mt-1 text-xs leading-relaxed text-slate-600">{timingOverride ? 'Jami vaqt va contest jadvali mosligi administrator tomonidan boshqariladi.' : ielts ? 'Listening 4 part/40 savol; Reading 3 passage/40 savol; Writing 2 task.' : 'Bo‘limlar contest davomiyligiga aynan teng bo‘lishi kerak.'}</p></div><div className={`rounded-xl px-3 py-2 text-sm font-bold ${remainingMinutes === 0 ? 'bg-success-100 text-success-700' : 'bg-sun-100 text-sun-700'}`}>{remainingMinutes === 0 ? 'Vaqtlar mos' : remainingMinutes > 0 ? `${remainingMinutes} min ajratilmagan` : `${Math.abs(remainingMinutes)} min ortiqcha`}</div></div>{editable && <div className="mt-5 flex justify-end"><button type="button" disabled={busy || (!timingOverride && (remainingMinutes !== 0 || totalMinutes < 3))} onClick={onSave} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : timingOverride ? 'Administrator vaqtlarini saqlash' : ielts ? 'IELTS vaqtlarini tasdiqlash' : 'Bo‘lim vaqtlarini saqlash'}</button></div>}</div></section>;
+  return <section className="card overflow-hidden ring-cyan-100"><div className="workspace-panel-heading bg-gradient-to-r from-cyan-50/80 to-white"><div><p className="text-xs font-bold uppercase tracking-wider text-cyan-700">Section timers</p><h2 className="mt-1 text-xl font-bold text-slate-900">Listening, Reading va Writing vaqti</h2><p className="mt-1 max-w-2xl text-sm text-slate-500">{individualTest ? 'Bu individual testning umumiy davomiyligi. Har participant boshlagan onidan shu ketma-ketlikdagi server timerlari ishlaydi.' : timingOverride ? 'Administrator override faol: bo‘lim vaqtlarini contest holati va IELTS standart vaqtlaridan mustaqil o‘zgartirishingiz mumkin.' : ielts ? 'IELTS Academic kompyuter testi uchun qat’iy vaqt: 30 min Listening, 60 min Reading, 60 min Writing.' : 'Har bir bo‘limning alohida server timeri bo‘ladi. Vaqt tugashi bilan oldingi bo‘lim yopiladi va keyingi bo‘lim avtomatik ochiladi.'}</p></div><span className={`rounded-full px-3 py-1.5 text-xs font-bold ${savedTimings ? 'bg-success-50 text-success-700' : 'bg-sun-50 text-sun-700'}`}>{savedTimings ? 'Sozlangan' : 'Sozlanmagan'}</span></div><div className="p-5 sm:p-6"><div className="grid gap-4 md:grid-cols-3"><SectionTimerField label="Listening" value={form.listeningMinutes} icon={<Headphones className="h-4 w-4" />} color="indigo" disabled={!editable || (ielts && !timingOverride)} onChange={(value) => update('listeningMinutes', value)} /><SectionTimerField label="Reading" value={form.readingMinutes} icon={<ClipboardList className="h-4 w-4" />} color="cyan" disabled={!editable || (ielts && !timingOverride)} onChange={(value) => update('readingMinutes', value)} /><SectionTimerField label="Writing" value={form.writingMinutes} icon={<PenLine className="h-4 w-4" />} color="violet" disabled={!editable || (ielts && !timingOverride)} onChange={(value) => update('writingMinutes', value)} /></div><div className={`mt-5 flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4 ${individualTest || remainingMinutes === 0 ? 'border-success-200 bg-success-50/70' : 'border-sun-200 bg-sun-50/70'}`}><div><p className="text-sm font-bold text-slate-800">{individualTest ? `Har participant uchun jami: ${totalMinutes} minut` : `Jami: ${totalMinutes} / ${contestMinutes} minut`}</p><p className="mt-1 text-xs leading-relaxed text-slate-600">{individualTest ? 'Test jadvali emas, shu uch bo‘limning jami vaqti ishlatiladi.' : timingOverride ? 'Jami vaqt va contest jadvali mosligi administrator tomonidan boshqariladi.' : ielts ? 'Listening 4 part/40 savol; Reading 3 passage/40 savol; Writing 2 task.' : 'Bo‘limlar contest davomiyligiga aynan teng bo‘lishi kerak.'}</p></div><div className={`rounded-xl px-3 py-2 text-sm font-bold ${individualTest || remainingMinutes === 0 ? 'bg-success-100 text-success-700' : 'bg-sun-100 text-sun-700'}`}>{individualTest ? 'Individual timer' : remainingMinutes === 0 ? 'Vaqtlar mos' : remainingMinutes > 0 ? `${remainingMinutes} min ajratilmagan` : `${Math.abs(remainingMinutes)} min ortiqcha`}</div></div>{editable && <div className="mt-5 flex justify-end"><button type="button" disabled={busy || (!individualTest && !timingOverride && (remainingMinutes !== 0 || totalMinutes < 3))} onClick={onSave} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : timingOverride ? 'Administrator vaqtlarini saqlash' : ielts ? 'IELTS vaqtlarini tasdiqlash' : 'Bo‘lim vaqtlarini saqlash'}</button></div>}</div></section>;
 }
 
 function SectionTimerField({ label, value, icon, color, disabled, onChange }: { label: string; value: string; icon: ReactNode; color: 'indigo' | 'cyan' | 'violet'; disabled: boolean; onChange: (value: string) => void }) {

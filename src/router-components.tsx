@@ -25,6 +25,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const navigate = useCallback((to: string, opts?: { replace?: boolean }) => {
+    window.dispatchEvent(new CustomEvent('app:navigation', { detail: { to } }));
     if (isExternalDestination(to)) {
       if (opts?.replace) window.location.replace(to);
       else window.location.assign(to);

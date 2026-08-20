@@ -99,7 +99,6 @@ export function AdminDashboard() {
       
       // Fetch results for finished contests
       const resultsMap: Record<string, ContestAdminResult[]> = {};
-      const now = new Date();
       const finishedContests = managedContests.filter((c) => c.isPublished && c.status === 'Finished');
       
       for (const contest of finishedContests) {

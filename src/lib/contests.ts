@@ -5,7 +5,7 @@ type Row = Record<string, unknown>;
 export type ContestDifficulty = 'Easy' | 'Medium' | 'Hard' | 'Expert';
 export type ContestType = 'Rated' | 'Unrated';
 export type ContestStatus = 'Upcoming' | 'Live' | 'Finished';
-export type ContestMode = 'Contest' | 'Gym';
+export type ContestMode = 'Contest' | 'Gym' | 'Test';
 export type ContestVisibility = 'Public' | 'Private';
 
 const PRIVATE_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -17,6 +17,15 @@ export function generatePrivateAccessCode(): string {
   globalThis.crypto.getRandomValues(bytes);
   const characters = Array.from(bytes, (byte) => PRIVATE_CODE_ALPHABET[byte & 31]);
   return `PVT-${characters.slice(0, 5).join('')}-${characters.slice(5, 10).join('')}-${characters.slice(10, 15).join('')}-${characters.slice(15).join('')}`;
+}
+
+/** Generates the single administrator-held code used to restore an excluded attempt. */
+export function generateContestIntegrityOverrideCode(): string {
+  if (!globalThis.crypto?.getRandomValues) throw new Error('Secure code generation is unavailable in this browser.');
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  const characters = Array.from(bytes, (byte) => PRIVATE_CODE_ALPHABET[byte & 31]);
+  return `RESTORE-${characters.slice(0, 4).join('')}-${characters.slice(4, 8).join('')}-${characters.slice(8, 12).join('')}-${characters.slice(12).join('')}`;
 }
 
 export type Contest = {
@@ -122,6 +131,13 @@ export type WritingSubmission = {
   gradedAt: string | null;
 };
 
+export type ContestIntegrityExclusion = {
+  userId: string;
+  displayName: string;
+  excludedAt: string;
+  reason: string;
+};
+
 export type GapFillAnswerKey = {
   partId: string;
   blankNumber: number;
@@ -166,8 +182,10 @@ export type MatchingResponse = {
 };
 
 export type ContestWorkspace = {
-  contest: Pick<Contest, 'id' | 'slug' | 'title' | 'subjectSlug' | 'subject' | 'startTime' | 'endTime' | 'type'> & {
+  contest: Pick<Contest, 'id' | 'slug' | 'title' | 'subjectSlug' | 'subject' | 'startTime' | 'endTime' | 'type' | 'mode'> & {
     completedAt: string | null;
+    /** A test participant chooses this once before their individual timer starts. */
+    showResults: boolean;
   };
   parts: ExamPart[];
   examTiming: ActiveExamTiming | null;
@@ -187,6 +205,22 @@ export type ContestLeaderboardEntry = {
   score: number;
   answeredCount: number;
   totalQuestions: number;
+};
+
+/** Objective (Listening + Reading) score a test participant elected to see. */
+export type LanguageTestResult = {
+  totalScore: number;
+  totalPoints: number;
+  answeredCount: number;
+  totalQuestions: number;
+  listeningScore: number;
+  listeningPoints: number;
+  listeningAnsweredCount: number;
+  listeningQuestionCount: number;
+  readingScore: number;
+  readingPoints: number;
+  readingAnsweredCount: number;
+  readingQuestionCount: number;
 };
 
 /** Server-calculated results visible only to the contest manager after it ends. */
@@ -372,7 +406,10 @@ function mapType(value: unknown): ContestType {
 }
 
 function mapMode(value: unknown): ContestMode {
-  return text(value).toLowerCase() === 'gym' ? 'Gym' : 'Contest';
+  const mode = text(value).toLowerCase();
+  if (mode === 'gym') return 'Gym';
+  if (mode === 'test') return 'Test';
+  return 'Contest';
 }
 
 function mapVisibility(value: unknown): ContestVisibility {
@@ -551,6 +588,36 @@ export async function registerForContest(contestId: string): Promise<void> {
   rpcError(error);
 }
 
+/** Starts a self-paced IELTS / CEFR test and records its one-time result preference. */
+export async function startLanguageTest(contestId: string, showResults: boolean): Promise<void> {
+  const { error } = await supabase.rpc('start_language_test', {
+    p_contest_id: contestId,
+    p_show_results: showResults,
+  });
+  rpcError(error);
+}
+
+/** Returns only Listening and Reading results, never Writing. */
+export async function fetchLanguageTestResult(slug: string): Promise<LanguageTestResult> {
+  const { data, error } = await supabase.rpc('get_language_test_result', { p_slug: slug });
+  rpcError(error);
+  const row = asRow(data);
+  return {
+    totalScore: number(valueAt(row, 'total_score', 'totalScore')),
+    totalPoints: number(valueAt(row, 'total_points', 'totalPoints')),
+    answeredCount: number(valueAt(row, 'answered_count', 'answeredCount')),
+    totalQuestions: number(valueAt(row, 'total_questions', 'totalQuestions')),
+    listeningScore: number(valueAt(row, 'listening_score', 'listeningScore')),
+    listeningPoints: number(valueAt(row, 'listening_points', 'listeningPoints')),
+    listeningAnsweredCount: number(valueAt(row, 'listening_answered_count', 'listeningAnsweredCount')),
+    listeningQuestionCount: number(valueAt(row, 'listening_question_count', 'listeningQuestionCount')),
+    readingScore: number(valueAt(row, 'reading_score', 'readingScore')),
+    readingPoints: number(valueAt(row, 'reading_points', 'readingPoints')),
+    readingAnsweredCount: number(valueAt(row, 'reading_answered_count', 'readingAnsweredCount')),
+    readingQuestionCount: number(valueAt(row, 'reading_question_count', 'readingQuestionCount')),
+  };
+}
+
 export async function redeemPrivateContestAccess(accessCode: string): Promise<string> {
   const { data, error } = await supabase.rpc('redeem_private_contest_access', { p_access_code: accessCode.trim() });
   rpcError(error);
@@ -622,7 +689,9 @@ function mapContestWorkspace(data: unknown): ContestWorkspace {
       startTime: text(valueAt(contestRow, 'start_at', 'startTime')),
       endTime: text(valueAt(contestRow, 'end_at', 'endTime')),
       type: mapType(valueAt(contestRow, 'contest_type', 'type')),
+      mode: mapMode(valueAt(contestRow, 'contest_mode', 'mode')),
       completedAt: nullableTimestamp(valueAt(contestRow, 'completed_at', 'completedAt')),
+      showResults: bool(valueAt(contestRow, 'show_test_results', 'showResults')),
     },
     parts: asRows(payload.parts).map(mapExamPart).sort((left, right) => {
       const sectionOrder: Record<ExamSection, number> = { listening: 1, reading: 2, writing: 3 };
@@ -804,6 +873,12 @@ export async function endContestAttempt(contestId: string): Promise<void> {
   rpcError(error);
 }
 
+/** Closes an attempt because the participant left the protected contest page. */
+export async function excludeContestAttempt(contestId: string): Promise<void> {
+  const { error } = await supabase.rpc('exclude_contest_attempt', { p_contest_id: contestId });
+  rpcError(error);
+}
+
 /** Clears an admin creator's own unrated test run and schedules it again. */
 export async function reopenContestAfterTesting(contestId: string, startTime: string, endTime: string): Promise<void> {
   const { error } = await supabase.rpc('reopen_contest_after_testing', {
@@ -843,8 +918,8 @@ export async function fetchContestLeaderboard(slug: string): Promise<ContestLead
 }
 
 /** Reads the private post-contest result board for an owning manager or administrator. */
-export async function fetchContestAdminResults(contestId: string): Promise<ContestAdminResult[]> {
-  const { data, error } = await supabase.rpc('get_contest_admin_results', { p_contest_id: contestId });
+export async function fetchContestAdminResults(contestId: string, individualTest = false): Promise<ContestAdminResult[]> {
+  const { data, error } = await supabase.rpc(individualTest ? 'get_language_test_admin_results' : 'get_contest_admin_results', { p_contest_id: contestId });
   rpcError(error);
   return asRows(data).map((row, index) => ({
     rank: number(valueAt(row, 'rank'), index + 1),
@@ -1083,8 +1158,36 @@ export async function uploadContestImage(contestId: string, file: File): Promise
   return data.publicUrl;
 }
 
-export async function fetchWritingSubmissions(contestId: string): Promise<WritingSubmission[]> {
-  const { data, error } = await supabase.rpc('get_contest_writing_submissions', { p_contest_id: contestId });
+export async function setContestIntegrityOverrideCode(contestId: string, code: string): Promise<void> {
+  const { error } = await supabase.rpc('set_contest_integrity_override_code', {
+    p_contest_id: contestId,
+    p_code: code.trim(),
+  });
+  rpcError(error);
+}
+
+export async function fetchContestIntegrityExclusions(contestId: string): Promise<ContestIntegrityExclusion[]> {
+  const { data, error } = await supabase.rpc('list_contest_integrity_exclusions', { p_contest_id: contestId });
+  rpcError(error);
+  return asRows(data).map((row) => ({
+    userId: text(valueAt(row, 'user_id', 'userId')),
+    displayName: text(valueAt(row, 'display_name', 'displayName'), 'Participant'),
+    excludedAt: text(valueAt(row, 'excluded_at', 'excludedAt')),
+    reason: text(valueAt(row, 'exclusion_reason', 'reason'), 'left-contest-page'),
+  }));
+}
+
+export async function restoreContestAttemptWithOverride(contestId: string, userId: string, code: string): Promise<void> {
+  const { error } = await supabase.rpc('restore_contest_attempt_with_override', {
+    p_contest_id: contestId,
+    p_user_id: userId,
+    p_code: code.trim(),
+  });
+  rpcError(error);
+}
+
+export async function fetchWritingSubmissions(contestId: string, individualTest = false): Promise<WritingSubmission[]> {
+  const { data, error } = await supabase.rpc(individualTest ? 'get_language_test_writing_submissions' : 'get_contest_writing_submissions', { p_contest_id: contestId });
   rpcError(error);
   return asRows(data).map((row) => ({
     id: text(valueAt(row, 'id')),
@@ -1102,8 +1205,8 @@ export async function fetchWritingSubmissions(contestId: string): Promise<Writin
   }));
 }
 
-export async function gradeWritingSubmission(submissionId: string, score: number, feedback = ''): Promise<void> {
-  const { error } = await supabase.rpc('grade_contest_writing_submission', {
+export async function gradeWritingSubmission(submissionId: string, score: number, feedback = '', individualTest = false): Promise<void> {
+  const { error } = await supabase.rpc(individualTest ? 'grade_language_test_writing_submission' : 'grade_contest_writing_submission', {
     p_submission_id: submissionId,
     p_score: score,
     p_feedback: feedback.trim() || null,

@@ -100,6 +100,7 @@ export function ContestLandingPage() {
   const subjectCount = new Set(contests.map((contest) => contest.subjectSlug)).size;
   const competitiveContests = filtered.filter((contest) => contest.mode === 'Contest');
   const gymContests = filtered.filter((contest) => contest.mode === 'Gym');
+  const languageTests = filtered.filter((contest) => contest.mode === 'Test');
 
   return (
     <>
@@ -158,6 +159,7 @@ export function ContestLandingPage() {
               <div className="space-y-10">
                 {competitiveContests.length > 0 && <ContestCollection title="Rated & Unrated contests" description="Rasmiy jadval, yakuniy natijalar va Rated contestlarda server hisoblagan reyting." contests={competitiveContests} />}
                 {gymContests.length > 0 && <ContestCollection title="Gym" description="Unrated mashg‘ulotlar: yangi g‘oyalarni sinash va masalalarni xavfsiz mashq qilish uchun alohida maydon." contests={gymContests} gym />}
+                {languageTests.length > 0 && <ContestCollection title="IELTS & CEFR testlar" description="Individual testlar: boshlash vaqtini o‘zingiz tanlaysiz, Listening → Reading → Writing ketma-ketligi esa server timeri bilan saqlanadi." contests={languageTests} test />}
               </div>
             ) : (
               <div className="card p-12 text-center">
@@ -174,8 +176,10 @@ export function ContestLandingPage() {
   );
 }
 
-function ContestCollection({ title, description, contests, gym = false }: { title: string; description: string; contests: Contest[]; gym?: boolean }) {
-  return <section className={`rounded-3xl border p-5 sm:p-6 ${gym ? 'border-cyan-100 bg-cyan-50/35' : 'border-slate-200 bg-white'}`}><div className="mb-5 flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-display text-xl font-extrabold text-slate-900">{title}</h2><p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500">{description}</p></div><span className={`rounded-full px-3 py-1 text-xs font-bold ${gym ? 'bg-cyan-100 text-cyan-800' : 'bg-violet-100 text-violet-800'}`}>{contests.length}</span></div><div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{contests.map((contest) => <ContestCard key={contest.id} contest={contest} />)}</div></section>;
+function ContestCollection({ title, description, contests, gym = false, test = false }: { title: string; description: string; contests: Contest[]; gym?: boolean; test?: boolean }) {
+  const palette = gym ? 'border-cyan-100 bg-cyan-50/35' : test ? 'border-emerald-100 bg-emerald-50/35' : 'border-slate-200 bg-white';
+  const countPalette = gym ? 'bg-cyan-100 text-cyan-800' : test ? 'bg-emerald-100 text-emerald-800' : 'bg-violet-100 text-violet-800';
+  return <section className={`rounded-3xl border p-5 sm:p-6 ${palette}`}><div className="mb-5 flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-display text-xl font-extrabold text-slate-900">{title}</h2><p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500">{description}</p></div><span className={`rounded-full px-3 py-1 text-xs font-bold ${countPalette}`}>{contests.length}</span></div><div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{contests.map((contest) => <ContestCard key={contest.id} contest={contest} />)}</div></section>;
 }
 
 function RealMetric({ icon: Icon, label, value }: { icon: typeof Trophy; label: string; value: string }) {

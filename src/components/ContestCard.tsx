@@ -46,7 +46,12 @@ export function TypeBadge({ type }: { type: ContestType }) {
 }
 
 export function ModeBadge({ mode }: { mode: ContestMode }) {
-  return <span className={`chip ${mode === 'Gym' ? 'bg-cyan-400/15 text-cyan-100 ring-1 ring-cyan-200/30' : 'bg-violet-400/15 text-violet-100 ring-1 ring-violet-200/30'}`}>{mode === 'Gym' ? <Sparkles className="h-3 w-3" /> : <Trophy className="h-3 w-3" />}{mode}</span>;
+  const classes = mode === 'Gym'
+    ? 'bg-cyan-400/15 text-cyan-100 ring-1 ring-cyan-200/30'
+    : mode === 'Test'
+      ? 'bg-emerald-400/15 text-emerald-50 ring-1 ring-emerald-200/30'
+      : 'bg-violet-400/15 text-violet-100 ring-1 ring-violet-200/30';
+  return <span className={`chip ${classes}`}>{mode === 'Gym' ? <Sparkles className="h-3 w-3" /> : mode === 'Test' ? <ClipboardList className="h-3 w-3" /> : <Trophy className="h-3 w-3" />}{mode}</span>;
 }
 
 export function ContestCard({ contest }: { contest: Contest }) {
@@ -77,10 +82,10 @@ export function ContestCard({ contest }: { contest: Contest }) {
         </div>
 
         <div className="mt-5 grid grid-cols-2 gap-x-3 gap-y-3 text-xs text-slate-500">
-          <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />{formatContestDuration(contest.durationMinutes)}</span>
+          <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />{contest.mode === 'Test' ? 'Individual timer' : formatContestDuration(contest.durationMinutes)}</span>
           <span className="inline-flex items-center gap-1.5"><Users className="h-3.5 w-3.5" />{contest.participants}/{contest.maxParticipants}</span>
-          <span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />{start.date}</span>
-          <span className={atCapacity ? 'font-semibold text-error-600' : 'font-semibold text-indigo-600'}>{atCapacity ? 'Capacity reached' : start.relative}</span>
+          <span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />{contest.mode === 'Test' ? 'Istalgan payt' : start.date}</span>
+          <span className={atCapacity ? 'font-semibold text-error-600' : 'font-semibold text-indigo-600'}>{atCapacity ? 'Capacity reached' : contest.mode === 'Test' ? 'Start when ready' : start.relative}</span>
         </div>
 
         <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-4 text-xs">
