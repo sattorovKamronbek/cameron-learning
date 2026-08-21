@@ -276,10 +276,10 @@ export function Navbar() {
           {/* Right side: notifications + user */}
           <div className="app-navbar-actions hidden items-center gap-2 lg:flex">
             <ThemeSelector />
-            <LanguageSelector />
+            <LanguageSelector className="language-selector" />
             <NotificationBell />
             {user ? (
-              <div className="relative" data-user-menu>
+              <div className="user-menu relative" data-user-menu>
                 <button
                   onClick={() => setUserMenuOpen((v) => !v)}
                   className="flex items-center gap-2 rounded-2xl py-1.5 pl-1.5 pr-3 ring-1 ring-slate-200 transition-all hover:bg-slate-50 hover:ring-slate-300"

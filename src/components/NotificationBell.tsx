@@ -32,7 +32,7 @@ export function NotificationBell() {
   };
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="notification-bell relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
         className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"

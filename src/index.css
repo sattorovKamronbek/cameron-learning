@@ -619,8 +619,10 @@
 :root[data-density='spacious'] .card.p-6 { padding: 1.8rem; }
 .comfort-mode p { line-height: 1.78; }
 .comfort-mode .prose, .comfort-mode article { max-width: 75ch; }
-.focus-mode .app-shell { background-image: none !important; }
-.focus-mode .theme-orb-primary, .focus-mode .theme-orb-secondary { display: none; }
+/* `focus-mode` lives on `.app-shell` itself, not on one of its ancestors. */
+.app-shell.focus-mode { background-image: none !important; }
+.app-shell.focus-mode .theme-orb-primary,
+.app-shell.focus-mode .theme-orb-secondary { display: none; }
 
 /* Navigation variations preserve the current routes and permissions. */
 .app-navbar { border-color: color-mix(in srgb, var(--border) 78%, transparent); }
@@ -644,7 +646,50 @@
     padding-top: 0;
     transform: none;
   }
-  :root[data-navigation-style='side'] .app-navbar-actions { margin-top: auto; justify-content: center; flex-wrap: wrap; }
+  /* Keep the utility controls usable in a narrow sidebar. Their flyouts open
+     beside the bar and align to its lower edge, so they cannot fall below it. */
+  :root[data-navigation-style='side'] .app-navbar-actions {
+    width: 100%;
+    margin-top: auto;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: .4rem;
+    padding: .35rem;
+    border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--background-secondary) 72%, transparent);
+  }
+  :root[data-navigation-style='side'] .app-navbar-actions .appearance-trigger,
+  :root[data-navigation-style='side'] .app-navbar-actions .notification-bell > button {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: var(--radius-sm);
+  }
+  :root[data-navigation-style='side'] .app-navbar-actions .language-selector {
+    flex: 1 1 3.75rem;
+    min-width: 0;
+  }
+  :root[data-navigation-style='side'] .app-navbar-actions .language-selector > button {
+    height: 2.25rem;
+    gap: .4rem;
+    padding-inline: .45rem;
+    border-radius: var(--radius-sm);
+  }
+  :root[data-navigation-style='side'] .app-navbar-actions .language-selector > button > span:first-child {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+  :root[data-navigation-style='side'] .app-navbar-actions .language-selector [role='listbox'],
+  :root[data-navigation-style='side'] .app-navbar-actions .notification-bell > .absolute,
+  :root[data-navigation-style='side'] .app-navbar-actions .user-menu > .absolute {
+    top: auto;
+    right: auto;
+    bottom: 0;
+    left: calc(100% + .75rem);
+    margin-top: 0;
+  }
+  :root[data-navigation-style='side'] .app-navbar-actions .language-selector [role='listbox'] { width: 11rem; }
+  :root[data-navigation-style='side'] .app-navbar-actions .notification-bell > .absolute { max-height: calc(100vh - 2rem); }
   :root[data-navigation-style='side'] .app-navbar .container-page { padding-inline: 1rem; }
   :root[data-navigation-style='side'] .site-route-shell { margin-left: 17rem; }
   :root[data-navigation-style='side'][data-sidebar-mode='compact'] .app-navbar { width: 12rem; }
