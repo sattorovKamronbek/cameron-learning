@@ -265,7 +265,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateProfile = useCallback(
-    async (updates: Partial<Pick<Profile, 'full_name' | 'avatar_url'>>) => {
+    async (updates: Partial<Pick<Profile, 'full_name' | 'avatar_url' | 'is_learning_profile_public'>>) => {
       if (!user) return { error: 'Not authenticated' };
       const { error } = await supabase
         .from('profiles')

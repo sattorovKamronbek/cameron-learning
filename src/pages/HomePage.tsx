@@ -277,8 +277,8 @@ function BentoFeaturesSection() {
                 <Trophy className="h-5 w-5 text-sun-600" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900">Progress tracking is coming soon</h3>
-                <p className="mt-1 text-xs text-slate-500">Badges and completed-lesson tracking are not available yet.</p>
+                <h3 className="font-bold text-slate-900">Verified learning progress</h3>
+                <p className="mt-1 text-xs text-slate-500">Track XP, skills, missions, streaks, and earned badges from verified activity.</p>
               </div>
             </div>
           </BentoCard>

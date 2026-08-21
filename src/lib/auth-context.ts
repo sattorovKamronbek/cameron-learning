@@ -17,7 +17,7 @@ export type AuthContextValue = {
   signUp: (email: string, password: string, fullName?: string) => Promise<AuthActionResult>;
   resendConfirmation: (email: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
-  updateProfile: (updates: Partial<Pick<Profile, 'full_name' | 'avatar_url'>>) => Promise<{ error: string | null }>;
+  updateProfile: (updates: Partial<Pick<Profile, 'full_name' | 'avatar_url' | 'is_learning_profile_public'>>) => Promise<{ error: string | null }>;
   refreshProfile: () => Promise<void>;
 };
 

@@ -42,7 +42,8 @@ const navGroups: NavEntry[] = [
     icon: Home,
     items: [
       { to: '/', label: 'Home', icon: Home, description: 'Landing page & overview' },
-      { to: '/profile', label: 'My Dashboard', icon: User, description: 'Saved entries and account details' },
+      { to: '/dashboard', label: 'My Dashboard', icon: User, description: 'Verified learning progress and missions' },
+      { to: '/profile', label: 'My profile', icon: User, description: 'Account, learning profile, and contest record' },
       { to: '/notifications', label: 'Recent Activity', icon: Activity, description: 'Notifications and announcements' },
     ],
   },
@@ -59,6 +60,8 @@ const navGroups: NavEntry[] = [
             { to: '/subjects', label: 'Subjects', icon: GraduationCap, description: 'Browse current subject areas' },
             { to: '/roadmaps', label: 'Roadmaps', icon: Map, description: 'Reference study plans' },
             { to: '/resources', label: 'Resources', icon: FileText, description: 'Articles & guides' },
+            { to: '/skills', label: 'Skills', icon: Sparkles, description: 'Track verified skill progress' },
+            { to: '/missions', label: 'Missions', icon: Target, description: 'Daily and weekly learning goals' },
           ],
         },
         {
@@ -118,7 +121,7 @@ const navGroups: NavEntry[] = [
     icon: Trophy,
     items: [
       { to: '/leaderboards', label: 'Contest leaderboard', icon: Trophy, description: 'Appears after real finalized contests' },
-      { to: '/achievements', label: 'Achievement status', icon: Award, description: 'Badges are not available yet' },
+      { to: '/achievements', label: 'Achievements', icon: Award, description: 'Verified learning milestones' },
     ],
   },
   {

@@ -13,6 +13,8 @@ import {
   type MyContestStats,
   type MyRatingHistoryEntry,
 } from '@/lib/ratings';
+import { ActivityHeatmap, LevelProgressCard, SkillProgressBar, StreakCard } from '@/components/learning';
+import { fetchLearningDashboard, type LearningDashboard } from '@/lib/learning';
 
 const planInfo: Record<Plan, { name: string; icon: typeof Zap; color: string; bg: string; ring: string }> = {
   free: { name: 'Free', icon: UserRound, color: 'text-slate-700', bg: 'bg-slate-50', ring: 'ring-slate-200' },
@@ -31,6 +33,10 @@ export function ProfilePage() {
   const [ratingHistory, setRatingHistory] = useState<MyRatingHistoryEntry[]>([]);
   const [contestLoading, setContestLoading] = useState(false);
   const [contestError, setContestError] = useState<string | null>(null);
+  const [learningDashboard, setLearningDashboard] = useState<LearningDashboard | null>(null);
+  const [learningLoading, setLearningLoading] = useState(false);
+  const [learningError, setLearningError] = useState<string | null>(null);
+  const [learningProfilePublic, setLearningProfilePublic] = useState(true);
 
   useEffect(() => {
     if (!loading && !user) navigate('/login', { replace: true });
@@ -38,7 +44,8 @@ export function ProfilePage() {
 
   useEffect(() => {
     setFullName(profile?.full_name ?? '');
-  }, [profile?.full_name]);
+    setLearningProfilePublic(profile?.is_learning_profile_public ?? true);
+  }, [profile?.full_name, profile?.is_learning_profile_public]);
 
   const loadContestData = useCallback(async () => {
     if (!user) {
@@ -69,6 +76,27 @@ export function ProfilePage() {
     void loadContestData();
   }, [loadContestData]);
 
+  const loadLearningData = useCallback(async () => {
+    if (!user) {
+      setLearningDashboard(null);
+      return;
+    }
+    setLearningLoading(true);
+    setLearningError(null);
+    try {
+      setLearningDashboard(await fetchLearningDashboard());
+    } catch (reason) {
+      setLearningDashboard(null);
+      setLearningError(reason instanceof Error ? reason.message : 'Learning progress could not be loaded.');
+    } finally {
+      setLearningLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    void loadLearningData();
+  }, [loadLearningData]);
+
   if (loading || !user) {
     return <LoadingState className="min-h-[60vh] rounded-none" message="Profilingiz yuklanmoqda" />;
   }
@@ -89,7 +117,7 @@ export function ProfilePage() {
   const handleSave = async () => {
     setSaving(true);
     setSaveError(null);
-    const { error } = await updateProfile({ full_name: fullName || null });
+    const { error } = await updateProfile({ full_name: fullName || null, is_learning_profile_public: learningProfilePublic });
     setSaving(false);
     if (error) setSaveError(error);
     else setEditing(false);
@@ -118,6 +146,7 @@ export function ProfilePage() {
                     <Calendar className="h-3.5 w-3.5" />
                     Member since {memberSince}
                   </span>
+                  {learningDashboard && <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-200"><Zap className="h-3.5 w-3.5" />Level {learningDashboard.levelProgress.level} · {learningDashboard.totalXp} XP</span>}
                 </div>
               </div>
             </div>
@@ -159,6 +188,14 @@ export function ProfilePage() {
                     <Link to="/pricing" className="text-sm font-semibold text-indigo-700 hover:text-indigo-800">Manage</Link>
                   </div>
                 </ProfileField>
+                <ProfileField label="Learning profile visibility">
+                  {editing ? (
+                    <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600 ring-1 ring-slate-200">
+                      <input type="checkbox" checked={learningProfilePublic} onChange={(event) => setLearningProfilePublic(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                      <span><span className="block font-semibold text-slate-800">Show me on learning leaderboards</span><span className="mt-0.5 block text-xs leading-relaxed text-slate-500">Only your display name, avatar, level, and XP can appear—never your email or private results.</span></span>
+                    </label>
+                  ) : <p className="text-sm font-semibold text-slate-900">{profile?.is_learning_profile_public ? 'Visible on learning leaderboards' : 'Hidden from learning leaderboards'}</p>}
+                </ProfileField>
               </div>
 
               {editing && (
@@ -179,9 +216,23 @@ export function ProfilePage() {
               </p>
               <Link to="/contests" className="btn-ghost mt-5 w-full">Browse contests</Link>
             </div>
+
+            <div className="card p-6">
+              <Zap className="h-7 w-7 text-electric-600" />
+              <h2 className="mt-3 text-lg font-bold text-slate-900">Learning dashboard</h2>
+              <p className="mt-1 text-sm leading-relaxed text-slate-500">View verified XP, skill paths, missions, and achievements.</p>
+              <Link to="/dashboard" className="btn-ghost mt-5 w-full">Open dashboard</Link>
+            </div>
           </aside>
 
           <main className="space-y-6 lg:col-span-2">
+            <section>
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Your learning profile</p><h2 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">Verified learning progress</h2></div>
+                <button onClick={() => void loadLearningData()} disabled={learningLoading} className="btn-ghost px-4 py-2 text-sm disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${learningLoading ? 'animate-spin' : ''}`} /> Refresh</button>
+              </div>
+              {learningLoading ? <LoadingState className="card mt-5 min-h-[12rem]" message="Learning progress loading" /> : learningError ? <div className="card mt-5 p-7 text-center"><X className="mx-auto h-8 w-8 text-error-500" /><h3 className="mt-3 text-base font-bold text-slate-900">Learning progress unavailable</h3><p className="mt-1 text-sm text-slate-500">{learningError}</p></div> : learningDashboard ? <div className="mt-5 space-y-5"><div className="grid gap-4 sm:grid-cols-2"><LevelProgressCard levelProgress={learningDashboard.levelProgress} totalXp={learningDashboard.totalXp} /><StreakCard current={learningDashboard.streak.current} longest={learningDashboard.streak.longest} /></div><div className="card p-5"><h3 className="text-base font-bold text-slate-900">Strongest skills</h3>{learningDashboard.skills.length ? <div className="mt-4 grid gap-4 sm:grid-cols-2">{learningDashboard.skills.slice(0, 6).map((skill) => <SkillProgressBar key={skill.id} skill={skill} />)}</div> : <p className="mt-3 text-sm text-slate-500">Start a verified learning activity to begin building skills.</p>}</div><ActivityHeatmap activity={learningDashboard.activity} /></div> : null}
+            </section>
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Your contest record</p>

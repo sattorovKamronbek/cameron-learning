@@ -40,6 +40,9 @@ const LeaderboardPage = page(() => import('@/pages/LeaderboardPage'), 'Leaderboa
 const AnalyticsDashboard = page(() => import('@/pages/AnalyticsDashboard'), 'AnalyticsDashboard');
 const AchievementsPage = page(() => import('@/pages/AchievementsPage'), 'AchievementsPage');
 const AdminDashboard = page(() => import('@/pages/AdminDashboard'), 'AdminDashboard');
+const LearningDashboardPage = page(() => import('@/pages/LearningDashboardPage'), 'LearningDashboardPage');
+const SkillsPage = page(() => import('@/pages/SkillsPage'), 'SkillsPage');
+const MissionsPage = page(() => import('@/pages/MissionsPage'), 'MissionsPage');
 
 function Routes() {
   const { path } = useRouter();
@@ -86,6 +89,12 @@ function Routes() {
     page = <PricingPage />;
   } else if (path === '/profile') {
     page = <ProfilePage />;
+  } else if (path === '/dashboard') {
+    page = <LearningDashboardPage />;
+  } else if (path === '/skills') {
+    page = <SkillsPage />;
+  } else if (path === '/missions') {
+    page = <MissionsPage />;
   } else if (path === '/about') {
     page = <AboutPage />;
   } else if (path === '/contest-management') {

@@ -1188,6 +1188,70 @@ export function ContestManagementPage() {
     }, `${rows.length} ta CEFR Listening Part 1 savoli CSV fayldan saqlandi.`);
   };
 
+  // The language builder below deliberately has no IELTS/CEFR blueprint
+  // branches.  Numbers belong to the admin's material (for example {{34}}
+  // and {{49}}), not to a pre-defined template.
+  const saveFlexibleQuestion = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editor || !currentContest) return;
+    const part = editor.parts.find((item) => item.id === question.partId);
+    if (!part || part.section === 'writing') {
+      setError('Savol uchun Listening yoki Reading partini tanlang.');
+      return;
+    }
+    if (!Number.isInteger(question.position) || question.position < 1 || question.position > 1_000_000) {
+      setError('Savol raqami 1 dan 1 000 000 gacha bo‘lishi kerak.');
+      return;
+    }
+    if (!question.prompt.trim()) {
+      setError('Savol matnini kiriting.');
+      return;
+    }
+    if (!Number.isInteger(Number(question.points)) || Number(question.points) < 1 || Number(question.points) > 1000) {
+      setError('Ball 1 dan 1000 gacha bo‘lishi kerak.');
+      return;
+    }
+    if (question.answerType === 'choice') {
+      if (question.options.length < 2 || question.options.length > 20 || question.options.some((item) => !item.trim()) || question.correctOption === null) {
+        setError('Tanlovli savolda kamida 2 ta to‘liq variant va bitta to‘g‘ri javob bo‘lishi kerak.');
+        return;
+      }
+    } else if (!question.acceptedAnswersText.split(/\r?\n/).some((item) => item.trim()) || !Number.isInteger(Number(question.wordLimit)) || Number(question.wordLimit) < 1 || Number(question.wordLimit) > 1000) {
+      setError('Yozma savol uchun javob kaliti va 1–1000 oralig‘ida so‘z limiti kiriting.');
+      return;
+    }
+    await run('question', async () => {
+      await saveContestQuestion(editor.contest.id, questionInput(question));
+      await refresh();
+      await loadEditor(editor.contest.id, false);
+    }, question.id ? 'Savol yangilandi.' : 'Savol saqlandi.');
+  };
+
+  const saveFlexibleExamPart = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!currentContest) return;
+    if (!Number.isInteger(examPart.position) || examPart.position < 1 || examPart.position > 1_000_000) {
+      setError('Part tartib raqami 1 dan 1 000 000 gacha bo‘lishi kerak.');
+      return;
+    }
+    if (!examPart.title.trim()) {
+      setError('Part nomini kiriting.');
+      return;
+    }
+    if (examPart.section === 'writing' && (!examPart.content.trim() || Number(examPart.maxPoints) < 1)) {
+      setError('Writing uchun topic va maksimal ballni kiriting.');
+      return;
+    }
+    await run('exam-part', async () => {
+      const audioUrl = audioFile ? await uploadContestAudio(currentContest.id, audioFile) : examPart.audioUrl;
+      const partId = await saveExamPart(currentContest.id, examPartInput(examPart, audioUrl));
+      const imageUrl = mapImageFile ? await uploadContestImage(currentContest.id, mapImageFile) : examPart.imageUrl;
+      await saveExamPartImage(currentContest.id, partId, imageUrl || null);
+      await refresh();
+      await loadEditor(currentContest.id, false);
+    }, examPart.id ? 'Part yangilandi.' : 'Yangi part qo‘shildi.');
+  };
+
   const saveExamPartForm = async (event: FormEvent) => {
     event.preventDefault();
     if (!currentContest) return;
@@ -1241,10 +1305,6 @@ export function ContestManagementPage() {
       setError('Har bir bo‘lim uchun butun va musbat minut kiriting.');
       return;
     }
-    if (!adminAccess && currentContest.subjectSlug === 'ielts' && (input.listeningMinutes !== 30 || input.readingMinutes !== 60 || input.writingMinutes !== 60)) {
-      setError('IELTS Academic uchun vaqtlar qat’iy: 30 min Listening, 60 min Reading va 60 min Writing.');
-      return;
-    }
     if (currentContest.mode !== 'Test' && !adminAccess && input.listeningMinutes + input.readingMinutes + input.writingMinutes !== contestMinutes) {
       setError(`Bo‘limlar jami ${contestMinutes} minut bo‘lishi shart.`);
       return;
@@ -1296,6 +1356,9 @@ export function ContestManagementPage() {
   const currentContest = editor?.contest ?? null;
   const academicContests = useMemo(() => contests.filter((contest) => contest.subjectSlug !== 'programming'), [contests]);
   const englishExam = isEnglishExam(currentContest);
+  // Existing template drafts can still be opened only when explicitly marked;
+  // all new IELTS/CEFR content uses the flexible builder above.
+  const legacyBlueprintEnabled = Boolean(currentContest?.description.includes('[legacy-blueprint]'));
   const languageExamCount = academicContests.filter((contest) => isEnglishExam(contest)).length;
   const draftCount = academicContests.filter((contest) => !contest.isPublished && !contest.archivedAt).length;
   // Confirmed administrators can repair any contest. Other managers remain
@@ -1422,13 +1485,7 @@ export function ContestManagementPage() {
   };
 
   const updateContestSubject = (subjectSlug: string) => {
-    setForm((current) => {
-      if (subjectSlug !== 'ielts') return { ...current, subjectSlug };
-      const start = new Date(current.startTime);
-      const end = new Date(start.getTime() + 150 * 60_000);
-      return { ...current, subjectSlug, endTime: localDateTime(end) };
-    });
-    if (subjectSlug === 'ielts') setExamTiming({ listeningMinutes: '30', readingMinutes: '60', writingMinutes: '60' });
+    setForm((current) => ({ ...current, subjectSlug }));
   };
 
   const publish = async () => {
@@ -1566,7 +1623,35 @@ export function ContestManagementPage() {
 
             {currentContest && (
               <>
-                {englishExam && (
+                {englishExam && <FlexibleLanguageBuilder
+                  contest={currentContest}
+                  parts={editor?.parts ?? []}
+                  questions={editor?.questions ?? []}
+                  answerKeys={editor?.gapFillAnswerKeys ?? []}
+                  matchingConfigs={editor?.matchingConfigs ?? []}
+                  partForm={examPart}
+                  setPartForm={setExamPart}
+                  questionForm={question}
+                  setQuestionForm={setQuestion}
+                  timingForm={examTiming}
+                  setTimingForm={setExamTiming}
+                  savedTimings={editor?.sectionTimings ?? null}
+                  adminAccess={adminAccess}
+                  audioFile={audioFile}
+                  setAudioFile={setAudioFile}
+                  imageFile={mapImageFile}
+                  setImageFile={setMapImageFile}
+                  editable={editable}
+                  busy={busy}
+                  onSavePart={saveFlexibleExamPart}
+                  onSaveTiming={() => void saveExamTiming()}
+                  onDeletePart={(partId) => void removeExamPart(partId)}
+                  onSaveQuestion={saveFlexibleQuestion}
+                  onDeleteQuestion={(questionId) => void deleteQuestion(questionId)}
+                  onSaveGapFill={saveGapFillAnswerKeys}
+                  onSaveMatching={saveMatchingConfig}
+                />}
+                {legacyBlueprintEnabled && englishExam && (
                   <><section className="workspace-callout"><div className="flex flex-wrap items-start gap-3"><Headphones className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" /><div><p className="font-bold">{currentContest.subjectSlug === 'cefr' ? 'CEFR Listening studio' : 'IELTS oqimi'}</p><p className="mt-1 leading-relaxed text-indigo-900/80">{currentContest.subjectSlug === 'cefr' ? 'Avval kerakli Partni tanlang. Har Part o‘zining kichik, alohida ish maydonida ochiladi — faqat shu Part uchun kerakli audio, savol va javob kalitini ko‘rasiz.' : 'IELTS Academic: 30 min Listening (bitta umumiy audio, 4 part, 40 savol), 60 min Reading (3 passage, 40 savol) va 60 min Writing (2 task). Javob turi tanlovli yoki yozma bo‘lishi mumkin.'}</p></div></div></section>{currentContest.subjectSlug === 'ielts' && <IeltsExamBlueprint parts={editor?.parts ?? []} editable={editable} onSelect={openIeltsPart} />}{currentContest.subjectSlug === 'cefr' && <CefrListeningPartNavigator parts={editor?.parts ?? []} activePart={activeCefrListeningPart} onSelect={openCefrListeningPart} />}{(currentContest.subjectSlug !== 'cefr' || activeCefrListeningPart === null) && <ExamSectionTimingSection form={examTiming} setForm={setExamTiming} contest={currentContest} savedTimings={editor?.sectionTimings ?? null} editable={editable} adminAccess={adminAccess} busy={busy === 'exam-timing'} onSave={() => void saveExamTiming()} />}<ExamPartsSection
                     parts={editor?.parts ?? []}
                     form={examPart}
@@ -1587,6 +1672,7 @@ export function ContestManagementPage() {
                     onDelete={(partId) => void removeExamPart(partId)}
                   /></>
                 )}
+                {legacyBlueprintEnabled && <>
                 {currentContest.subjectSlug === 'cefr' && activeCefrReadingPart !== null && <CefrReadingPartNavigator parts={editor?.parts ?? []} activePart={activeCefrReadingPart} onSelect={openCefrReadingPart} onListening={() => openCefrListeningPart(1)} onTools={() => openCefrReadingPart(null)} />}
                 {editable && currentContest.subjectSlug === 'cefr' && (activeCefrListeningPart === 2 || activeCefrListeningPart === 6) && <CefrGapFillAnswerKeySection parts={editor?.parts ?? []} answerKeys={editor?.gapFillAnswerKeys ?? []} busy={busy === 'gap-fill-keys'} onSave={saveGapFillAnswerKeys} partPosition={activeCefrListeningPart} section="listening" />}
                 {editable && currentContest.subjectSlug === 'cefr' && activeCefrListeningPart === 3 && <CefrMatchingConfigSection parts={editor?.parts ?? []} configs={editor?.matchingConfigs ?? []} busy={busy === 'matching-config'} onSave={saveMatchingConfig} />}
@@ -1605,6 +1691,7 @@ export function ContestManagementPage() {
                   {!editable && <div className="border-t border-slate-100 bg-slate-50 p-5 text-sm text-slate-500">Boshlangan, yakunlangan yoki arxivlangan contest savollari o‘zgarmaydi.</div>}
                 </section>}
 
+                </>}
                 {englishExam && (currentContest.status === 'Finished' || currentContest.mode === 'Test') && <WritingReviewSection submissions={writingSubmissions} grades={writingGrades} setGrades={setWritingGrades} busy={busy} finalized={currentContest.isFinalized} onGrade={saveWritingGrade} />}
                 {currentContest.isPublished && (currentContest.status === 'Finished' || currentContest.mode === 'Test') && <ContestResultsSection results={adminResults} finalized={currentContest.isFinalized} englishExam={englishExam} ungradedWritingCount={ungradedWritingCount} />}
 
@@ -1661,6 +1748,78 @@ function ContestFormFields({ form, setForm, disabled, onSubjectChange, onSubmit,
       {!disabled && <div className="mt-6 flex justify-end"><button type="submit" disabled={busy} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : isNew ? 'Draft yaratish' : 'O‘zgarishlarni saqlash'}</button></div>}
     </form>
   );
+}
+
+function FlexibleLanguageBuilder({ contest, parts, questions, answerKeys, matchingConfigs, partForm, setPartForm, questionForm, setQuestionForm, timingForm, setTimingForm, savedTimings, adminAccess, audioFile, setAudioFile, imageFile, setImageFile, editable, busy, onSavePart, onSaveTiming, onDeletePart, onSaveQuestion, onDeleteQuestion, onSaveGapFill, onSaveMatching }: { contest: ManagedContest; parts: ExamPart[]; questions: EditorQuestion[]; answerKeys: GapFillAnswerKey[]; matchingConfigs: MatchingEditorConfig[]; partForm: ExamPartForm; setPartForm: Dispatch<SetStateAction<ExamPartForm>>; questionForm: QuestionForm; setQuestionForm: Dispatch<SetStateAction<QuestionForm>>; timingForm: ExamTimingForm; setTimingForm: Dispatch<SetStateAction<ExamTimingForm>>; savedTimings: ExamSectionTimings | null; adminAccess: boolean; audioFile: File | null; setAudioFile: Dispatch<SetStateAction<File | null>>; imageFile: File | null; setImageFile: Dispatch<SetStateAction<File | null>>; editable: boolean; busy: string | null; onSavePart: (event: FormEvent) => Promise<void>; onSaveTiming: () => void; onDeletePart: (partId: string) => void; onSaveQuestion: (event: FormEvent) => Promise<void>; onDeleteQuestion: (questionId: string) => void; onSaveGapFill: (partId: string, keys: GapFillAnswerKey[]) => Promise<boolean>; onSaveMatching: (partId: string, config: Omit<MatchingEditorConfig, 'partId'>) => Promise<boolean> }) {
+  const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
+  const sortedParts = useMemo(() => [...parts].sort((left, right) => left.section.localeCompare(right.section) || left.position - right.position), [parts]);
+  const objectiveParts = useMemo(() => sortedParts.filter((part) => part.section !== 'writing'), [sortedParts]);
+  const selectedPart = objectiveParts.find((part) => part.id === selectedPartId) ?? objectiveParts[0] ?? null;
+  const updatePart = <K extends keyof ExamPartForm>(key: K, value: ExamPartForm[K]) => setPartForm((current) => ({ ...current, [key]: value }));
+  const selectPart = (part: ExamPart) => {
+    setSelectedPartId(part.id);
+    setPartForm(examPartFormFrom(part));
+    setAudioFile(null);
+    setImageFile(null);
+    if (part.section !== 'writing') setQuestionForm(emptyQuestion((questions.filter((item) => item.partId === part.id).reduce((largest, item) => Math.max(largest, item.position), 0)) + 1, part.id));
+  };
+  const newPart = () => {
+    const position = Math.max(0, ...parts.filter((part) => part.section === 'listening').map((part) => part.position)) + 1;
+    setPartForm(emptyExamPart(position));
+    setAudioFile(null);
+    setImageFile(null);
+  };
+  const newQuestion = () => {
+    if (!selectedPart) return;
+    const position = Math.max(0, ...questions.filter((item) => item.partId === selectedPart.id).map((item) => item.position)) + 1;
+    setQuestionForm(emptyQuestion(position, selectedPart.id));
+  };
+  return <>
+    <section className="workspace-callout"><div className="flex flex-wrap items-start gap-3"><Headphones className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" /><div><p className="font-bold">Erkin IELTS / CEFR builder</p><p className="mt-1 max-w-3xl leading-relaxed text-indigo-900/80">Part soni, savol raqami va format sizniki. Gap filling uchun matnga <code>{'{{34}}'}</code>, <code>{'{{49}}'}</code> kabi marker qo‘ying; map uchun rasm va matching bankini biriktiring. Listeningda bitta umumiy audio yoki har bir part uchun alohida audio ishlatishingiz mumkin.</p></div></div></section>
+    <ExamSectionTimingSection form={timingForm} setForm={setTimingForm} contest={contest} savedTimings={savedTimings} editable={editable} adminAccess={adminAccess} busy={busy === 'exam-timing'} onSave={onSaveTiming} />
+    <section className="card overflow-hidden ring-1 ring-indigo-100"><div className="workspace-panel-heading bg-gradient-to-r from-indigo-50 via-white to-cyan-50"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-700">Partlar</p><h2 className="mt-1 text-xl font-bold text-slate-900">Material oqimini o‘zingiz tuzing</h2><p className="mt-1 text-sm leading-relaxed text-slate-600">Listening, Reading va Writing ichida istagancha part yarating. Bir section ichidagi tartib raqami navigatsiya tartibini belgilaydi.</p></div>{editable && <button type="button" onClick={newPart} className="btn-primary px-4 py-2.5 text-sm"><Plus className="h-4 w-4" />Part qo‘shish</button>}</div><div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-3">{sortedParts.map((part) => <article key={part.id} className={`rounded-2xl border p-4 transition-colors ${selectedPart?.id === part.id ? 'border-indigo-400 bg-indigo-50/70 ring-1 ring-indigo-200' : 'border-slate-200 bg-white'}`}><button type="button" onClick={() => selectPart(part)} className="w-full text-left"><div className="flex items-center justify-between gap-3"><span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-extrabold text-slate-700">{part.section} · {part.position}</span><span className="text-xs font-semibold text-slate-400">{questions.filter((question) => question.partId === part.id).length} savol</span></div><p className="mt-3 truncate text-sm font-bold text-slate-900">{part.title}</p><p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">{part.audioUrl ? 'Audio · ' : ''}{part.imageUrl ? 'Rasm · ' : ''}{gapFillBlankNumbers(part.content).length ? `${gapFillBlankNumbers(part.content).length} gap · ` : ''}{part.instructions || 'Ko‘rsatma kiritilmagan'}</p></button>{editable && <div className="mt-3 flex justify-end"><button type="button" onClick={() => onDeletePart(part.id)} disabled={busy === `delete-part:${part.id}`} className="rounded-lg p-2 text-slate-400 hover:bg-error-50 hover:text-error-700 disabled:opacity-50" title="Partni o‘chirish"><Trash2 className="h-4 w-4" /></button></div>}</article>)}{!sortedParts.length && <div className="col-span-full rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/40 p-6 text-sm leading-relaxed text-indigo-900">Birinchi partni qo‘shing. Masalan, Listening uchun umumiy audio bilan bir part, keyin markerli gap filling yoki xarita uchun boshqa part yaratishingiz mumkin.</div>}</div>
+      {editable && <form onSubmit={(event) => void onSavePart(event)} className="border-t border-slate-100 bg-slate-50/70 p-5 sm:p-6"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-bold text-slate-900">{partForm.id ? 'Partni tahrirlash' : 'Yangi part'}</p><p className="mt-1 text-xs leading-relaxed text-slate-500">Audio bo‘sh qolsa, Listening player ushbu testdagi birinchi audio faylni umumiy audio sifatida ishlatadi.</p></div>{partForm.id && <button type="button" onClick={newPart} className="btn-ghost px-3 py-2 text-xs">Yangi part</button>}</div><div className="mt-5 grid gap-4 md:grid-cols-2"><Field label="Section"><AppSelect value={partForm.section} onChange={(value) => updatePart('section', value as ExamSection)} options={[{ value: 'listening', label: 'Listening' }, { value: 'reading', label: 'Reading' }, { value: 'writing', label: 'Writing' }]} ariaLabel="Part sectioni" /></Field><Field label="Tartib raqami"><input required min="1" max="1000000" type="number" value={partForm.position} onChange={(event) => updatePart('position', Number(event.target.value))} className="input" /></Field><Field label="Part nomi" className="md:col-span-2"><input required value={partForm.title} onChange={(event) => updatePart('title', event.target.value)} className="input" placeholder="Masalan: Campus tour map" /></Field><Field label="Ishtirokchiga ko‘rsatma" className="md:col-span-2"><textarea value={partForm.instructions} onChange={(event) => updatePart('instructions', event.target.value)} className="input min-h-20 resize-y" placeholder="Nima qilish kerakligini qisqa yozing" /></Field>{partForm.section !== 'writing' && <Field label="Matn, passage yoki gap filling" className="md:col-span-2"><textarea value={partForm.content} onChange={(event) => updatePart('content', event.target.value)} className="input min-h-48 resize-y font-medium leading-7" placeholder={'Gap filling misoli: The station opens at {{34}} and closes at {{49}}.'} /><p className="mt-2 text-xs leading-relaxed text-violet-700">Markerlar istalgan musbat raqam bo‘lishi mumkin. Saqlagandan keyin pastda ularning javob kalitlari chiqadi.</p></Field>}{partForm.section === 'writing' && <><Field label="Writing topic" className="md:col-span-2"><textarea required value={partForm.content} onChange={(event) => updatePart('content', event.target.value)} className="input min-h-40 resize-y leading-7" placeholder="Writing topshirig‘ini yozing" /></Field><Field label="Maksimal ball"><input required min="1" max="1000" type="number" value={partForm.maxPoints} onChange={(event) => updatePart('maxPoints', event.target.value)} className="input" /></Field></>}{partForm.section === 'listening' && <><Field label="Audio fayl"><input type="file" accept="audio/*" onChange={(event) => setAudioFile(event.target.files?.[0] ?? null)} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700" />{audioFile && <p className="mt-2 text-xs text-indigo-700">Yuklanadi: {audioFile.name}</p>}</Field><Field label="Audio URL (ixtiyoriy)"><input value={partForm.audioUrl} onChange={(event) => updatePart('audioUrl', event.target.value)} className="input" placeholder="https://…/audio.mp3" /></Field></>}<Field label={partForm.section === 'writing' ? 'Rasm / chart' : 'Map yoki qo‘shimcha rasm'}><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setImageFile(event.target.files?.[0] ?? null)} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-sky-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-sky-700" />{imageFile && <p className="mt-2 text-xs text-sky-700">Yuklanadi: {imageFile.name}</p>}</Field><Field label="Rasm URL (ixtiyoriy)"><input value={partForm.imageUrl} onChange={(event) => updatePart('imageUrl', event.target.value)} className="input" placeholder="https://…/map.png" /></Field></div><div className="mt-5 flex justify-end"><button type="submit" disabled={busy !== null} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">{busy === 'exam-part' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{busy === 'exam-part' ? 'Saqlanmoqda…' : 'Partni saqlash'}</button></div></form>}</section>
+    {selectedPart && <><FlexibleGapFillAnswerKeySection part={selectedPart} answerKeys={answerKeys} busy={busy === 'gap-fill-keys'} onSave={onSaveGapFill} />{selectedPart.section !== 'writing' && <FlexibleMatchingConfigSection part={selectedPart} configs={matchingConfigs} busy={busy === 'matching-config'} onSave={onSaveMatching} />}</>}
+    <FlexibleQuestionsSection part={selectedPart} parts={objectiveParts} questions={questions} form={questionForm} setForm={setQuestionForm} editable={editable} busy={busy} onNew={newQuestion} onSave={onSaveQuestion} onDelete={onDeleteQuestion} />
+  </>;
+}
+
+function FlexibleGapFillAnswerKeySection({ part, answerKeys, busy, onSave }: { part: ExamPart; answerKeys: GapFillAnswerKey[]; busy: boolean; onSave: (partId: string, keys: GapFillAnswerKey[]) => Promise<boolean> }) {
+  const blankNumbers = useMemo(() => gapFillBlankNumbers(part.content), [part.content]);
+  const [drafts, setDrafts] = useState<Record<number, string>>({});
+  useEffect(() => setDrafts(Object.fromEntries(blankNumbers.map((blankNumber) => [blankNumber, answerKeys.find((key) => key.partId === part.id && key.blankNumber === blankNumber)?.acceptedAnswers.join(', ') ?? '']))), [answerKeys, blankNumbers, part.id]);
+  if (!blankNumbers.length) return null;
+  const save = async () => {
+    const keys = blankNumbers.map((blankNumber) => ({ partId: part.id, blankNumber, acceptedAnswers: (drafts[blankNumber] ?? '').split(',').map((value) => value.trim()).filter(Boolean), points: 1 }));
+    if (keys.some((key) => !key.acceptedAnswers.length)) return;
+    await onSave(part.id, keys);
+  };
+  return <section className="card overflow-hidden ring-1 ring-violet-100"><div className="workspace-panel-heading bg-gradient-to-r from-violet-50 to-white"><div><p className="text-xs font-bold uppercase tracking-wider text-violet-700">Gap filling · {part.title}</p><h2 className="mt-1 text-xl font-bold text-slate-900">Marker javob kalitlari</h2><p className="mt-1 text-sm leading-relaxed text-slate-600">Har marker mustaqil tekshiriladi. Muqobil javoblarni vergul bilan yozing.</p></div><span className="rounded-full bg-violet-100 px-3 py-1.5 text-xs font-bold text-violet-700">{blankNumbers.length} ta marker</span></div><div className="grid gap-3 p-5 sm:grid-cols-2 sm:p-6">{blankNumbers.map((blankNumber) => <label key={blankNumber} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><span className="text-sm font-bold text-slate-800">{`{{${blankNumber}}}`}</span><input value={drafts[blankNumber] ?? ''} disabled={busy} onChange={(event) => setDrafts((current) => ({ ...current, [blankNumber]: event.target.value }))} className="input mt-3 bg-white" placeholder="Correct answer, alternate answer" /></label>)}</div><div className="flex justify-end border-t border-slate-100 p-5 sm:px-6"><button type="button" disabled={busy || blankNumbers.some((blankNumber) => !(drafts[blankNumber] ?? '').trim())} onClick={() => void save()} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50"><Save className="h-4 w-4" />Javob kalitini saqlash</button></div></section>;
+}
+
+function FlexibleMatchingConfigSection({ part, configs, busy, onSave }: { part: ExamPart; configs: MatchingEditorConfig[]; busy: boolean; onSave: (partId: string, config: Omit<MatchingEditorConfig, 'partId'>) => Promise<boolean> }) {
+  const saved = configs.find((config) => config.partId === part.id);
+  const [options, setOptions] = useState<MatchingEditorConfig['options']>([]);
+  const [entries, setEntries] = useState<MatchingEditorConfig['speakers']>([]);
+  useEffect(() => { setOptions(saved?.options.length ? saved.options : Array.from({ length: 4 }, (_, position) => ({ position, label: '' }))); setEntries(saved?.speakers.length ? saved.speakers : Array.from({ length: 3 }, (_, index) => ({ speakerNumber: index + 1, label: '', imageUrl: null, correctOption: null }))); }, [part.id, saved]);
+  const save = async () => {
+    if (options.length < 2 || options.some((option) => !option.label.trim()) || entries.length < 1 || entries.some((entry) => entry.speakerNumber < 1 || !entry.label.trim() || entry.correctOption === null) || new Set(entries.map((entry) => entry.speakerNumber)).size !== entries.length) return;
+    await onSave(part.id, { options, speakers: entries });
+  };
+  return <section className="card overflow-hidden ring-1 ring-emerald-100"><div className="workspace-panel-heading bg-gradient-to-r from-emerald-50 to-white"><div><p className="text-xs font-bold uppercase tracking-wider text-emerald-700">Matching / map · {part.title}</p><h2 className="mt-1 text-xl font-bold text-slate-900">Moslashtirish javob banki</h2><p className="mt-1 text-sm leading-relaxed text-slate-600">Bu qism faqat kerak bo‘lsa saqlanadi. Rasm biriktirilgan partda u map matching ko‘rinishida chiqadi.</p></div></div><div className="grid gap-6 p-5 lg:grid-cols-2 sm:p-6"><div><div className="mb-3 flex items-center justify-between"><p className="text-sm font-bold text-slate-800">Savollar / joylar</p><button type="button" onClick={() => setEntries((current) => [...current, { speakerNumber: Math.max(0, ...current.map((entry) => entry.speakerNumber)) + 1, label: '', imageUrl: null, correctOption: null }])} className="text-xs font-bold text-emerald-700">+ Qator</button></div><div className="space-y-3">{entries.map((entry, index) => <div key={`${entry.speakerNumber}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div className="flex gap-2"><input type="number" min="1" max="1000000" value={entry.speakerNumber} onChange={(event) => setEntries((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, speakerNumber: Number(event.target.value) } : item))} className="input w-24 bg-white" /><input value={entry.label} onChange={(event) => setEntries((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item))} className="input flex-1 bg-white" placeholder="Masalan: Library entrance" /></div><div className="mt-2 flex items-center gap-2"><AppSelect value={entry.correctOption === null ? '' : String(entry.correctOption)} onChange={(value) => setEntries((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, correctOption: value === '' ? null : Number(value) } : item))} options={[{ value: '', label: 'To‘g‘ri variantni tanlang' }, ...options.map((option) => ({ value: String(option.position), label: `${String.fromCharCode(65 + option.position)} — ${option.label || 'variant'}` }))]} ariaLabel="Matching javob kaliti" /><button type="button" onClick={() => setEntries((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="rounded-lg p-2 text-slate-400 hover:bg-error-50 hover:text-error-700"><Trash2 className="h-4 w-4" /></button></div></div>)}</div></div><div><div className="mb-3 flex items-center justify-between"><p className="text-sm font-bold text-slate-800">A/B/C… variantlar</p><button type="button" onClick={() => setOptions((current) => [...current, { position: current.length, label: '' }])} className="text-xs font-bold text-emerald-700">+ Variant</button></div><div className="space-y-3">{options.map((option, index) => <div key={option.position} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-xs font-extrabold text-slate-700">{String.fromCharCode(65 + option.position)}</span><input value={option.label} onChange={(event) => setOptions((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item))} className="input flex-1" placeholder="Variant matni" /><button type="button" onClick={() => setOptions((current) => current.length <= 2 ? current : current.filter((_, itemIndex) => itemIndex !== index).map((item, itemIndex) => ({ ...item, position: itemIndex })))} className="rounded-lg p-2 text-slate-400 hover:bg-error-50 hover:text-error-700"><Trash2 className="h-4 w-4" /></button></div>)}</div></div></div><div className="flex justify-end border-t border-slate-100 p-5 sm:px-6"><button type="button" disabled={busy} onClick={() => void save()} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50"><Save className="h-4 w-4" />Matchingni saqlash</button></div></section>;
+}
+
+function FlexibleQuestionsSection({ part, parts, questions, form, setForm, editable, busy, onNew, onSave, onDelete }: { part: ExamPart | null; parts: ExamPart[]; questions: EditorQuestion[]; form: QuestionForm; setForm: Dispatch<SetStateAction<QuestionForm>>; editable: boolean; busy: string | null; onNew: () => void; onSave: (event: FormEvent) => Promise<void>; onDelete: (questionId: string) => void }) {
+  const partQuestions = useMemo(() => part ? questions.filter((question) => question.partId === part.id).sort((left, right) => left.position - right.position) : [], [part, questions]);
+  const update = <K extends keyof QuestionForm>(key: K, value: QuestionForm[K]) => setForm((current) => ({ ...current, [key]: value }));
+  const choice = form.answerType === 'choice';
+  const addOption = () => setForm((current) => ({ ...current, options: [...current.options, ''] }));
+  if (!part) return <section className="card border border-dashed border-slate-200 p-6 text-sm text-slate-500">Savol qo‘shish uchun avval Listening yoki Reading partini yarating va tanlang.</section>;
+  return <section className="card overflow-hidden"><div className="workspace-panel-heading"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Savollar · {part.section}</p><h2 className="mt-1 text-xl font-bold text-slate-900">{part.title}</h2><p className="mt-1 text-sm text-slate-500">Raqamni o‘zingiz belgilang; u boshqa partlardagi raqamlar bilan to‘qnashmaydi.</p></div>{editable && <button type="button" onClick={onNew} className="btn-ghost px-3 py-2 text-sm"><Plus className="h-4 w-4" />Savol qo‘shish</button>}</div>{partQuestions.length ? <div className="divide-y divide-slate-100">{partQuestions.map((item) => <div key={item.id}><QuestionRow question={item} parts={parts} cefrExam={false} ieltsExam={false} editable={editable} editing={form.id === item.id} busy={busy === `delete:${item.id}`} onEdit={() => setForm(questionFormFrom(item))} onDelete={() => onDelete(item.id)} />{editable && form.id === item.id && <form onSubmit={(event) => void onSave(event)} className="border-t border-indigo-100 bg-indigo-50/40 p-5 sm:p-6"><FlexibleQuestionFields form={form} update={update} choice={choice} addOption={addOption} setForm={setForm} busy={busy === 'question'} /></form>}</div>)}</div> : <div className="p-5 text-sm text-slate-500">Bu partda hali alohida savol yo‘q. Gap filling yoki matching ishlatsangiz, ular yuqorida sozlanadi.</div>}{editable && !form.id && form.partId === part.id && <form onSubmit={(event) => void onSave(event)} className="border-t border-indigo-100 bg-indigo-50/40 p-5 sm:p-6"><FlexibleQuestionFields form={form} update={update} choice={choice} addOption={addOption} setForm={setForm} busy={busy === 'question'} /></form>}</section>;
+}
+
+function FlexibleQuestionFields({ form, update, choice, addOption, setForm, busy }: { form: QuestionForm; update: <K extends keyof QuestionForm>(key: K, value: QuestionForm[K]) => void; choice: boolean; addOption: () => void; setForm: Dispatch<SetStateAction<QuestionForm>>; busy: boolean }) {
+  return <><div className="grid gap-4 md:grid-cols-[160px_minmax(0,1fr)]"><Field label="Savol raqami"><input required min="1" max="1000000" type="number" value={form.position} onChange={(event) => update('position', Number(event.target.value))} className="input bg-white" /></Field><Field label="Javob turi"><AppSelect value={form.answerType} onChange={(value) => update('answerType', value as 'choice' | 'text')} options={[{ value: 'choice', label: 'Tanlovli' }, { value: 'text', label: 'Yozma / short answer' }]} ariaLabel="Javob turi" /></Field><Field label="Savol matni" className="md:col-span-2"><textarea required value={form.prompt} onChange={(event) => update('prompt', event.target.value)} className="input min-h-24 resize-y bg-white" placeholder="Savol yoki bayonotni yozing" /></Field></div>{choice ? <div className="mt-4"><div className="mb-2 flex items-center justify-between"><p className="text-sm font-bold text-slate-800">Variantlar</p><button type="button" onClick={addOption} className="text-xs font-bold text-indigo-700">+ Variant</button></div><div className="space-y-2">{form.options.map((option, index) => <div key={index} className="flex items-center gap-2"><input type="radio" checked={form.correctOption === index} onChange={() => update('correctOption', index)} className="h-4 w-4 accent-indigo-600" /><span className="w-5 text-xs font-bold text-slate-500">{String.fromCharCode(65 + index)}</span><input required value={option} onChange={(event) => setForm((current) => ({ ...current, options: current.options.map((item, itemIndex) => itemIndex === index ? event.target.value : item) }))} className="input flex-1 bg-white" placeholder={`${String.fromCharCode(65 + index)} variant`} />{form.options.length > 2 && <button type="button" onClick={() => setForm((current) => ({ ...current, options: current.options.filter((_, itemIndex) => itemIndex !== index), correctOption: current.correctOption === index ? null : current.correctOption !== null && current.correctOption > index ? current.correctOption - 1 : current.correctOption }))} className="rounded-lg p-2 text-slate-400 hover:bg-error-50 hover:text-error-700"><Trash2 className="h-4 w-4" /></button>}</div>)}</div></div> : <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_180px]"><Field label="Qabul qilinadigan javoblar"><textarea required value={form.acceptedAnswersText} onChange={(event) => update('acceptedAnswersText', event.target.value)} className="input min-h-24 resize-y bg-white" placeholder={'Har qatorda bitta javob\nMuqobil javoblar ham mumkin'} /></Field><Field label="So‘z limiti"><input required min="1" max="1000" type="number" value={form.wordLimit} onChange={(event) => update('wordLimit', event.target.value)} className="input bg-white" /></Field></div>}<div className="mt-4 grid gap-4 md:grid-cols-3"><Field label="Ball"><input required min="1" max="1000" type="number" value={form.points} onChange={(event) => update('points', event.target.value)} className="input bg-white" /></Field><Field label="Izoh (ixtiyoriy)" className="md:col-span-2"><input value={form.explanation} onChange={(event) => update('explanation', event.target.value)} className="input bg-white" /></Field></div><div className="mt-5 flex justify-end"><button type="submit" disabled={busy} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : 'Savolni saqlash'}</button></div></>;
 }
 
 function CefrGapFillAnswerKeySection({ parts, answerKeys, busy, onSave, partPosition, section }: { parts: ExamPart[]; answerKeys: GapFillAnswerKey[]; busy: boolean; onSave: (partId: string, keys: GapFillAnswerKey[]) => Promise<boolean>; partPosition: 1 | 2 | 6; section: 'listening' | 'reading' }) {
@@ -2129,7 +2288,7 @@ function ExamSectionTimingSection({ form, setForm, contest, savedTimings, editab
   const individualTest = contest.mode === 'Test';
   const remainingMinutes = contestMinutes - totalMinutes;
   const update = (key: keyof ExamTimingForm, value: string) => setForm((current) => ({ ...current, [key]: value }));
-  const ielts = contest.subjectSlug === 'ielts';
+  const ielts = false;
   const timingOverride = adminAccess;
   return <section className="card overflow-hidden ring-cyan-100"><div className="workspace-panel-heading bg-gradient-to-r from-cyan-50/80 to-white"><div><p className="text-xs font-bold uppercase tracking-wider text-cyan-700">Section timers</p><h2 className="mt-1 text-xl font-bold text-slate-900">Listening, Reading va Writing vaqti</h2><p className="mt-1 max-w-2xl text-sm text-slate-500">{individualTest ? 'Bu individual testning umumiy davomiyligi. Har participant boshlagan onidan shu ketma-ketlikdagi server timerlari ishlaydi.' : timingOverride ? 'Administrator override faol: bo‘lim vaqtlarini contest holati va IELTS standart vaqtlaridan mustaqil o‘zgartirishingiz mumkin.' : ielts ? 'IELTS Academic kompyuter testi uchun qat’iy vaqt: 30 min Listening, 60 min Reading, 60 min Writing.' : 'Har bir bo‘limning alohida server timeri bo‘ladi. Vaqt tugashi bilan oldingi bo‘lim yopiladi va keyingi bo‘lim avtomatik ochiladi.'}</p></div><span className={`rounded-full px-3 py-1.5 text-xs font-bold ${savedTimings ? 'bg-success-50 text-success-700' : 'bg-sun-50 text-sun-700'}`}>{savedTimings ? 'Sozlangan' : 'Sozlanmagan'}</span></div><div className="p-5 sm:p-6"><div className="grid gap-4 md:grid-cols-3"><SectionTimerField label="Listening" value={form.listeningMinutes} icon={<Headphones className="h-4 w-4" />} color="indigo" disabled={!editable || (ielts && !timingOverride)} onChange={(value) => update('listeningMinutes', value)} /><SectionTimerField label="Reading" value={form.readingMinutes} icon={<ClipboardList className="h-4 w-4" />} color="cyan" disabled={!editable || (ielts && !timingOverride)} onChange={(value) => update('readingMinutes', value)} /><SectionTimerField label="Writing" value={form.writingMinutes} icon={<PenLine className="h-4 w-4" />} color="violet" disabled={!editable || (ielts && !timingOverride)} onChange={(value) => update('writingMinutes', value)} /></div><div className={`mt-5 flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4 ${individualTest || remainingMinutes === 0 ? 'border-success-200 bg-success-50/70' : 'border-sun-200 bg-sun-50/70'}`}><div><p className="text-sm font-bold text-slate-800">{individualTest ? `Har participant uchun jami: ${totalMinutes} minut` : `Jami: ${totalMinutes} / ${contestMinutes} minut`}</p><p className="mt-1 text-xs leading-relaxed text-slate-600">{individualTest ? 'Test jadvali emas, shu uch bo‘limning jami vaqti ishlatiladi.' : timingOverride ? 'Jami vaqt va contest jadvali mosligi administrator tomonidan boshqariladi.' : ielts ? 'Listening 4 part/40 savol; Reading 3 passage/40 savol; Writing 2 task.' : 'Bo‘limlar contest davomiyligiga aynan teng bo‘lishi kerak.'}</p></div><div className={`rounded-xl px-3 py-2 text-sm font-bold ${individualTest || remainingMinutes === 0 ? 'bg-success-100 text-success-700' : 'bg-sun-100 text-sun-700'}`}>{individualTest ? 'Individual timer' : remainingMinutes === 0 ? 'Vaqtlar mos' : remainingMinutes > 0 ? `${remainingMinutes} min ajratilmagan` : `${Math.abs(remainingMinutes)} min ortiqcha`}</div></div>{editable && <div className="mt-5 flex justify-end"><button type="button" disabled={busy || (!individualTest && !timingOverride && (remainingMinutes !== 0 || totalMinutes < 3))} onClick={onSave} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : timingOverride ? 'Administrator vaqtlarini saqlash' : ielts ? 'IELTS vaqtlarini tasdiqlash' : 'Bo‘lim vaqtlarini saqlash'}</button></div>}</div></section>;
 }

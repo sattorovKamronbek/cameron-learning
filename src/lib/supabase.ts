@@ -38,6 +38,7 @@ export type Profile = {
   school: string | null;
   preferences: Record<string, unknown>;
   email_verified_at: string | null;
+  is_learning_profile_public: boolean;
   created_at: string;
   updated_at: string;
 };

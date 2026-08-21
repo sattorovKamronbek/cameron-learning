@@ -14,6 +14,7 @@ import {
   Megaphone,
   RefreshCw,
   ShieldCheck,
+  Sparkles,
   Trash2,
   Users,
   Trophy,
@@ -43,8 +44,9 @@ import {
   type WritingSubmission,
 } from '@/lib/contests';
 import type { AdminEmail, AdminUserView, AuditLog, Role, UserStatus } from '@/lib/supabase';
+import { fetchAdminLearningSystem, updateAdminLearningXpRule, type AdminLearningSystem } from '@/lib/learning-admin';
 
-type Section = 'overview' | 'users' | 'audit' | 'allowlist' | 'announcements' | 'contests';
+type Section = 'overview' | 'users' | 'audit' | 'allowlist' | 'announcements' | 'contests' | 'learning';
 
 const roles: Role[] = ['user', 'judge', 'admin'];
 const statuses: UserStatus[] = ['active', 'suspended', 'banned'];
@@ -76,6 +78,7 @@ export function AdminDashboard() {
   const [adminEmails, setAdminEmails] = useState<AdminEmail[]>([]);
   const [contests, setContests] = useState<ManagedContest[]>([]);
   const [contestResults, setContestResults] = useState<Record<string, ContestAdminResult[]>>({});
+  const [learningSystem, setLearningSystem] = useState<AdminLearningSystem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -85,17 +88,19 @@ export function AdminDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const [userRows, auditRows, emailRows, contestRows] = await Promise.all([
+      const [userRows, auditRows, emailRows, contestRows, learningRows] = await Promise.all([
         adminListUsers(),
         adminListAuditLogs(100),
         adminListAdminEmails(),
         fetchManagedContests(),
+        fetchAdminLearningSystem(),
       ]);
       setUsers(asList<AdminUserView>(userRows));
       setAuditLogs(asList<AuditLog>(auditRows));
       setAdminEmails(asList<AdminEmail>(emailRows));
       const managedContests = asList<ManagedContest>(contestRows);
       setContests(managedContests);
+      setLearningSystem(learningRows);
       
       // Fetch results for finished contests
       const resultsMap: Record<string, ContestAdminResult[]> = {};
@@ -292,6 +297,9 @@ export function AdminDashboard() {
           <SectionButton active={section === 'contests'} onClick={() => setSection('contests')} icon={Trophy}>
             Contests
           </SectionButton>
+          <SectionButton active={section === 'learning'} onClick={() => setSection('learning')} icon={Sparkles}>
+            Learning system
+          </SectionButton>
           <SectionButton active={section === 'audit'} onClick={() => setSection('audit')} icon={Clock3}>
             Audit log
           </SectionButton>
@@ -358,6 +366,17 @@ export function AdminDashboard() {
             )}
             {section === 'contests' && (
               <ContestsPanel contests={contests} results={contestResults} onResultRefresh={refreshContestResult} />
+            )}
+            {section === 'learning' && learningSystem && (
+              <LearningSystemPanel
+                system={learningSystem}
+                mutation={mutation}
+                onUpdateRule={(sourceType, xpAmount, isActive) => runMutation(
+                  'learning-rule:' + sourceType,
+                  () => updateAdminLearningXpRule(sourceType, xpAmount, isActive),
+                  'XP rule updated.',
+                )}
+              />
             )}
             {section === 'audit' && <AuditPanel records={auditLogs} />}
             {section === 'allowlist' && (
@@ -471,6 +490,41 @@ function Metric({
       <p className="mt-1 text-xs text-slate-400">{description}</p>
     </div>
   );
+}
+
+function LearningSystemPanel({
+  system,
+  mutation,
+  onUpdateRule,
+}: {
+  system: AdminLearningSystem;
+  mutation: string | null;
+  onUpdateRule: (sourceType: string, xpAmount: number, isActive: boolean) => Promise<void>;
+}) {
+  return (
+    <div className="space-y-6">
+      <section className="card p-6">
+        <div className="flex items-start gap-3">
+          <Sparkles className="mt-0.5 h-5 w-5 text-indigo-600" />
+          <div><h2 className="text-lg font-bold text-slate-900">Learning system</h2><p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-600">Skills, achievements, and missions are server-authoritative definitions. XP values below control future verified awards only; they never rewrite past contest results or ratings.</p></div>
+        </div>
+      </section>
+      <section className="card overflow-hidden"><div className="border-b border-slate-100 p-5"><h2 className="text-lg font-bold text-slate-900">XP configuration</h2><p className="mt-1 text-sm text-slate-500">Changes are audited and apply to future awards.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[620px]"><thead><tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-bold uppercase tracking-wider text-slate-400"><th className="px-5 py-3">Source</th><th className="px-5 py-3">XP</th><th className="px-5 py-3">Status</th><th className="px-5 py-3 text-right">Action</th></tr></thead><tbody>{system.xpRules.map((rule) => <XpRuleRow key={rule.source_type} rule={rule} saving={mutation === 'learning-rule:' + rule.source_type} onSave={onUpdateRule} />)}</tbody></table></div></section>
+      <div className="grid gap-6 lg:grid-cols-3"><DefinitionList title="Skills" description="Hierarchy, ordering, and prerequisites are stored in the learning domain." rows={system.skills.map((skill) => ({ key: skill.id, name: skill.name, meta: `${skill.slug}${skill.is_active ? '' : ' · disabled'}` }))} /><DefinitionList title="Achievements" description="Awards are evaluated atomically from server-side criteria." rows={system.achievements.map((achievement) => ({ key: achievement.id, name: achievement.name, meta: `${achievement.rarity} · ${achievement.xp_reward} XP${achievement.is_active ? '' : ' · disabled'}` }))} /><DefinitionList title="Missions" description="Daily and weekly progress is calculated against server periods." rows={system.missions.map((mission) => ({ key: mission.id, name: mission.title, meta: `${mission.mission_type} · ${mission.target_value} target · ${mission.xp_reward} XP${mission.is_active ? '' : ' · disabled'}` }))} /></div>
+    </div>
+  );
+}
+
+function XpRuleRow({ rule, saving, onSave }: { rule: AdminLearningSystem['xpRules'][number]; saving: boolean; onSave: (sourceType: string, xpAmount: number, isActive: boolean) => Promise<void> }) {
+  const [amount, setAmount] = useState(String(rule.xp_amount));
+  const [active, setActive] = useState(rule.is_active);
+  useEffect(() => { setAmount(String(rule.xp_amount)); setActive(rule.is_active); }, [rule.is_active, rule.xp_amount]);
+  const validAmount = Number(amount);
+  return <tr className="border-b border-slate-50 last:border-b-0"><td className="px-5 py-4 text-sm font-bold text-slate-800">{rule.source_type.replaceAll('_', ' ')}</td><td className="px-5 py-4"><label className="sr-only" htmlFor={'xp-' + rule.source_type}>XP amount for {rule.source_type}</label><input id={'xp-' + rule.source_type} type="number" min="1" max="10000" value={amount} onChange={(event) => setAmount(event.target.value)} className="w-24 rounded-lg border border-slate-200 px-2.5 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" /></td><td className="px-5 py-4"><label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />Active</label></td><td className="px-5 py-4 text-right"><button type="button" disabled={saving || !Number.isInteger(validAmount) || validAmount < 1 || validAmount > 10000} onClick={() => void onSave(rule.source_type, validAmount, active)} className="btn-ghost px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50">{saving ? 'Saving…' : 'Save'}</button></td></tr>;
+}
+
+function DefinitionList({ title, description, rows }: { title: string; description: string; rows: { key: string; name: string; meta: string }[] }) {
+  return <section className="card overflow-hidden"><div className="border-b border-slate-100 p-5"><h2 className="text-base font-bold text-slate-900">{title}</h2><p className="mt-1 text-xs leading-relaxed text-slate-500">{description}</p></div>{rows.length ? <ul className="divide-y divide-slate-100">{rows.map((row) => <li key={row.key} className="p-4"><p className="text-sm font-bold text-slate-800">{row.name}</p><p className="mt-1 text-xs text-slate-400">{row.meta}</p></li>)}</ul> : <p className="p-5 text-sm text-slate-500">No definitions returned.</p>}</section>;
 }
 
 function UsersPanel({
