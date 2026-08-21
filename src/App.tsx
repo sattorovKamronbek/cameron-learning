@@ -7,7 +7,9 @@ import { Footer } from '@/components/Footer';
 import { LoadingState } from '@/components/LoadingState';
 import { NotificationCenterPage } from '@/components/NotificationBell';
 import { I18nProvider } from '@/lib/i18n';
-import { ThemeProvider } from '@/lib/theme';
+import { AppearanceProvider, useAppearance } from '@/lib/theme';
+import { AppearanceStudio } from '@/components/AppearanceStudio';
+import { CommandPalette } from '@/components/CommandPalette';
 
 function page<M, K extends keyof M>(load: () => Promise<M>, name: K) {
   type PageComponent = M[K] extends ComponentType<infer Props> ? ComponentType<Props> : never;
@@ -124,7 +126,7 @@ function Routes() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="site-route-shell flex min-h-screen flex-col">
       <Navbar />
       <main className="flex-1">{page}</main>
       <Footer />
@@ -176,16 +178,25 @@ function App() {
   return (
     <Suspense fallback={<LoadingState variant="page" message="Sahifa tayyorlanmoqda" />}>
       <AuthProvider>
-        <ThemeProvider>
+        <AppearanceProvider>
           <I18nProvider>
             <RouterProvider>
-              <Routes />
+              <AppWithAppearance />
             </RouterProvider>
           </I18nProvider>
-        </ThemeProvider>
+        </AppearanceProvider>
       </AuthProvider>
     </Suspense>
   );
+}
+
+function AppWithAppearance() {
+  const { settings } = useAppearance();
+  return <div className={`app-shell ${settings.focusMode ? 'focus-mode' : ''} ${settings.comfortMode ? 'comfort-mode' : ''}`}>
+    <Routes />
+    <AppearanceStudio />
+    <CommandPalette />
+  </div>;
 }
 
 export default App;

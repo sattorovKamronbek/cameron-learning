@@ -5,7 +5,7 @@ import {
   Award, Shield, Bell, Home, Activity, Code2, Sigma, Atom,
   FlaskConical, Languages, Brain, ClipboardList, TrendingUp,
   Clock, CheckCircle2, Globe,
-  Palette,
+  Palette, Target,
 } from 'lucide-react';
 import { Link, useRouter } from '@/router';
 import { useAuth } from '@/lib/auth';
@@ -14,7 +14,7 @@ import { Logo } from '@/components/Logo';
 import { NotificationBell } from '@/components/NotificationBell';
 import type { Plan } from '@/lib/supabase';
 import { languages, useTranslation } from '@/lib/i18n';
-import { themes, useTheme } from '@/lib/theme';
+import { useAppearance } from '@/lib/theme';
 
 /* ============ Navigation Structure ============ */
 
@@ -181,6 +181,7 @@ export function Navbar() {
   const { t } = useTranslation();
   const { user, profile, signOut } = useAuth();
   const { adminAccess: canAccessAdmin, canManageContests: canManageContestAccess } = useAccessControl();
+  const { settings, openStudio } = useAppearance();
   const navRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -249,18 +250,18 @@ export function Navbar() {
     <>
       <header
         ref={navRef}
-        className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${
+        className={`app-navbar nav-${settings.navigationStyle} fixed inset-x-0 top-0 z-50 transition-all duration-300 ${
           scrolled
             ? 'glass border-b border-slate-200/60 shadow-soft'
             : 'border-b border-transparent bg-transparent'
         }`}
         style={{ height: 'var(--header-h)' }}
       >
-        <nav className="container-page flex h-full items-center justify-between">
+        <nav className="app-navbar-inner container-page flex h-full items-center justify-between">
           <Logo />
 
           {/* Desktop nav with dropdowns */}
-          <div className="hidden items-center gap-0.5 lg:flex">
+          <div className="app-navbar-links hidden items-center gap-0.5 lg:flex">
             {navGroups.map((group) => (
               <DropdownTrigger
                 key={group.id}
@@ -273,7 +274,7 @@ export function Navbar() {
           </div>
 
           {/* Right side: notifications + user */}
-          <div className="hidden items-center gap-2 lg:flex">
+          <div className="app-navbar-actions hidden items-center gap-2 lg:flex">
             <ThemeSelector />
             <LanguageSelector />
             <NotificationBell />
@@ -303,6 +304,9 @@ export function Navbar() {
                     </div>
                     <div className="p-1.5">
                       <UserMenuLink to="/profile" icon={User} label={t('nav.myDashboard')} />
+                      <button onClick={() => { openStudio(); setUserMenuOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50">
+                        <Palette className="h-4 w-4 text-slate-400" /> Appearance
+                      </button>
                       <UserMenuLink to="/analytics" icon={BarChart3} label={t('nav.myAnalytics')} />
                       <UserMenuLink to="/achievements" icon={Award} label={t('nav.myBadges')} />
                       <UserMenuLink to="/leaderboards" icon={Trophy} label={t('nav.leaderboards')} />
@@ -369,85 +373,29 @@ export function Navbar() {
         canAccessAdmin={canAccessAdmin}
         canManageContests={canManageContestAccess}
         onSignOut={handleSignOut}
+        onOpenAppearance={openStudio}
       />
     </>
   );
 }
 
 function ThemeSelector({ className = '' }: { className?: string }) {
-  const { theme, setTheme } = useTheme();
+  const { openStudio, settings } = useAppearance();
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const selectorRef = useRef<HTMLDivElement>(null);
-  const activeTheme = themes.find(({ id }) => id === theme) ?? themes[0];
-
-  useEffect(() => {
-    const closeOnOutsideClick = (event: MouseEvent) => {
-      if (!selectorRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', closeOnOutsideClick);
-    return () => document.removeEventListener('mousedown', closeOnOutsideClick);
-  }, []);
 
   return (
-    <div ref={selectorRef} className={`relative ${className}`}>
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-label={t('theme.label')}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white shadow-soft ring-1 ring-slate-200/80 transition-all hover:-translate-y-0.5 hover:shadow-lift hover:ring-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
-      >
-        <span
-          className="flex h-6 w-6 items-center justify-center rounded-lg text-white shadow-sm"
-          style={{ backgroundImage: `linear-gradient(135deg, ${activeTheme.primary}, ${activeTheme.secondary})` }}
-        >
-          <Palette className="h-3.5 w-3.5" aria-hidden="true" />
-        </span>
-      </button>
-
-      {open && (
-        <div
-          role="listbox"
-          aria-label={t('theme.label')}
-          className="absolute right-0 top-full z-[70] mt-2 w-64 rounded-2xl bg-white p-2 shadow-lift ring-1 ring-slate-200/70 animate-dropdown"
-        >
-          <p className="px-2 pb-2 pt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-            {t('theme.label')}
-          </p>
-          <div className="grid grid-cols-2 gap-1.5">
-            {themes.map(({ id, primary, secondary }) => {
-              const selected = id === theme;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  onClick={() => {
-                    setTheme(id);
-                    setOpen(false);
-                  }}
-                  className={`rounded-xl p-2 text-left transition-all ${
-                    selected ? 'bg-slate-100 ring-2 ring-slate-300' : 'hover:bg-slate-50 ring-1 ring-transparent'
-                  }`}
-                >
-                  <span
-                    className="mb-2 block h-8 rounded-lg shadow-sm"
-                    style={{ backgroundImage: `linear-gradient(135deg, ${primary}, ${secondary})` }}
-                  />
-                  <span className="flex items-center justify-between gap-2 text-xs font-bold text-slate-700">
-                    {t(`theme.${id}`)}
-                    {selected && <CheckCircle2 className="h-3.5 w-3.5" style={{ color: primary }} />}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={openStudio}
+      aria-label={`${t('theme.label')}: open Appearance Studio`}
+      className={`appearance-trigger flex h-10 w-10 items-center justify-center rounded-2xl bg-white shadow-soft ring-1 ring-slate-200/80 transition-all hover:-translate-y-0.5 hover:shadow-lift hover:ring-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${className}`}
+      title="Open Appearance Studio (Ctrl+Shift+A)"
+    >
+      <span className="flex h-6 w-6 items-center justify-center rounded-lg text-white shadow-sm" style={{ backgroundImage: 'linear-gradient(135deg, var(--primary), var(--secondary))' }}>
+        <Palette className="h-3.5 w-3.5" aria-hidden="true" />
+      </span>
+      <span className="sr-only">{settings.themePreset}</span>
+    </button>
   );
 }
 
@@ -559,7 +507,7 @@ function DropdownTrigger({
       {/* Dropdown panel */}
       {isOpen && (
         <div
-          className="absolute left-1/2 top-full mt-1 -translate-x-1/2 pt-2"
+          className="nav-dropdown-panel absolute left-1/2 top-full mt-1 -translate-x-1/2 pt-2"
           onMouseLeave={() => onToggle(group.id)}
         >
           {group.megaMenu ? (
@@ -675,9 +623,10 @@ type MobileDrawerProps = {
   canAccessAdmin: boolean;
   canManageContests: boolean;
   onSignOut: () => void;
+  onOpenAppearance: () => void;
 };
 
-function MobileDrawer({ open, onClose, path, user, initials, planBadge: badge, canAccessAdmin, canManageContests, onSignOut }: MobileDrawerProps) {
+function MobileDrawer({ open, onClose, path, user, initials, planBadge: badge, canAccessAdmin, canManageContests, onSignOut, onOpenAppearance }: MobileDrawerProps) {
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const { t } = useTranslation();
 
@@ -787,6 +736,9 @@ function MobileDrawer({ open, onClose, path, user, initials, planBadge: badge, c
 
           {/* Extra links */}
           <div className="space-y-1">
+            <button onClick={() => { onOpenAppearance(); onClose(); }} className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50">
+              <Palette className="h-5 w-5 text-slate-400" /> Appearance
+            </button>
             <Link to="/notifications" onClick={onClose} className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
               <Bell className="h-5 w-5 text-slate-400" />
               {t('nav.notifications')}
