@@ -16,6 +16,7 @@ import progressRoutes from "./routes/progress";
 import notificationRoutes from "./routes/notifications";
 import analyticsRoutes from "./routes/analytics";
 import integrityRoutes from "./routes/integrity";
+import contestProblemPdfRoutes from "./routes/contestProblemPdf";
 import { errorHandler } from "./middleware/errorHandler";
 import { generalRateLimiter, authRateLimiter } from "./middleware/rateLimiter";
 import { sanitizeMiddleware } from "./middleware/sanitize";
@@ -38,8 +39,9 @@ app.use(cors({
     return callback(new Error("Origin is not allowed by CORS"));
   },
   credentials: true,
+  exposedHeaders: ["Content-Disposition"],
 }));
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 // global middlewares
 app.use(sanitizeMiddleware);
@@ -65,6 +67,7 @@ app.use("/api/progress", progressRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/integrity", integrityRoutes);
+app.use("/api/contest-problem-pdf", contestProblemPdfRoutes);
 
 app.use(errorHandler);
 

@@ -1,22 +1,34 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import {
   Archive,
+  Bold,
   BookOpenCheck,
+  Calculator,
+  Clock3,
   ChevronRight,
   Code2,
   Compass,
+  Download,
   FileCode2,
+  FileArchive,
   FolderPlus,
   Layers3,
+  Link2,
+  List,
+  ListOrdered,
   LibraryBig,
   Loader2,
   Plus,
+  Play,
   RefreshCw,
   RotateCcw,
   Save,
   Send,
+  Settings2,
   Trash2,
   Trophy,
+  Upload,
+  Wand2,
   X,
 } from 'lucide-react';
 import { Link } from '@/router';
@@ -25,6 +37,7 @@ import { useAuth } from '@/lib/auth';
 import { LoadingState } from '@/components/LoadingState';
 import { AppSelect } from '@/components/AppSelect';
 import { ManagementToast } from '@/components/ManagementToast';
+import { ContestProblemPdfBuilder } from '@/components/ContestProblemPdfBuilder';
 import {
   archiveContest,
   createContest,
@@ -61,6 +74,14 @@ import {
   type ProgrammingProblemEditor,
   type ProgrammingProblemInput,
 } from '@/lib/programming';
+import { downloadTestcaseArchive, readTestcaseArchive } from '@/lib/testcase-archive';
+import {
+  generateJavaScriptTestCases,
+  generateRemoteTestCases,
+  generatorExamples,
+  generatorLanguageOptions,
+  type TestcaseGeneratorLanguage,
+} from '@/lib/testcase-generator';
 
 type Tab = 'contests' | 'problems';
 
@@ -165,7 +186,7 @@ function emptyProblemForm(scope: ProblemPublicationScope = 'site'): ProblemForm 
     examples: [{ input: '', output: '', explanation: '' }],
     timeLimitMs: '1000', memoryLimitMb: '256', difficulty: 'Medium', tagsText: '', editorial: '',
     publicationScope: scope,
-    testCases: [{ input: '', output: '', isSample: false, weight: 1 }],
+    testCases: [],
   };
 }
 
@@ -183,7 +204,7 @@ function problemFormFrom(problem: ProgrammingProblemEditor): ProblemForm {
     tagsText: problem.tags.join(', '),
     editorial: problem.editorial ?? '',
     publicationScope: problem.publicationScope,
-    testCases: problem.testCases.length ? problem.testCases : [{ input: '', output: '', isSample: false, weight: 1 }],
+    testCases: problem.testCases,
   };
 }
 
@@ -243,8 +264,10 @@ export function ProgrammingManagementPage() {
   const editingContest = selectedContest !== null;
   // A published contest may still need a schedule or description correction
   // before it begins. Its problem set remains locked after publication.
-  const canEditSettings = isContestSettingsEditable(selectedContest);
-  const canEditProblemSet = isProblemSetEditable(selectedContest);
+  // A verified administrator is the final steward of the platform and can
+  // correct any contest or problem set; judges stay limited to safe drafts.
+  const canEditSettings = Boolean(adminAccess) || isContestSettingsEditable(selectedContest);
+  const canEditProblemSet = Boolean(adminAccess) || isProblemSetEditable(selectedContest);
   const canReopenAfterTesting = Boolean(
     adminAccess
       && selectedContest
@@ -320,11 +343,13 @@ export function ProgrammingManagementPage() {
   };
 
   const newProblem = (scope: ProblemPublicationScope = 'site') => {
-    setTab('problems');
+    const creatingForContest = scope === 'contest' && Boolean(selectedContest);
+    setTab(creatingForContest ? 'contests' : 'problems');
     setSelectedProblemId(null);
     setProblemForm(emptyProblemForm(scope));
     setError(null);
     setNotice(null);
+    if (creatingForContest) window.setTimeout(() => document.getElementById('contest-problem-builder')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   };
 
   const saveContest = async (event: FormEvent) => {
@@ -364,7 +389,7 @@ export function ProgrammingManagementPage() {
   const saveProblem = async (event: FormEvent) => {
     event.preventDefault();
     if (!problemForm.title.trim() || !problemForm.statement.trim()) return setError('Masala nomi va shartini to‘ldiring.');
-    if (!problemForm.testCases.length || problemForm.testCases.some((test) => !test.input.trim() && !test.output.trim())) return setError('Kamida bitta to‘liq test qo‘shing.');
+    if (problemForm.testCases.some((test) => !test.input.trim())) return setError('Har bir qo‘shilgan test uchun input kiriting yoki bo‘sh testni o‘chiring.');
     const attachToCurrentContest = Boolean(
       !selectedProblemId
       && problemForm.publicationScope === 'contest'
@@ -526,6 +551,8 @@ export function ProgrammingManagementPage() {
                     {editorLoading ? <LoadingState className="min-h-48" message="Problem set yuklanmoqda" /> : contestEditor?.problems.length ? <div className="divide-y divide-slate-100">{contestEditor.problems.map((problem) => <ContestProblemRow key={problem.id} problem={problem} editable={canEditProblemSet} busy={busy === `detach:${problem.id}`} onRemove={() => void detach(problem.id)} />)}</div> : <EmptyProblemSet editable={canEditProblemSet} onCreate={() => newProblem('contest')} />}
                   </section>
 
+                  {canEditProblemSet && problemForm.publicationScope === 'contest' && <section id="contest-problem-builder" className="card overflow-hidden ring-2 ring-indigo-100"><div className="workspace-panel-heading bg-gradient-to-r from-indigo-50/70 to-white"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Contest problem builder</p><h2 className="mt-1 text-xl font-bold text-slate-900">{selectedProblemId ? 'Contest masalasini tahrirlash' : 'Contest uchun masala yaratish'}</h2><p className="mt-1 text-sm text-slate-500">Shart, preview, samplelar, checker va maxfiy testlar bitta qulay ish maydonida.</p></div>{selectedProblemId && <button type="button" disabled={busy !== null} onClick={() => void removeProblem()} className="btn-ghost px-3 py-2 text-xs text-error-700 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" />O‘chirish</button>}</div>{editorLoading ? <LoadingState className="min-h-96" message="Masala yuklanmoqda" /> : <ProblemEditorForm form={problemForm} setForm={setProblemForm} onSubmit={saveProblem} busy={busy === 'problem'} contestContext={selectedContest} />}</section>}
+
                   {canEditProblemSet && <section className="card overflow-hidden"><div className="workspace-panel-heading"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Reusable library</p><h2 className="mt-1 text-lg font-bold text-slate-900">Masalalar bankidan qo‘shish</h2><p className="mt-1 text-sm text-slate-500">Bu yer faqat tayyor masalani contestga biriktirish uchun. Yangi masala yaratish “Masalalar banki” ish maydonida amalga oshadi.</p></div><input value={problemSearch} onChange={(event) => setProblemSearch(event.target.value)} className="input w-full sm:w-64" placeholder="Masalani qidiring" /></div><div className="divide-y divide-slate-100">{filteredProblems.filter((problem) => !linkedIds.has(problem.id)).slice(0, 12).map((problem) => <div key={problem.id} className="flex flex-wrap items-center justify-between gap-3 p-4"><div className="min-w-0"><p className="font-semibold text-slate-800">{problem.title}</p><p className="mt-1 text-xs text-slate-500">{problem.difficulty} · {formatProblemLimit(problem.timeLimitMs, problem.memoryLimitMb)} · {problem.publicationScope === 'contest' ? 'Contest → Practice' : 'Site masalasi'}</p></div><button type="button" onClick={() => void attach(problem.id)} disabled={busy !== null} className="btn-ghost px-3 py-2 text-xs disabled:opacity-50"><Plus className="h-3.5 w-3.5" />Qo‘shish</button></div>)}{!filteredProblems.filter((problem) => !linkedIds.has(problem.id)).length && <p className="p-6 text-sm text-slate-500">Qo‘shiladigan masala topilmadi. Yangi contest masalasini yarating.</p>}</div></section>}
 
                   <section className="card p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-5"><div><h2 className="text-lg font-bold text-slate-900">Nashr holati</h2><p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-500">E’lon qilingach problem set yopiladi, lekin contest boshlanishidan oldin jadvali va tavsifini yangilash mumkin. Tugash vaqti yetishi bilan contest-scope masalalar Practice katalogida avtomatik ochiladi.</p></div><div className="flex flex-wrap gap-2">{adminAccess && selectedContest.mode === 'Gym' && selectedContest.visibility === 'Private' && !selectedContest.isPublished && <button type="button" onClick={() => void promotePrivateGym()} disabled={busy !== null} className="btn-ghost px-4 py-2.5 text-sm text-violet-700 disabled:opacity-50"><Trophy className="h-4 w-4" />Ratedga o‘tkazish</button>}{canEditProblemSet && <button type="button" onClick={() => void publish()} disabled={!contestEditor?.problems.length || busy !== null} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"><Send className="h-4 w-4" />E’lon qilish</button>}{canReopenAfterTesting && <button type="button" onClick={() => void reopenAfterTesting()} disabled={busy !== null} className="btn-ghost px-4 py-2.5 text-sm text-indigo-700 disabled:opacity-50"><RotateCcw className="h-4 w-4" />Ertaga qayta tayyorlash</button>}{canEditProblemSet && !selectedContest.isPublished && <button type="button" onClick={() => void removeContest()} disabled={busy !== null} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Trash2 className="h-4 w-4" />O‘chirish</button>}{!selectedContest.archivedAt && <button type="button" onClick={() => void archive()} disabled={busy !== null} className="btn-ghost px-4 py-2.5 text-sm text-error-700 disabled:opacity-50"><Archive className="h-4 w-4" />Arxivlash</button>}</div></div></section>
@@ -606,36 +633,174 @@ function ProblemLibraryRow({ problem, active, onClick }: { problem: ManagedProgr
 }
 
 function ProblemEditorForm({ form, setForm, onSubmit, busy, contestContext }: { form: ProblemForm; setForm: React.Dispatch<React.SetStateAction<ProblemForm>>; onSubmit: (event: FormEvent) => void; busy: boolean; contestContext: ManagedContest | null }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [panel, setPanel] = useState<'problem' | 'checker' | 'pdf'>('problem');
   const set = <K extends keyof ProblemForm>(key: K, value: ProblemForm[K]) => setForm((current) => ({ ...current, [key]: value }));
   const editExample = (index: number, key: keyof ProblemExample, value: string) => setForm((current) => ({ ...current, examples: current.examples.map((entry, entryIndex) => entryIndex === index ? { ...entry, [key]: value } : entry) }));
   const editTest = (index: number, key: keyof ProblemTestCase, value: string | number | boolean) => setForm((current) => ({ ...current, testCases: current.testCases.map((entry, entryIndex) => entryIndex === index ? { ...entry, [key]: value } : entry) }));
-  return <form onSubmit={onSubmit} className="p-5 sm:p-6">
-    <div className="grid gap-5">
-      <Field label="Masala nomi"><input required value={form.title} onChange={(event) => set('title', event.target.value)} className="input" placeholder="A. Two Sum" /></Field>
-      <Field label="Masala sharti"><textarea required value={form.statement} onChange={(event) => set('statement', event.target.value)} className="input min-h-44 resize-y font-mono text-sm" placeholder="Masalani aniq, to‘liq va Markdown-uslubida yozing." /></Field>
-      <div className="grid gap-5 md:grid-cols-2"><Field label="Input"><textarea value={form.inputDescription} onChange={(event) => set('inputDescription', event.target.value)} className="input min-h-28 resize-y" placeholder="Kirish formati" /></Field><Field label="Output"><textarea value={form.outputDescription} onChange={(event) => set('outputDescription', event.target.value)} className="input min-h-28 resize-y" placeholder="Chiqish formati" /></Field></div>
-      <Field label="Cheklovlar"><textarea value={form.constraints} onChange={(event) => set('constraints', event.target.value)} className="input min-h-24 resize-y font-mono text-sm" placeholder="1 ≤ n ≤ 2 × 10⁵" /></Field>
-      <div className="grid gap-5 md:grid-cols-2">
-        <Field label="Qiyinlik"><AppSelect value={form.difficulty} onChange={(value) => set('difficulty', value as ProgrammingDifficulty)} options={['Easy', 'Medium', 'Hard'].map((value) => ({ value, label: value }))} ariaLabel="Masala qiyinligi" /></Field>
-        <Field label="Teglar (vergul bilan)"><input value={form.tagsText} onChange={(event) => set('tagsText', event.target.value)} className="input" placeholder="arrays, sorting" /></Field>
-        <Field label="Time limit (ms)"><input required min="50" max="60000" type="number" value={form.timeLimitMs} onChange={(event) => set('timeLimitMs', event.target.value)} className="input" /></Field>
-        <Field label="Memory limit (MB)"><input required min="16" max="1024" type="number" value={form.memoryLimitMb} onChange={(event) => set('memoryLimitMb', event.target.value)} className="input" /></Field>
-      </div>
-      <Field label="Nashr oqimi"><AppSelect value={form.publicationScope} onChange={(value) => set('publicationScope', value as ProblemPublicationScope)} options={[{ value: 'site', label: 'Site masalasi', description: 'Saqlangach Practice’da ko‘rinadi' }, { value: 'contest', label: 'Contest masalasi', description: 'Contest tugagach Practice’da ko‘rinadi' }]} ariaLabel="Nashr oqimi" />{form.publicationScope === 'contest' && <p className="mt-2 text-xs leading-relaxed text-sun-700">{contestContext ? `Bu masalani saqlagach “${contestContext.title}” contestiga biriktiring. Practice nashri ${contestDate(contestContext.endTime)} dan keyin avtomatik ishlaydi.` : 'Contest scope masalani saqlang, so‘ng Contestlar yorlig‘ida problem setga biriktiring.'}</p>}</Field>
-      <ExamplesEditor examples={form.examples} onChange={editExample} onAdd={() => setForm((current) => ({ ...current, examples: [...current.examples, { input: '', output: '', explanation: '' }] }))} onRemove={(index) => setForm((current) => current.examples.length > 1 ? { ...current, examples: current.examples.filter((_, itemIndex) => itemIndex !== index) } : current)} />
-      <TestCasesEditor tests={form.testCases} onChange={editTest} onAdd={() => setForm((current) => ({ ...current, testCases: [...current.testCases, { input: '', output: '', isSample: false, weight: 1 }] }))} onRemove={(index) => setForm((current) => current.testCases.length > 1 ? { ...current, testCases: current.testCases.filter((_, itemIndex) => itemIndex !== index) } : current)} />
-      <Field label="Editorial (contest tugagach ko‘rsatilishi mumkin)"><textarea value={form.editorial} onChange={(event) => set('editorial', event.target.value)} className="input min-h-28 resize-y" placeholder="Yechim g‘oyasi va murakkablik tahlili" /></Field>
+  const appendTests = (tests: ProblemTestCase[]) => setForm((current) => ({ ...current, testCases: [...current.testCases, ...tests] }));
+  useEffect(() => {
+    const saveWithShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        formRef.current?.requestSubmit();
+      }
+    };
+    window.addEventListener('keydown', saveWithShortcut);
+    return () => window.removeEventListener('keydown', saveWithShortcut);
+  }, []);
+
+  return <form ref={formRef} onSubmit={onSubmit} className="p-4 sm:p-6">
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+      <div className="flex flex-wrap rounded-xl bg-slate-100 p-1"><button type="button" onClick={() => setPanel('problem')} className={`rounded-lg px-3 py-2 text-xs font-bold transition ${panel === 'problem' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Masala</button><button type="button" onClick={() => setPanel('checker')} className={`rounded-lg px-3 py-2 text-xs font-bold transition ${panel === 'checker' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Testlar & checker <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px]">{form.testCases.length}</span></button><button type="button" onClick={() => setPanel('pdf')} className={`rounded-lg px-3 py-2 text-xs font-bold transition ${panel === 'pdf' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>AI PDF Builder</button></div>
+      <button type="submit" disabled={busy} className="btn-primary px-4 py-2 text-xs disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : 'Saqlash'} <span className="hidden text-[10px] opacity-80 sm:inline">Ctrl + S</span></button>
     </div>
-    <div className="mt-6 flex justify-end"><button type="submit" disabled={busy} className="btn-primary px-5 py-2.5 text-sm disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{busy ? 'Saqlanmoqda…' : 'Masalani saqlash'}</button></div>
+
+    <div className="mb-5 grid gap-2 rounded-xl border border-slate-100 bg-slate-50 p-2 sm:grid-cols-3"><BuilderStep number="1" title="Masalani yozing" detail="Nomi, sharti va limitlarni to‘ldiring." active={panel === 'problem'} /><BuilderStep number="2" title="Namuna qo‘shing" detail={`${form.examples.filter((example) => example.input || example.output).length} ta sample tayyor.`} active={panel === 'problem'} /><BuilderStep number="3" title="Tekshiring" detail={`${form.testCases.length} ta judge testi mavjud.`} active={panel === 'checker'} /></div>
+
+    {panel === 'problem' ? <div className="space-y-6">
+      <div className="min-w-0 space-y-5">
+        <div className="grid gap-3 sm:grid-cols-3"><Field label="Vaqt limiti"><div className="flex"><input required min="50" max="60000" type="number" value={form.timeLimitMs} onChange={(event) => set('timeLimitMs', event.target.value)} className="input rounded-r-none" /><span className="flex items-center rounded-r-xl border border-l-0 border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-500">ms</span></div></Field><Field label="Xotira limiti"><div className="flex"><input required min="16" max="1024" type="number" value={form.memoryLimitMb} onChange={(event) => set('memoryLimitMb', event.target.value)} className="input rounded-r-none" /><span className="flex items-center rounded-r-xl border border-l-0 border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-500">MB</span></div></Field><Field label="Qiyinlik"><AppSelect value={form.difficulty} onChange={(value) => set('difficulty', value as ProgrammingDifficulty)} options={['Easy', 'Medium', 'Hard'].map((value) => ({ value, label: value }))} ariaLabel="Masala qiyinligi" /></Field></div>
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem]"><Field label="Masala nomi (O‘zbekcha)"><input required value={form.title} onChange={(event) => set('title', event.target.value)} className="input" placeholder="A. Ikki son yig‘indisi" /></Field><Field label="Teglar"><input value={form.tagsText} onChange={(event) => set('tagsText', event.target.value)} className="input" placeholder="arrays, math" /></Field></div>
+        <MarkdownEditor label="Masala sharti" required value={form.statement} onChange={(value) => set('statement', value)} placeholder="Masalani aniq, to‘liq va o‘quvchiga tushunarli qilib yozing." minHeight="min-h-64" />
+        <MarkdownEditor label="Kirish ma’lumotlari" value={form.inputDescription} onChange={(value) => set('inputDescription', value)} placeholder="Kirish formatini yozing." />
+        <MarkdownEditor label="Chiqish ma’lumotlari" value={form.outputDescription} onChange={(value) => set('outputDescription', value)} placeholder="Chiqish formatini yozing." />
+        <MarkdownEditor label="Cheklovlar" value={form.constraints} onChange={(value) => set('constraints', value)} placeholder="1 ≤ n ≤ 2 × 10⁵" minHeight="min-h-24" />
+        <ExamplesEditor examples={form.examples} onChange={editExample} onAdd={() => setForm((current) => ({ ...current, examples: [...current.examples, { input: '', output: '', explanation: '' }] }))} onRemove={(index) => setForm((current) => current.examples.length > 1 ? { ...current, examples: current.examples.filter((_, itemIndex) => itemIndex !== index) } : current)} />
+        <MarkdownEditor label="Editorial (contest tugagach ko‘rsatiladi)" value={form.editorial} onChange={(value) => set('editorial', value)} placeholder="Yechim g‘oyasi va murakkablik tahlili" />
+        <Field label="Nashr oqimi"><AppSelect value={form.publicationScope} onChange={(value) => set('publicationScope', value as ProblemPublicationScope)} options={[{ value: 'site', label: 'Site masalasi', description: 'Saqlangach Practice’da ko‘rinadi' }, { value: 'contest', label: 'Contest masalasi', description: 'Contest tugagach Practice’da ko‘rinadi' }]} ariaLabel="Nashr oqimi" />{form.publicationScope === 'contest' && <p className="mt-2 text-xs leading-relaxed text-sun-700">{contestContext ? `Bu masala “${contestContext.title}” contestiga saqlanadi va contest tugagach Practice’ga avtomatik ochiladi.` : 'Contest scope masalani saqlang, so‘ng contest problem setiga biriktiring.'}</p>}</Field>
+      </div>
+      <LiveProblemPreview form={form} />
+    </div> : panel === 'checker' ? <div className="space-y-5"><div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4"><div className="flex items-start gap-3"><Settings2 className="mt-0.5 h-5 w-5 text-indigo-600" /><div><p className="text-sm font-bold text-slate-800">Standart checker</p><p className="mt-1 text-xs leading-relaxed text-slate-600">Judge outputni tokenlar bo‘yicha tekshiradi: bo‘sh joylar va satr oxiri farqlari yechimni noto‘g‘ri qilmaydi. Maxsus checker keyingi kengaytma sifatida ushbu tabga ulanadi.</p></div></div></div><TestCasesEditor tests={form.testCases} onChange={editTest} onAppend={appendTests} onAdd={() => setForm((current) => ({ ...current, testCases: [...current.testCases, { input: '', output: '', isSample: false, weight: 1 }] }))} onRemove={(index) => setForm((current) => ({ ...current, testCases: current.testCases.filter((_, itemIndex) => itemIndex !== index) }))} /></div> : <ContestProblemPdfBuilder problem={form} contestName={contestContext?.title} />}
   </form>;
+}
+
+function MarkdownEditor({ label, value, onChange, placeholder, minHeight = 'min-h-36', required = false }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; minHeight?: string; required?: boolean }) {
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const insert = (before: string, after = '') => {
+    const target = editorRef.current;
+    const start = target?.selectionStart ?? value.length;
+    const end = target?.selectionEnd ?? start;
+    const selection = value.slice(start, end) || 'matn';
+    const next = `${value.slice(0, start)}${before}${selection}${after}${value.slice(end)}`;
+    onChange(next);
+    window.requestAnimationFrame(() => { target?.focus(); target?.setSelectionRange(start + before.length, start + before.length + selection.length); });
+  };
+  const actions = [{ label: 'B', title: 'Qalin', icon: Bold, before: '**', after: '**' }, { label: '</>', title: 'Kod', icon: Code2, before: '`', after: '`' }, { label: '•', title: 'Ro‘yxat', icon: List, before: '- ' }, { label: '1.', title: 'Raqamli ro‘yxat', icon: ListOrdered, before: '1. ' }, { label: '↗', title: 'Havola', icon: Link2, before: '[', after: '](https://)' }, { label: 'ƒ', title: 'Formula', icon: Calculator, before: '$', after: '$' }];
+  return <label className="block"><span className="mb-2 block text-sm font-semibold text-slate-700">{label}{required && <span className="ml-1 text-error-600">*</span>}</span><div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm focus-within:border-indigo-400 focus-within:ring-4 focus-within:ring-indigo-100"><div className="flex flex-wrap items-center gap-1 border-b border-slate-100 bg-slate-50 px-2 py-1.5">{actions.map(({ label: actionLabel, title, icon: Icon, before, after }) => <button key={title} type="button" title={title} aria-label={title} onClick={() => insert(before, after)} className="flex h-7 min-w-7 items-center justify-center rounded-md px-1 text-xs font-bold text-slate-500 hover:bg-white hover:text-indigo-700"><Icon className="h-3.5 w-3.5" /><span className="sr-only">{actionLabel}</span></button>)}</div><textarea ref={editorRef} required={required} value={value} onChange={(event) => onChange(event.target.value)} className={`block w-full resize-y border-0 bg-transparent p-3 font-mono text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400 ${minHeight}`} placeholder={placeholder} /></div></label>;
+}
+
+function LiveProblemPreview({ form }: { form: ProblemForm }) {
+  const examples = form.examples.filter((example) => example.input || example.output);
+  return <aside className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4"><div className="flex flex-wrap gap-2"><span className="chip bg-indigo-50 text-indigo-700"><Clock3 className="h-3.5 w-3.5" />{form.timeLimitMs || '—'} ms</span><span className="chip bg-slate-200 text-slate-700">{form.memoryLimitMb || '—'} MB</span><span className="chip bg-sun-50 text-sun-700">{form.difficulty}</span></div><div className="rounded-xl border border-slate-200 bg-white"><div className="border-b border-slate-100 px-4 py-3"><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Live preview</p><h3 className="mt-1 text-lg font-extrabold text-slate-900">{form.title || 'Masala nomi kiritilmagan'}</h3></div><div className="grid gap-5 p-4 lg:grid-cols-2"><div className="space-y-4"><PreviewBlock title="Shart" value={form.statement} empty="Masala sharti shu yerda ko‘rinadi." /><PreviewBlock title="Kirish ma’lumotlari" value={form.inputDescription} empty="Kirish formati kiritilmagan." /></div><div className="space-y-4"><PreviewBlock title="Chiqish ma’lumotlari" value={form.outputDescription} empty="Chiqish formati kiritilmagan." /><PreviewBlock title="Cheklovlar" value={form.constraints} empty="Cheklovlar kiritilmagan." /></div><div className="lg:col-span-2"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Namunaviy testlar</p>{examples.length ? <div className="mt-2 overflow-hidden rounded-lg border border-slate-200"><div className="grid grid-cols-[2.5rem_1fr_1fr] bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500"><span className="p-2">#</span><span className="border-l border-slate-200 p-2">input.txt</span><span className="border-l border-slate-200 p-2">output.txt</span></div>{examples.map((example, index) => <div key={index} className="grid grid-cols-[2.5rem_1fr_1fr] border-t border-slate-100 text-xs"><span className="p-2 font-bold text-slate-400">{index + 1}</span><pre className="overflow-auto border-l border-slate-100 p-2 font-mono text-slate-700">{example.input}</pre><pre className="overflow-auto border-l border-slate-100 p-2 font-mono text-slate-700">{example.output}</pre></div>)}</div> : <p className="mt-2 rounded-lg border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">Namunaviy testcase’lar mavjud emas</p>}</div></div></div></aside>;
+}
+
+function PreviewBlock({ title, value, empty }: { title: string; value: string; empty: string }) {
+  return <div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">{title}</p><p className={`mt-1 whitespace-pre-wrap text-sm leading-relaxed ${value ? 'text-slate-700' : 'text-slate-400'}`}>{value || empty}</p></div>;
+}
+
+function BuilderStep({ number, title, detail, active }: { number: string; title: string; detail: string; active: boolean }) {
+  return <div className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 ${active ? 'bg-white shadow-sm ring-1 ring-indigo-100' : ''}`}><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-extrabold ${active ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>{number}</span><span className="min-w-0"><span className="block text-xs font-bold text-slate-700">{title}</span><span className="mt-0.5 block truncate text-[10px] text-slate-500">{detail}</span></span></div>;
 }
 
 function ExamplesEditor({ examples, onChange, onAdd, onRemove }: { examples: ProblemExample[]; onChange: (index: number, key: keyof ProblemExample, value: string) => void; onAdd: () => void; onRemove: (index: number) => void }) {
   return <div className="rounded-2xl border border-slate-200 p-4"><div className="flex items-center justify-between gap-3"><div><p className="text-sm font-bold text-slate-800">Namunalar</p><p className="mt-1 text-xs text-slate-500">Foydalanuvchiga ko‘rinadigan input va output.</p></div><button type="button" onClick={onAdd} className="text-xs font-bold text-indigo-700">+ Namuna</button></div><div className="mt-4 space-y-4">{examples.map((example, index) => <div key={index} className="rounded-xl bg-slate-50 p-3"><div className="mb-2 flex items-center justify-between"><p className="text-xs font-bold text-slate-500">Namuna {index + 1}</p>{examples.length > 1 && <button type="button" onClick={() => onRemove(index)} className="text-xs font-semibold text-error-700">O‘chirish</button>}</div><div className="grid gap-3 sm:grid-cols-2"><textarea value={example.input} onChange={(event) => onChange(index, 'input', event.target.value)} className="input min-h-20 resize-y font-mono text-xs" placeholder="Input" /><textarea value={example.output} onChange={(event) => onChange(index, 'output', event.target.value)} className="input min-h-20 resize-y font-mono text-xs" placeholder="Output" /></div><input value={example.explanation ?? ''} onChange={(event) => onChange(index, 'explanation', event.target.value)} className="input mt-3" placeholder="Izoh (ixtiyoriy)" /></div>)}</div></div>;
 }
 
-function TestCasesEditor({ tests, onChange, onAdd, onRemove }: { tests: ProblemTestCase[]; onChange: (index: number, key: keyof ProblemTestCase, value: string | number | boolean) => void; onAdd: () => void; onRemove: (index: number) => void }) {
-  return <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4"><div className="flex items-center justify-between gap-3"><div><p className="text-sm font-bold text-slate-800">Judge testlari</p><p className="mt-1 text-xs text-slate-500">Bu testlar foydalanuvchiga ko‘rinmaydi; sample sifatida belgilanganlari bundan mustasno.</p></div><button type="button" onClick={onAdd} className="text-xs font-bold text-indigo-700">+ Test</button></div><div className="mt-4 space-y-4">{tests.map((test, index) => <div key={index} className="rounded-xl border border-indigo-100 bg-white p-3"><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-bold text-slate-500">Test {index + 1}</p><div className="flex items-center gap-3"><label className="flex items-center gap-1.5 text-xs text-slate-600"><input type="checkbox" checked={test.isSample} onChange={(event) => onChange(index, 'isSample', event.target.checked)} className="accent-indigo-600" />Sample</label><label className="flex items-center gap-1 text-xs text-slate-600">Weight <input min="1" max="100" type="number" value={test.weight} onChange={(event) => onChange(index, 'weight', Number(event.target.value))} className="w-14 rounded border border-slate-200 px-1.5 py-1 text-xs" /></label>{tests.length > 1 && <button type="button" onClick={() => onRemove(index)} className="text-xs font-semibold text-error-700">O‘chirish</button>}</div></div><div className="grid gap-3 sm:grid-cols-2"><textarea required value={test.input} onChange={(event) => onChange(index, 'input', event.target.value)} className="input min-h-20 resize-y font-mono text-xs" placeholder="Input" /><textarea required value={test.output} onChange={(event) => onChange(index, 'output', event.target.value)} className="input min-h-20 resize-y font-mono text-xs" placeholder="Expected output" /></div></div>)}</div></div>;
+function TestCasesEditor({ tests, onChange, onAppend, onAdd, onRemove }: { tests: ProblemTestCase[]; onChange: (index: number, key: keyof ProblemTestCase, value: string | number | boolean) => void; onAppend: (tests: ProblemTestCase[]) => void; onAdd: () => void; onRemove: (index: number) => void }) {
+  const importRef = useRef<HTMLInputElement>(null);
+  const [language, setLanguage] = useState<TestcaseGeneratorLanguage>('javascript');
+  const [generatorSource, setGeneratorSource] = useState(generatorExamples.javascript.generatorSource);
+  const [referenceSource, setReferenceSource] = useState(generatorExamples.javascript.referenceSource);
+  const [count, setCount] = useState('10');
+  const [seed, setSeed] = useState(() => String(Date.now()));
+  const [generating, setGenerating] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const changeLanguage = (value: TestcaseGeneratorLanguage) => {
+    setLanguage(value);
+    setGeneratorSource(generatorExamples[value].generatorSource);
+    setReferenceSource(generatorExamples[value].referenceSource);
+    setStatus(null);
+    setError(null);
+  };
+
+  const applyTemplate = () => {
+    setGeneratorSource(generatorExamples[language].generatorSource);
+    setReferenceSource(generatorExamples[language].referenceSource);
+    setError(null);
+  };
+
+  const addImportedArchive = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setError(null);
+    setStatus(null);
+    try {
+      const imported = readTestcaseArchive(await file.arrayBuffer());
+      onAppend(imported.map((test) => ({ ...test, isSample: false, weight: 1 })));
+      setStatus(`${imported.length} ta test ZIP’dan qo‘shildi.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'ZIP import qilib bo‘lmadi.');
+    }
+  };
+
+  const generate = async () => {
+    const parsedCount = Number(count);
+    const parsedSeed = Number(seed);
+    setGenerating(true);
+    setError(null);
+    setStatus(null);
+    try {
+      const request = {
+        language,
+        generatorSource,
+        referenceSource,
+        count: parsedCount,
+        seed: Number.isInteger(parsedSeed) ? parsedSeed : Date.now(),
+      };
+      const generated = language === 'javascript'
+        ? await generateJavaScriptTestCases(request)
+        : await generateRemoteTestCases(request);
+      if (!generated.length) throw new Error('Generator hech qanday test qaytarmadi.');
+      onAppend(generated.map((test) => ({ ...test, isSample: false, weight: 1 })));
+      setStatus(`${generated.length} ta test yaratildi va ro‘yxatga qo‘shildi.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Testlarni yaratib bo‘lmadi.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const download = () => {
+    try {
+      downloadTestcaseArchive(tests, 'programming-testcases');
+      setStatus(`${tests.length} ta test ZIP faylga tayyorlandi.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'ZIP yuklab olinmadi.');
+    }
+  };
+
+  return <section className="space-y-4 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div><p className="text-sm font-bold text-slate-800">Judge testlari <span className="font-medium text-slate-400">({tests.length})</span></p><p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">Testlar ixtiyoriy: qo‘lda yozing, generator bilan yarating yoki ZIP’dan import qiling. Barchasi bitta ro‘yxatda saqlanadi.</p></div>
+      <div className="flex flex-wrap gap-2"><button type="button" onClick={onAdd} className="btn-ghost px-3 py-2 text-xs"><Plus className="h-3.5 w-3.5" />Qo‘lda test</button><button type="button" onClick={() => importRef.current?.click()} className="btn-ghost px-3 py-2 text-xs"><Upload className="h-3.5 w-3.5" />ZIP import</button><button type="button" onClick={download} disabled={!tests.length} className="btn-ghost px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-50"><Download className="h-3.5 w-3.5" />ZIP yuklab olish</button><input ref={importRef} type="file" accept=".zip,application/zip" className="hidden" onChange={(event) => void addImportedArchive(event)} /></div>
+    </div>
+
+    <details className="rounded-xl border border-indigo-100 bg-white p-3" open>
+      <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-bold text-indigo-800"><Wand2 className="h-4 w-4" />Testcase Generator <span className="text-xs font-medium text-slate-400">JavaScript · Python · C++</span></summary>
+      <div className="mt-4 grid gap-3">
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_7rem_8rem_auto]"><label className="block"><span className="mb-1.5 block text-xs font-semibold text-slate-600">Til</span><select value={language} onChange={(event) => changeLanguage(event.target.value as TestcaseGeneratorLanguage)} className="input h-10 py-1.5 text-xs">{generatorLanguageOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-slate-600">Testlar</span><input value={count} min="1" max="25" type="number" onChange={(event) => setCount(event.target.value)} className="input h-10 py-1.5 text-xs" /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-slate-600">Seed</span><input value={seed} type="number" onChange={(event) => setSeed(event.target.value)} className="input h-10 py-1.5 text-xs" /></label><button type="button" onClick={applyTemplate} className="mt-6 h-10 text-xs font-bold text-indigo-700 hover:text-indigo-800">Misolni tiklash</button></div>
+        <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-500">Generator har bir test uchun input, reference solution esa shu input uchun expected output yaratadi. JavaScript brauzer worker’ida, Python va C++ himoyalangan judge xizmatida ishlaydi.</p>
+        <div className="grid gap-3 lg:grid-cols-2"><label className="block"><span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600"><FileCode2 className="h-3.5 w-3.5" />Generator kodi</span><textarea value={generatorSource} onChange={(event) => setGeneratorSource(event.target.value)} spellCheck={false} className="input min-h-52 resize-y font-mono text-xs leading-5" /></label><label className="block"><span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600"><Code2 className="h-3.5 w-3.5" />Reference solution</span><textarea value={referenceSource} onChange={(event) => setReferenceSource(event.target.value)} spellCheck={false} className="input min-h-52 resize-y font-mono text-xs leading-5" /></label></div>
+        <div className="flex flex-wrap items-center justify-between gap-3"><div>{error && <p className="text-xs font-semibold text-error-700">{error}</p>}{status && <p className="text-xs font-semibold text-success-700">{status}</p>}</div><button type="button" onClick={() => void generate()} disabled={generating} className="btn-primary px-4 py-2 text-xs disabled:opacity-60">{generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}{generating ? 'Yaratilmoqda…' : 'Testlarni yaratish'}</button></div>
+      </div>
+    </details>
+
+    {!tests.length ? <div className="rounded-xl border border-dashed border-indigo-200 bg-white/70 p-5 text-center"><FileArchive className="mx-auto h-7 w-7 text-indigo-300" /><p className="mt-2 text-sm font-semibold text-slate-700">Test qo‘shilmagan</p><p className="mt-1 text-xs text-slate-500">Bu draftni testlarsiz saqlashingiz mumkin. Keyin qo‘lda, generator orqali yoki ZIP import bilan test qo‘shing.</p></div> : <div className="space-y-4">{tests.map((test, index) => <div key={`${test.id ?? 'new'}-${index}`} className="rounded-xl border border-indigo-100 bg-white p-3"><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-bold text-slate-500">Test {index + 1}</p><div className="flex items-center gap-3"><label className="flex items-center gap-1.5 text-xs text-slate-600"><input type="checkbox" checked={test.isSample} onChange={(event) => onChange(index, 'isSample', event.target.checked)} className="accent-indigo-600" />Sample</label><label className="flex items-center gap-1 text-xs text-slate-600">Weight <input min="1" max="100" type="number" value={test.weight} onChange={(event) => onChange(index, 'weight', Number(event.target.value))} className="w-14 rounded border border-slate-200 px-1.5 py-1 text-xs" /></label><button type="button" onClick={() => onRemove(index)} className="text-xs font-semibold text-error-700">O‘chirish</button></div></div><div className="grid gap-3 sm:grid-cols-2"><textarea value={test.input} onChange={(event) => onChange(index, 'input', event.target.value)} className="input min-h-20 resize-y font-mono text-xs" placeholder="Input" /><textarea value={test.output} onChange={(event) => onChange(index, 'output', event.target.value)} className="input min-h-20 resize-y font-mono text-xs" placeholder="Expected output" /></div></div>)}</div>}
+  </section>;
 }
 
 function Field({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) {

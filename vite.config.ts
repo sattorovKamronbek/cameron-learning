@@ -13,4 +13,11 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
+  server: {
+    proxy: {
+      // Lets the development Practice page use the local judge server without
+      // needing a browser-facing URL. Production may instead set VITE_JUDGE_API_URL.
+      '/api': { target: process.env.VITE_JUDGE_API_URL || 'http://localhost:4000', changeOrigin: true },
+    },
+  },
 });

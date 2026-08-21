@@ -96,6 +96,7 @@ const rows = (value: unknown): Row[] => Array.isArray(value)
 
 const row = (value: unknown): Row => rows(value)[0] ?? {};
 const text = (value: unknown, fallback = ''): string => typeof value === 'string' && value.trim() ? value.trim() : fallback;
+const rawText = (value: unknown, fallback = ''): string => typeof value === 'string' ? value : fallback;
 const nullableText = (value: unknown): string | null => text(value) || null;
 const number = (value: unknown, fallback = 0): number => {
   const parsed = typeof value === 'number' ? value : Number(value);
@@ -133,8 +134,8 @@ function mapExamples(value: unknown): ProblemExample[] {
 function mapTestCases(value: unknown): ProblemTestCase[] {
   return rows(value).map((entry) => ({
     id: nullableText(valueAt(entry, 'id')) ?? undefined,
-    input: text(valueAt(entry, 'input')),
-    output: text(valueAt(entry, 'output')),
+    input: rawText(valueAt(entry, 'input')),
+    output: rawText(valueAt(entry, 'output')),
     isSample: bool(valueAt(entry, 'is_sample', 'isSample')),
     weight: number(valueAt(entry, 'weight'), 1),
   }));

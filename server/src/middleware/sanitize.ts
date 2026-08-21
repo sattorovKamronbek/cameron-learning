@@ -1,7 +1,7 @@
 import sanitizeHtml from "sanitize-html";
 import { Request, Response, NextFunction } from "express";
 
-const rawExecutionFields = new Set(["source", "generatorSource", "referenceSource", "input", "output"]);
+const rawExecutionFields = new Set(["source", "generatorSource", "referenceSource", "input", "output", "problemContent"]);
 
 function sanitizeObject(obj: any): any {
   if (!obj || typeof obj !== "object") return obj;
